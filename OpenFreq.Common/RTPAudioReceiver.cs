@@ -45,7 +45,7 @@ public class RtpAudioReceiver : IDisposable
 
         if (_opusEnabled)
         {
-            _opusDecoder = OpusCodecFactory.CreateDecoder(OpenFreqRtcClient.SAMPLE_RATE, OpenFreqRtcClient.CHANNELS) as OpusDecoder;
+            _opusDecoder =  new OpusDecoder(OpenFreqRtcClient.SAMPLE_RATE, OpenFreqRtcClient.CHANNELS) as OpusDecoder; // OpusCodecFactory.CreateDecoder(OpenFreqRtcClient.SAMPLE_RATE, OpenFreqRtcClient.CHANNELS) as OpusDecoder;
         }
 
         // Create jitter buffer

@@ -1,16 +1,15 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Json;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using OpenFreq.Common.Signaling;
-using OpenFreq.Server;
 
 namespace OpenFreq.Server;
 
@@ -88,7 +87,7 @@ public class SignalingServer
             options.ListenAnyIP(config.WebSocketPort, listenOptions =>
             {
                 // Performance tuning
-                listenOptions.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http1;
+                listenOptions.Protocols = HttpProtocols.Http1;
             });
 
             // Connection limits
@@ -105,7 +104,7 @@ public class SignalingServer
         builder.Services.AddSingleton(loggerFactory);
 
         // Disable unnecessary services to keep it lightweight
-        builder.Services.Configure<Microsoft.AspNetCore.Http.Json.JsonOptions>(options =>
+        builder.Services.Configure<JsonOptions>(options =>
         {
             options.SerializerOptions.PropertyNameCaseInsensitive = true;
         });

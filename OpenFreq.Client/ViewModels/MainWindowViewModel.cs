@@ -31,32 +31,22 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private readonly IConfigurationService _configurationService;
 
     private readonly ILogger<MainWindowViewModel> _logger;
-    
+
     // TODO remove when done
-    #if DEBUG
+#if DEBUG
     [ObservableProperty] private bool _debugMode = true;
-    #else
+#else
     [ObservableProperty] private bool _debugMode = false;
-    #endif
+#endif
     /*********/
-    
+
 
     [ObservableProperty] private ChannelCardListViewModel _channelList;
     [ObservableProperty] private SettingsViewModel _settings;
 
     [ObservableProperty] private bool _openFreqConnected;
     [ObservableProperty] private bool _tacviewConnected;
-    [ObservableProperty] private ObservableCollection<TacviewAircraftItem> _tacviewFlightCallsigns = [];
-    [ObservableProperty] private TacviewAircraftItem? _selectedTacviewCallsign;
-
-    public record TacviewAircraftItem(string CallSign, string ObjectId)
-    {
-        public override string ToString() => CallSign;
-    }
-
-    private CancellationTokenSource? _callsignUpdateCts;
-    private Task? _callsignUpdateTask;
-
+    
     [ObservableProperty] private string _statusMessage = "Disconnected";
     [ObservableProperty] private string _peerId = String.Empty;
 
@@ -103,21 +93,12 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         _falconRadioSharedMemoryService.ConnectionParametersChanged +=
             FalconRadioSharedMemoryServiceOnConnectionParametersChanged;
 
-        // Wire the ACMI transformation service with the position update
-        _acmiClientService.TrackedAircraftTransformUpdated += (s, e) =>
-        {
-            _openFreqService.UpdateAircraftPosition(new AircraftPosition(e.Transform.U, e.Transform.V, e.Transform.Altitude));
-            Console.WriteLine(
-                $"[POS UPDATE] Updating to ({e.Transform.U:F0}, {e.Transform.V:F0}, {e.Transform.Altitude:F0})");
-        };
-        
-
         // Load config
         _ = LoadConfigurationAsync();
 
         UpdateConnectionStatusString();
     }
-    
+
     private void FalconRadioSharedMemoryServiceOnConnectionParametersChanged(object? sender,
         ConnectionParametersChangedEventArgs e)
     {
@@ -142,7 +123,6 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             if (_openFreqService.IsConnected)
             {
                 _falconRadioSharedMemoryService.AddClientStatus(ClientStatusFlags.Connected);
-                
             }
             else
             {
@@ -159,7 +139,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             _ = DisconnectAsync().Wait(TimeSpan.FromMilliseconds(500));
         }
     }
-    
+
 
     partial void OnOpenFreqConnectedChanged(bool value)
     {
@@ -191,7 +171,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             // Connect to server (channels will auto-join when authenticated)
             await _openFreqService.ConnectAsync();
 
-            if (Settings.ConnectionMode == OpenFreqSettings.Mode.GCI)
+            if (Settings.ConnectionMode == IOpenFreqService.Mode.GCI)
             {
                 _openFreqService.LoadHeightmap(Settings.HeightmapPath);
                 _acmiClientService.ConnectionStatusChanged += OnTacviewConnectionStatusChanged;
@@ -244,74 +224,8 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private void OnTacviewConnectionStatusChanged(object? sender, AcmiConnectionEventArgs e)
     {
         UpdateConnectionStatusString();
-        if (e.Status == AcmiConnectionStatus.Connected)
-        {
-            _callsignUpdateCts?.Cancel();
-            _callsignUpdateCts = new CancellationTokenSource();
-            _callsignUpdateTask = UpdateTacviewCallsigns(_callsignUpdateCts.Token);
-        }
-        else
-        {
-            _callsignUpdateCts?.Cancel();
-            _callsignUpdateCts?.Dispose();
-            _callsignUpdateCts = null;
-        }
     }
-
-    partial void OnSelectedTacviewCallsignChanged(TacviewAircraftItem selectedTacviewCallsign)
-    {
-        _acmiClientService?.SetTrackedAircraft(selectedTacviewCallsign.ObjectId);
-    }
-
-    private async Task UpdateTacviewCallsigns(CancellationToken cancellationToken)
-    {
-        while (_acmiClientService.Status == AcmiConnectionStatus.Connected
-               && !cancellationToken.IsCancellationRequested)
-        {
-            if (SelectedTacviewCallsign != null)
-            {
-                var aircraft = _acmiClientService.GetAircraft(SelectedTacviewCallsign.ObjectId);
-                ShowError(
-                    $"{aircraft.CallSign}: {aircraft.Transform.U} | {aircraft.Transform.V} | {aircraft.Transform.Altitude}");
-            }
-
-            var currentAircraft = _acmiClientService.GetAllAircraft()
-                .Select(ac => new TacviewAircraftItem(ac.CallSign, ac.ObjectId))
-                .ToList();
-
-            // Incremental update
-            var currentIds = currentAircraft.Select(a => a.ObjectId).ToHashSet();
-
-            // Remove items no longer present
-            for (int i = TacviewFlightCallsigns.Count - 1; i >= 0; i--)
-            {
-                if (!currentIds.Contains(TacviewFlightCallsigns[i].ObjectId))
-                {
-                    TacviewFlightCallsigns.RemoveAt(i);
-                }
-            }
-
-            // Add new items
-            var existingIds = TacviewFlightCallsigns.Select(a => a.ObjectId).ToHashSet();
-            foreach (var aircraft in currentAircraft)
-            {
-                if (aircraft.CallSign != string.Empty && !existingIds.Contains(aircraft.ObjectId))
-                {
-                    TacviewFlightCallsigns.Add(aircraft);
-                }
-            }
-
-            try
-            {
-                await Task.Delay(1000, cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                // Expected when cancellation is requested
-                break;
-            }
-        }
-    }
+    
 
     [RelayCommand]
     private async Task ConnectToAcmiAsync()
@@ -346,7 +260,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     private void UpdateConnectionStatusString()
     {
-        if (Settings.ConnectionMode == OpenFreqSettings.Mode.GCI)
+        if (Settings.ConnectionMode == IOpenFreqService.Mode.GCI)
         {
             ConnectionStatusString =
                 $"OpenFreq {_openFreqService.Status.ToString()} | Tacview {_acmiClientService.Status.ToString()}";
@@ -407,9 +321,6 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     {
         _ = SaveConfigurationAsync();
 
-        _callsignUpdateCts?.Cancel();
-        _callsignUpdateCts?.Dispose();
-
         ChannelList.Dispose();
         _openFreqService.Dispose();
         _hotkeyService.Dispose();
@@ -430,7 +341,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             // Load settings
             Settings.OpenFreqServerAddress = config.Settings.OpenFreqServerAddress;
             Settings.OpenFreqPassword = config.Settings.OpenFreqPassword;
-            Settings.ConnectionMode = config.Settings.ConnectionMode;
+            Settings.ConnectionMode = config.Settings.OwnPositionMode;
             Settings.InputDeviceName = config.Settings.InputDeviceName;
             Settings.OutputDeviceName = config.Settings.OutputDeviceName;
             Settings.HeightmapPath = config.Settings.HeightmapPath;
@@ -438,21 +349,26 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             // Load audio settings
             Settings.LoadFromSettings(config.Settings);
 
-            // Load channels
-            foreach (var channelData in config.Channels)
+            // Load channel groups
+            foreach (var channelGroupData in config.ChannelGroups)
             {
-                var channel =
-                    ChannelList.CreateChannel(channelData.FrequencyMhz, channelData.Name ?? "", channelData.Type);
-                channel.IsEnabled = channelData.Enabled;
-                channel.IsEditing = false;
-
-                // Parse and set hotkey
-                if (Enum.TryParse<KeyCode>(channelData.HotkeyCode, out var keyCode))
+                var channelGroup = ChannelList.CreateChannelGroup(channelGroupData);
+                // Load channels
+                foreach (var channelData in channelGroupData.Channels)
                 {
-                    channel.HotKey = keyCode;
-                    if (keyCode != KeyCode.VcUndefined)
+                    var channel =
+                        channelGroup.CreateChannel(channelData.FrequencyMhz, channelData.Name ?? "", channelData.Type);
+                    channel.IsEnabled = channelData.Enabled;
+                    channel.IsEditing = false;
+
+                    // Parse and set hotkey
+                    if (Enum.TryParse<KeyCode>(channelData.HotkeyCode, out var keyCode))
                     {
-                        _hotkeyService.RegisterHotkey(keyCode, channel.Id);
+                        channel.HotKey = keyCode;
+                        if (keyCode != KeyCode.VcUndefined)
+                        {
+                            _hotkeyService.RegisterHotkey(keyCode, channel.Id);
+                        }
                     }
                 }
             }
@@ -470,13 +386,22 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             var config = new AppConfiguration
             {
                 Settings = Settings.GetSettings(),
-                Channels = ChannelList.Channels.Select(c => new ChannelData
+                ChannelGroups = ChannelList.ChannelGroups.Select(cg => new ChannelGroupData
                 {
-                    Name = c.Name,
-                    FrequencyMhz = c.FrequencyMhz,
-                    Type = c.Type,
-                    HotkeyCode = c.HotKey.ToString(),
-                    Enabled = c.IsEnabled
+                    Name = cg.Name,
+                    TxPowerDbm = cg.TxPowerDbm,
+                    RxSensitivityDbm = cg.RxSensitivityDbm,
+                    AcmiTrackingId = cg.AcmiTrackingId,
+                    AntennaElevationM = cg.AntennaElevationM,
+                    Position = cg.Position,
+                    Channels = cg.Channels.Select(c => new ChannelData
+                    {
+                        Name = c.Name,
+                        FrequencyMhz = c.FrequencyMhz,
+                        Type = c.Type,
+                        HotkeyCode = c.HotKey.ToString(),
+                        Enabled = c.IsEnabled
+                    }).ToList()
                 }).ToList()
             };
 

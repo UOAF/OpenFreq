@@ -4,21 +4,180 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:views="clr-namespace:OpenFreqClient.Views"
              xmlns:viewModels="clr-namespace:OpenFreqClient.ViewModels"
+             xmlns:avalonia="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             xmlns:local="clr-namespace:OpenFreqAudio;assembly=OpenFreqAudio"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="OpenFreqClient.Views.ChannelCardListView"
              x:DataType="viewModels:ChannelCardListViewModel">
-    
-    <ItemsControl ItemsSource="{Binding Channels}">
+
+    <ItemsControl ItemsSource="{Binding ChannelGroups}">
         <ItemsControl.ItemTemplate>
             <DataTemplate>
-                <views:ChannelCardView Margin="5"/>
+                <Border BorderBrush="{DynamicResource SystemAccentColor}"
+                        BorderThickness="0,0,0,1"
+                        Margin="5">
+                    <StackPanel>
+                        <!-- ========================================== -->
+                        <!-- READ-ONLY MODE HEADER -->
+                        <!-- ========================================== -->
+                        <Grid ColumnDefinitions="*,Auto"
+                              Margin="5"
+                              IsVisible="{Binding !EditMode}">
+                            <!-- Group Name and Preset Info -->
+                            <StackPanel Grid.Column="0" Spacing="2">
+                                <TextBlock Text="{Binding Name}"
+                                           Classes="Headline6" />
+                                <TextBlock Text="{Binding GroupPreset.Name}"
+                                           Classes="Subtitle2"
+                                           IsVisible="{Binding GroupPreset, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                            </StackPanel>
+
+                            <!-- Action Buttons -->
+                            <StackPanel Grid.Column="1"
+                                        Orientation="Horizontal"
+                                        Spacing="5">
+                                <Button Command="{Binding AddChannelCommand}"
+                                        Width="32" Height="32"
+                                        ToolTip.Tip="Add Channel">
+                                    <avalonia:MaterialIcon Kind="Add" Width="24" Height="24" />
+                                </Button>
+                                <Button Command="{Binding ToggleEditingCommand}"
+                                        Width="32" Height="32"
+                                        ToolTip.Tip="Edit group settings">
+                                    <avalonia:MaterialIcon Kind="Edit" Width="24" Height="24" />
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- ========================================== -->
+                        <!-- EDIT MODE HEADER -->
+                        <!-- ========================================== -->
+                        <StackPanel IsVisible="{Binding EditMode}"
+                                    Margin="5"
+                                    Spacing="10">
+
+                            <!-- Group Name (Editable) -->
+                            <TextBox Text="{Binding Name}"
+                                     Watermark="Group name..."
+                                     FontWeight="SemiBold" />
+
+                            <!-- Position Configuration -->
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Position Source"
+                                           Classes="Subtitle2" />
+
+                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="10">
+                                    <!-- Fixed Position Option -->
+                                    <RadioButton Grid.Row="0" Grid.Column="0"
+                                                 IsChecked="{Binding FixedPosition}"
+                                                 GroupName="PositionSource"
+                                                 Content="Fixed Position"
+                                                 VerticalAlignment="Center" />
+                                    <StackPanel Grid.Row="0" Grid.Column="1"
+                                                Orientation="Horizontal"
+                                                Spacing="10"
+                                                IsEnabled="{Binding FixedPosition}">
+                                        <TextBox Text="{Binding GroupPreset.FixedPosition.X}"
+                                                 Watermark="X Position"
+                                                 MinWidth="100" />
+                                        <TextBox Text="{Binding GroupPreset.FixedPosition.Y}"
+                                                 Watermark="Y Position"
+                                                 MinWidth="100" />
+                                    </StackPanel>
+
+                                    <!-- Aircraft Callsign Option -->
+                                    <RadioButton Grid.Row="1" Grid.Column="0"
+                                                 IsChecked="{Binding !FixedPosition}"
+                                                 GroupName="PositionSource"
+                                                 Content="Aircraft"
+                                                 VerticalAlignment="Center"
+                                                 Margin="0,8,0,0" />
+                                    <ComboBox Grid.Row="1" Grid.Column="1"
+                                              Margin="0,8,0,0"
+                                              PlaceholderText="Select aircraft callsign..."
+                                              ItemsSource="{Binding TacviewFlightCallsigns}"
+                                              SelectedItem="{Binding SelectedTacviewCallsign}" 
+                                              IsEnabled="{Binding !FixedPosition}"
+                                              MinWidth="200"/>
+                                </Grid>
+                            </StackPanel>
+
+                            <!-- Station Preset Selection -->
+                            <ComboBox ItemsSource="{x:Static local:RadioStationPresets.AllPresets}"
+                                      SelectedItem="{Binding GroupPreset}"
+                                      PlaceholderText="Select station preset..."
+                                      HorizontalAlignment="Stretch">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Name}"
+                                                       Classes="Body1" />
+                                            <TextBlock Text="{Binding Description}"
+                                                       Classes="Caption"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+
+                            <!-- Preset Parameters (Read-Only, Compact) -->
+                            <UniformGrid Columns="10"
+                                         ColumnSpacing="1"
+                                         IsVisible="{Binding GroupPreset, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                <Label Content="VHF TX (W)" VerticalAlignment="Center" />
+                                <TextBox Text="{Binding GroupPreset.TxPower_VHF_W, StringFormat='{}{0:F1}'}"
+                                         Watermark="VHF TX"
+                                         VerticalAlignment="Center" />
+                                <Label Content="VHF TX (W)" VerticalAlignment="Center" />
+                                <TextBox Text="{Binding GroupPreset.TxPower_UHF_W, StringFormat='{}{0:F1}'}"
+                                         Watermark="UHF TX" VerticalAlignment="Center" />
+                                <Label Content="Antenna (m)" VerticalAlignment="Center" />
+                                <TextBox Text="{Binding GroupPreset.AntennaElevation_m, StringFormat='{}{0:F1}'}"
+                                         Watermark="Antenna"
+                                         VerticalAlignment="Center" />
+                                <Label Content="VHF RX (dBm)" VerticalAlignment="Center" />
+                                <TextBox Text="{Binding GroupPreset.RxSensitivity_VHF_dBm, StringFormat='{}{0:F1}'}"
+                                         Watermark="VHF RX"
+                                         VerticalAlignment="Center" />
+                                <Label Content="UHF RX (dBm)" VerticalAlignment="Center" />
+                                <TextBox Text="{Binding GroupPreset.RxSensitivity_UHF_dBm, StringFormat='{}{0:F1}'}"
+                                         Watermark="UHF RX"
+                                         VerticalAlignment="Center" />
+                            </UniformGrid>
+
+                            <!-- Done Button -->
+                            <Button Content="DONE"
+                                    Command="{Binding ToggleEditingCommand}"
+                                    HorizontalAlignment="Right"
+                                    Margin="0,10,0,0">
+                            </Button>
+                        </StackPanel>
+
+                        <!-- ========================================== -->
+                        <!-- CHANNELS WITHIN GROUP -->
+                        <!-- ========================================== -->
+                        <ItemsControl ItemsSource="{Binding Channels}"
+                                      Margin="10,5,0,5">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <views:ChannelCardView Margin="5" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Vertical" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
             </DataTemplate>
         </ItemsControl.ItemTemplate>
         <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
-                <StackPanel Orientation="Vertical" Margin="10"/>
+                <StackPanel Orientation="Vertical" Margin="10" />
             </ItemsPanelTemplate>
         </ItemsControl.ItemsPanel>
     </ItemsControl>
-    
+
 </UserControl>

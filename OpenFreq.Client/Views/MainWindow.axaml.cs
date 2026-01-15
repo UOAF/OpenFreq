@@ -1,3 +1,4 @@
+using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
@@ -24,8 +25,12 @@ public partial class MainWindow : Window
 
     private void Button_OnClick(object? sender, RoutedEventArgs e)
     {
-        _viewModel?.ChannelList.CreateChannel(225.0, $"Channel #{_viewModel.ChannelList.Channels.Count + 1}",
-            Channel.ChannelType.UHF);
+        var channelGroup = _viewModel?.ChannelList.ChannelGroups.FirstOrDefault();
+        if (channelGroup == null)
+        {
+            channelGroup = _viewModel?.ChannelList.CreateChannelGroup("Default Group", 30, 30, 1, null, null);
+        }
+        channelGroup?.CreateChannel(225.0, $"Channel #{channelGroup.Channels.Count + 1}", Channel.ChannelType.UHF);
     }
 
     private void MenuButton_OnClick(object? sender, RoutedEventArgs e)

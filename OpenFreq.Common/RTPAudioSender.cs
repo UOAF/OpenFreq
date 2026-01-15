@@ -40,10 +40,11 @@ public class RtpAudioSender : IDisposable
     {
         public byte[] PcmData;
         public string ClientId;
-        public AircraftPosition? Position;
+        public Position? Position;
         public List<FrequencyTransmission> FrequencyTransmissions;
         public bool BeginMarker;
         public bool EndMarker;
+        public double txWatts;
         public uint Timestamp;
         public ushort SequenceNumber;
     }
@@ -88,10 +89,20 @@ public class RtpAudioSender : IDisposable
 
         if (_opusEnabled)
         {
-            _opusEncoder =
-                OpusCodecFactory.CreateEncoder(sampleRate: OpenFreqRtcClient.SAMPLE_RATE, OpenFreqRtcClient.CHANNELS,
-                        OpusApplication.OPUS_APPLICATION_RESTRICTED_LOWDELAY) as
-                    OpusEncoder;
+            try
+            {
+                _opusEncoder = new OpusEncoder(
+                    OpenFreqRtcClient.SAMPLE_RATE,
+                    OpenFreqRtcClient.CHANNELS,
+                    OpusApplication.OPUS_APPLICATION_RESTRICTED_LOWDELAY
+                );
+            }
+            catch (OpusException ex)
+            {
+                // This is the Opus error code
+                Console.WriteLine($"Opus error: {ex.OpusErrorCode}");
+                Console.WriteLine($"Message: {ex.Message}");
+            }
 
             // Configure for low latency VoIP
             _opusEncoder.Bitrate = 128000; // 128 kbps
@@ -122,7 +133,7 @@ public class RtpAudioSender : IDisposable
     /// <param name="position">Aircraft position</param>
     /// <param name="frequencyTransmissions">List of FrequencyTransmissions</param>
     /// 
-    public void SendAudio(byte[] audioData, string clientId, AircraftPosition? position, List<FrequencyTransmission> frequencyTransmissions)
+    public void SendAudio(byte[] audioData, string clientId, Position? position, List<FrequencyTransmission> frequencyTransmissions)
     {
         try
         {
@@ -147,7 +158,7 @@ public class RtpAudioSender : IDisposable
                     // First chunk uses original markers, subsequent chunks clear beginMarkers
                     var markers = isFirstChunk 
                         ? frequencyTransmissions 
-                        : frequencyTransmissions.Select(f => new FrequencyTransmission(f.Mhz, false, f.EndMarker)).ToList();
+                        : frequencyTransmissions.Select(f => new FrequencyTransmission(f.Mhz, f.TxPowerWatts,false, f.EndMarker)).ToList();
                 
                     QueueRawFrame(clientId, position, markers);
                     isFirstChunk = false;
@@ -161,7 +172,7 @@ public class RtpAudioSender : IDisposable
         }
     }
 
-    private void QueueRawFrame(string clientId, AircraftPosition? position, List<FrequencyTransmission> frequencyTransmissions)
+    private void QueueRawFrame(string clientId, Position? position, List<FrequencyTransmission> frequencyTransmissions)
     {
        // Copy the buffer data (must copy since _audioBuffer will be reused)
         byte[] pcmCopy = new byte[_audioBuffer.Length];
@@ -190,7 +201,7 @@ public class RtpAudioSender : IDisposable
 
     private void OnPacingTimerElapsed(object? sender, System.Timers.ElapsedEventArgs e)
     {
-        QueuedAudio? queued = null;
+        QueuedAudio? queued;
 
         lock (_queueLock)
         {
@@ -199,9 +210,6 @@ public class RtpAudioSender : IDisposable
 
             queued = _sendQueue.Dequeue();
         }
-
-        if (queued == null)
-            return;
 
         try
         {

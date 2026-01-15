@@ -10,6 +10,8 @@ public class FrequencyTransmission
     /// </summary>
     public double Mhz { get; set; }
     
+    public double TxPowerWatts { get; set; }
+    
     /// <summary>
     /// True if this is the first packet of a transmission on this frequency
     /// </summary>
@@ -24,9 +26,10 @@ public class FrequencyTransmission
     {
     }
     
-    public FrequencyTransmission(double mhz, bool beginMarker = false, bool endMarker = false)
+    public FrequencyTransmission(double mhz, double txPowerWatts, bool beginMarker = false, bool endMarker = false)
     {
         Mhz = mhz;
+        TxPowerWatts = txPowerWatts;
         BeginMarker = beginMarker;
         EndMarker = endMarker;
     }

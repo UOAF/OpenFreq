@@ -26,11 +26,11 @@
                 <TextBlock Classes="Headline6" Margin="0,0,0,16">Settings</TextBlock>
 
                 <StackPanel Orientation="Horizontal" Margin="0, 4" IsEnabled="{Binding  !OpenFreqConnected}">
-                    <RadioButton GroupName="ConnectionMode"
+                    <RadioButton GroupName="OwnPositionMode"
                                  IsChecked="{Binding !Settings.ModeIsGci}"
                                  Content="BMS" />
 
-                    <RadioButton GroupName="ConnectionMode"
+                    <RadioButton GroupName="OwnPositionMode"
                                  IsChecked="{Binding Settings.ModeIsGci}"
                                  Content="GCI"
                                  Margin="15,0,0,0" />
@@ -166,11 +166,6 @@
                                Foreground="White" />
                 </DockPanel>
             </controls:ColorZone>
-
-            <!-- ComboBox at top -->
-            <ComboBox DockPanel.Dock="Top"
-                      ItemsSource="{Binding TacviewFlightCallsigns}"
-                      SelectedItem="{Binding SelectedTacviewCallsign}" />
 
             <!-- Status at bottom -->
             <TextBlock DockPanel.Dock="Bottom"

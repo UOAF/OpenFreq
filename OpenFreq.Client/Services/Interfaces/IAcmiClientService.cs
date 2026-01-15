@@ -1,11 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using OpenFreq.Client.Services.Interfaces;
 using OpenFreqClient.Models;
 
 namespace OpenFreq.Services.Acmi;
 
-public interface IAcmiClientService : IDisposable
+public interface IAcmiClientService : IDisposable, ILifecycleService
 {
     /// <summary>Fired when connection status changes</summary>
     event EventHandler<AcmiConnectionEventArgs>? ConnectionStatusChanged;
@@ -15,12 +16,6 @@ public interface IAcmiClientService : IDisposable
 
     /// <summary>Fired when connection is lost</summary>
     event EventHandler<AcmiConnectionEventArgs>? ConnectionLost;
-
-    /// <summary>
-    /// Fired when the tracked aircraft's position/transform is updated.
-    /// Only fires for the aircraft set via SetTrackedAircraft().
-    /// </summary>
-    event EventHandler<AircraftTransformEventArgs>? TrackedAircraftTransformUpdated;
 
     /// <summary>Connects to the ACMI server</summary>
     Task<bool> ConnectAsync(string connectionString, string password = "", int maxRetries = 99);
@@ -35,14 +30,13 @@ public interface IAcmiClientService : IDisposable
     IEnumerable<AcmiAircraft> GetAllAircraft();
     
     /// <summary>
-    /// Sets which aircraft to track for position updates.
+    /// Adds an object ID which will be tracked.
     /// Only this aircraft will trigger the TrackedAircraftTransformUpdated event.
     /// Pass null to stop tracking.
     /// </summary>
-    void SetTrackedAircraft(string? objectId);
+    void AddTrackingForAircraft(string objectId);
+    void RemoveTrackingForAircraft(string objectId);
     
-    /// <summary>Gets the currently tracked aircraft object ID, or null if none</summary>
-    string? TrackedAircraftId { get; }
     
     public AcmiConnectionStatus Status { get; }
 }

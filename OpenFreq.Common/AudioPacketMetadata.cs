@@ -29,9 +29,11 @@ public class AudioPacketMetadata
     public long ServerSendTimestamp { get; set; }
     
     [JsonPropertyName("position")]
-    public AircraftPosition? Position { get; set; }
+    public Position? Position { get; set; }
     
     public bool In3D { get; set; }
+    
+    public double TxWatts {get; set;}
     
     public int PcmDataLength { get; set; }
     
@@ -40,15 +42,15 @@ public class AudioPacketMetadata
 }
 
 // Position data structure
-public class AircraftPosition
+public class Position
 {
     public double X { get; set; }
     public double Y { get; set; }
     public double Z { get; set; }
     
-    public AircraftPosition() {}
+    public Position() {}
 
-    public AircraftPosition(double x, double y, double z)
+    public Position(double x, double y, double z)
     {
         X = x;
         Y = y;
@@ -63,7 +65,7 @@ public class AircraftPosition
     /// <summary>
     /// Translates BMS SharedMemory coordinates (feet, origin bottom left) to Heightmap X/Y coordinates (pixels, origin top left)
     /// </summary>
-    public AircraftPosition ToHeightmapPosition()
+    public Position ToHeightmapPosition()
     {
         // Heightmap specifications
         const int HEIGHTMAP_SIZE_PX = 32768;
@@ -80,6 +82,6 @@ public class AircraftPosition
 
         var heightmapX = Y / FEET_PER_PIXEL;
         var heightmapY = HEIGHTMAP_SIZE_PX - (X / FEET_PER_PIXEL);
-        return new AircraftPosition(heightmapX, heightmapY, Z);
+        return new Position(heightmapX, heightmapY, Z);
     }
 }

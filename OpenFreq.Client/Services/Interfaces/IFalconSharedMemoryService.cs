@@ -2,6 +2,7 @@ using System;
 using FalconBmsDataService.Models;
 using FalconRadioService.Models;
 using OpenFreq.Client.Services.Interfaces;
+using OpenFreq.Common;
 
 namespace FalconBmsDataService.Services;
 
@@ -20,6 +21,8 @@ public interface IFalconSharedMemoryService : IDisposable, ILifecycleService
     /// </summary>
     FlightPosition? Position { get; }
 
+    Position? HeightMapPosition => Position == null ? null : new Position(Position.X, Position.Y, Position.Z).ToHeightmapPosition();
+
     /// <summary>
     /// Theater terrain directory (read once on connect, null if never connected)
     /// </summary>
@@ -34,7 +37,6 @@ public interface IFalconSharedMemoryService : IDisposable, ILifecycleService
     /// Event fired when service state changes
     /// </summary>
     event EventHandler<ServiceStateChangedEventArgs>? StateChanged;
-    
+
     event EventHandler<FlyingStateChangedEventArgs>? FlyingStateChanged;
 }
-

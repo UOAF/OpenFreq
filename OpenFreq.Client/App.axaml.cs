@@ -7,6 +7,7 @@ using FalconBmsDataService.Services;
 using FalconRadioService.Services;
 using Microsoft.Extensions.DependencyInjection;
 using OpenFreq.Client.Services.Interfaces;
+using OpenFreq.Services.Acmi;
 using OpenFreqClient.Services.Interfaces;
 using OpenFreqClient.ViewModels;
 using OpenFreqClient.Views;
@@ -30,12 +31,21 @@ public partial class App : Application
             // Get services from DI
             var serviceProvider = Program.ServiceProvider;
             
+            #if WINDOWS
             _services = new List<ILifecycleService>
             {
                 serviceProvider.GetRequiredService<IFalconRadioSharedMemoryService>(),
                 serviceProvider.GetRequiredService<IFalconSharedMemoryService>(),
+                serviceProvider.GetRequiredService<IAcmiClientService>(),                
                 serviceProvider.GetRequiredService<IHotkeyService>(),
             };
+            #else
+            _services = new List<ILifecycleService>
+            {
+                serviceProvider.GetRequiredService<IAcmiClientService>(),
+                serviceProvider.GetRequiredService<IHotkeyService>(),
+            };
+            #endif
             
             // Start services
             foreach (var service in _services)

@@ -355,6 +355,7 @@ public class FalconSharedMemoryService : IFalconSharedMemoryService
     public string? TheaterTerrainDir { get; }
     public double PollingFrequencyHz { get; set; }
     public event EventHandler<ServiceStateChangedEventArgs>? StateChanged;
+    public event EventHandler<FlyingStateChangedEventArgs>? FlyingStateChanged;
 
     public void Start()
     {

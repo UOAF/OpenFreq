@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using OpenFreq.Common;
+using OpenFreqAudio;
 
 namespace OpenFreqClient.Services.Interfaces;
 
@@ -16,6 +17,8 @@ public interface IOpenFreqService : IDisposable
     int RecordingDeviceIndex { get; set; }
     int PlaybackDeviceIndex { get; set; }
     int AudioParamsUpdateFrequency { get; set; }
+    
+    Mode OwnPositionMode { get; }
 
     // Events
     event EventHandler<ConnectionState>? ConnectionStateChanged;
@@ -23,19 +26,15 @@ public interface IOpenFreqService : IDisposable
     event EventHandler<FrequencyStatusEventArgs>? FrequencyStatusChanged;
     event EventHandler<PeerActivityEventArgs>? PeerActivityReceived;
 
-    void UpdateAircraftPosition(AircraftPosition? position);
-
-
     // Methods
     void Initialize(OpenFreqClient.Models.OpenFreqSettings settings, int recordingDeviceIndex, int playbackDeviceIndex);
     Task ConnectAsync();
     Task DisconnectAsync();
-    Task JoinFrequencyAsync(double frequencyMhz);
+    Task JoinFrequencyAsync(double frequencyMhz, RadioStationPreset preset);
     Task LeaveFrequencyAsync(double frequencyMhz);
-    Task StartTransmissionAsync(double frequencyMhz);
+    Task StartTransmissionAsync(double frequencyMhz, RadioStationPreset preset);
     Task StopTransmissionAsync(double frequencyMhz);
-    void StartOwnPositionUpdates();
-    void StopOwnPositionUpdates();
+    Task SetOwnPositionModeAsync(Mode newMode);
     
     public enum OpenFreqStatus
     {
@@ -48,4 +47,10 @@ public interface IOpenFreqService : IDisposable
     public OpenFreqStatus Status { get; }
     
     public void LoadHeightmap(string path, int width = 32768, int height = 32768, int bytesPerSample = 2);
+
+    public enum Mode
+    {
+        GCI,
+        BMS
+    }
 }

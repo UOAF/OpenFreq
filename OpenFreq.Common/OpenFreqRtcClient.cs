@@ -55,10 +55,7 @@ public class OpenFreqRtcClient : IDisposable
     private readonly Dictionary<double, bool> _frequencyTransmissionState = new();
     private readonly Dictionary<double, bool> _frequencyFirstPacketSent = new();
     private readonly Dictionary<double, HashSet<string>> _frequencyPeers = new();
-
-    // Aircraft position state (thread-safe)
-    private readonly Lock _positionLock = new();
-    private AircraftPosition? _currentPosition;
+    
     private readonly ILogger<OpenFreqRtcClient> _logger;
 
     // Properties
@@ -73,29 +70,6 @@ public class OpenFreqRtcClient : IDisposable
         _logger = logger;
         _serverIp = serverIp;
         _password = password;
-    }
-
-    /// <summary>
-    /// Set the aircraft position for UDP packet metadata
-    /// Thread-safe - can be called from any service (ACMI, BMS, etc.)
-    /// </summary>
-    public void SetPosition(AircraftPosition? position)
-    {
-        lock (_positionLock)
-        {
-            _currentPosition = position;
-        }
-    }
-
-    /// <summary>
-    /// Get the current aircraft position
-    /// </summary>
-    public AircraftPosition? GetPosition()
-    {
-        lock (_positionLock)
-        {
-            return _currentPosition;
-        }
     }
 
     /// <summary>
@@ -263,14 +237,13 @@ public class OpenFreqRtcClient : IDisposable
         }
 
         // Send final silent packet with endMarker
-        var position = GetPosition();
         var silence = new byte[OPUS_SAMPLES_PER_FRAME * 2]; // 20ms silence, 16-bit PCM
         
         _rtpSender?.SendAudio(
             audioData: silence,
             clientId: clientId,
-            position: position,
-            frequencyTransmissions: [new FrequencyTransmission(frequencyMhz, false, true)]
+            position: null,
+            frequencyTransmissions: [new FrequencyTransmission(frequencyMhz, 0, false, true)]
         );
         
         _logger.LogInformation("Sent end marker for frequency {Frequency}", frequencyMhz);
@@ -283,25 +256,28 @@ public class OpenFreqRtcClient : IDisposable
     }
 
 
-    public void SendAudio(byte[] pcmData, AircraftPosition position, List<double> frequencies)
+    public void SendAudio(byte[] pcmData, List<(double frequency, double txPowerWatts, Position? position)> frequencies)
     {
         var frequencyTransmissions = new List<FrequencyTransmission>();
     
         foreach (var freq in frequencies)
         {
-            bool needsBeginMarker = _frequencyFirstPacketSent.TryGetValue(freq, out var sent) && !sent;
+            bool needsBeginMarker = _frequencyFirstPacketSent.TryGetValue(freq.frequency, out var sent) && !sent;
         
             frequencyTransmissions.Add(new FrequencyTransmission(
-                mhz: freq,
+                mhz: freq.frequency,
+                txPowerWatts: freq.txPowerWatts,
                 beginMarker: needsBeginMarker,
                 endMarker: false
             ));
         
             if (needsBeginMarker)
-                _frequencyFirstPacketSent[freq] = true;
+                _frequencyFirstPacketSent[freq.frequency] = true;
+            
+            _rtpSender?.SendAudio(pcmData, clientId, freq.position, frequencyTransmissions);
         }
     
-        _rtpSender?.SendAudio(pcmData, clientId, position, frequencyTransmissions);
+        
     }
     
 

@@ -26,12 +26,12 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ModeIsGci))]
     [NotifyPropertyChangedFor(nameof(IsReadyToConnect))]
-    private OpenFreqSettings.Mode _connectionMode = OpenFreqSettings.Mode.BMS;
+    private IOpenFreqService.Mode _connectionMode = IOpenFreqService.Mode.BMS;
 
     public bool ModeIsGci
     {
-        get => ConnectionMode == OpenFreqSettings.Mode.GCI;
-        set { ConnectionMode = value ? OpenFreqSettings.Mode.GCI : OpenFreqSettings.Mode.BMS; }
+        get => ConnectionMode == IOpenFreqService.Mode.GCI;
+        set { ConnectionMode = value ? IOpenFreqService.Mode.GCI : IOpenFreqService.Mode.BMS; }
     }
 
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsReadyToConnect))]
@@ -51,11 +51,11 @@ public partial class SettingsViewModel : ViewModelBase
                                         || !ModeIsGci
                                     );
 
-    partial void OnConnectionModeChanged(OpenFreqSettings.Mode value)
+    partial void OnConnectionModeChanged(IOpenFreqService.Mode value)
     {
-        Debug.WriteLine($"ConnectionMode changed to: {value}");
-        Debug.WriteLine($"ConnectionMode ToString: '{value.ToString()}'");
-        Debug.WriteLine($"ConnectionMode type: {value.GetType().FullName}");
+        Debug.WriteLine($"OwnPositionMode changed to: {value}");
+        Debug.WriteLine($"OwnPositionMode ToString: '{value.ToString()}'");
+        Debug.WriteLine($"OwnPositionMode type: {value.GetType().FullName}");
     }
 
     public SettingsViewModel(IAudioService audioService)
@@ -97,7 +97,7 @@ public partial class SettingsViewModel : ViewModelBase
     {
         OpenFreqServerAddress = settings.OpenFreqServerAddress;
         OpenFreqPassword = settings.OpenFreqPassword;
-        ConnectionMode = settings.ConnectionMode;
+        ConnectionMode = settings.OwnPositionMode;
         TacviewServerAddress = settings.TacviewServerAddress;
         TacviewServerPassword = settings.TacviewServerPassword;
 
@@ -126,7 +126,7 @@ public partial class SettingsViewModel : ViewModelBase
         {
             OpenFreqServerAddress = OpenFreqServerAddress,
             OpenFreqPassword = OpenFreqPassword,
-            ConnectionMode = ConnectionMode,
+            OwnPositionMode = ConnectionMode,
             TacviewServerAddress = TacviewServerAddress,
             TacviewServerPassword = TacviewServerPassword,
             InputDeviceName = InputDeviceName,

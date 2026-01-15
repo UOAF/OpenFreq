@@ -20,14 +20,14 @@ public class ServiceStateChangedEventArgs : EventArgs
 public class RadioFrequencyChangedEventArgs : EventArgs
 {
     public RadioType RadioType { get; }
-    public int OldFrequency { get; }
-    public int NewFrequency { get; }
+    public int OldFrequencyKhz { get; }
+    public int NewFrequencyKhz { get; }
 
-    public RadioFrequencyChangedEventArgs(RadioType radioType, int oldFreq, int newFreq)
+    public RadioFrequencyChangedEventArgs(RadioType radioType, int oldFreqKhz, int newFreqKhz)
     {
         RadioType = radioType;
-        OldFrequency = oldFreq;
-        NewFrequency = newFreq;
+        OldFrequencyKhz = oldFreqKhz;
+        NewFrequencyKhz = newFreqKhz;
     }
 }
 

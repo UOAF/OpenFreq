@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
+using OpenFreqAudio;
 using OpenFreqClient.Models;
 using OpenFreqClient.Services.Interfaces;
 using SharpHook.Data;
@@ -13,6 +14,7 @@ namespace OpenFreqClient.ViewModels;
 public partial class ChannelCardViewModel : ViewModelBase, IDisposable
 {
     private readonly IHotkeyService _hotkeyService;
+    public RadioStationPreset Preset { get; set; }
 
     public Guid Id { get; } = Guid.NewGuid();
 
@@ -103,14 +105,16 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     }
 
 
-    public ChannelCardViewModel(IHotkeyService hotkeyService)
+    public ChannelCardViewModel(IHotkeyService hotkeyService, RadioStationPreset preset)
     {
         _hotkeyService = hotkeyService;
+        Preset = preset;
     }
 
-    public ChannelCardViewModel(IHotkeyService hotkeyService, Channel channel)
+    public ChannelCardViewModel(IHotkeyService hotkeyService, Channel channel, RadioStationPreset preset)
     {
         _hotkeyService = hotkeyService;
+        Preset = preset;
         _frequencyMhz = channel.FrequencyMhz;
         _name = channel.Name;
         _rxDb = channel.RxDb;
@@ -232,7 +236,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         if (Status == Channel.ChannelStatus.Disconnected || FrequencyError != null)
             return;
 
-        WeakReferenceMessenger.Default.Send(new StartTransmissionMessage(Id, FrequencyMhz));
+        WeakReferenceMessenger.Default.Send(new StartTransmissionMessage(Id, FrequencyMhz, Preset));
     }
 
     public void StopTransmission()
@@ -287,10 +291,11 @@ public class ChannelEnabledDisabledMessage(
     public bool Enabled { get; } = enabled;
 }
 
-public class StartTransmissionMessage(Guid channelId, double frequencyMhz)
+public class StartTransmissionMessage(Guid channelId, double frequencyMhz, RadioStationPreset stationPreset)
 {
     public Guid ChannelId { get; } = channelId;
     public double FrequencyMhz { get; } = frequencyMhz;
+    public RadioStationPreset stationPreset { get; } = stationPreset;
 }
 
 public class StopTransmissionMessage
