@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.ObjectModel;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -46,7 +45,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty] private bool _openFreqConnected;
     [ObservableProperty] private bool _tacviewConnected;
-    
+
     [ObservableProperty] private string _statusMessage = "Disconnected";
     [ObservableProperty] private string _peerId = String.Empty;
 
@@ -97,6 +96,8 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         _ = LoadConfigurationAsync();
 
         UpdateConnectionStatusString();
+
+        _openFreqService.SetOwnPositionMode(Settings.ConnectionMode);
     }
 
     private void FalconRadioSharedMemoryServiceOnConnectionParametersChanged(object? sender,
@@ -225,7 +226,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     {
         UpdateConnectionStatusString();
     }
-    
+
 
     [RelayCommand]
     private async Task ConnectToAcmiAsync()
@@ -352,7 +353,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             // Load channel groups
             foreach (var channelGroupData in config.ChannelGroups)
             {
-                var channelGroup = ChannelList.CreateChannelGroup(channelGroupData);
+                var channelGroup = ChannelList.CreateChannelGroup(channelGroupData, editMode: false, isBmsGroup: false);
                 // Load channels
                 foreach (var channelData in channelGroupData.Channels)
                 {
@@ -386,23 +387,25 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             var config = new AppConfiguration
             {
                 Settings = Settings.GetSettings(),
-                ChannelGroups = ChannelList.ChannelGroups.Select(cg => new ChannelGroupData
-                {
-                    Name = cg.Name,
-                    TxPowerDbm = cg.TxPowerDbm,
-                    RxSensitivityDbm = cg.RxSensitivityDbm,
-                    AcmiTrackingId = cg.AcmiTrackingId,
-                    AntennaElevationM = cg.AntennaElevationM,
-                    Position = cg.Position,
-                    Channels = cg.Channels.Select(c => new ChannelData
+                ChannelGroups = ChannelList.ChannelGroups
+                    .Where(cg => !cg.IsBmsGroup)
+                    .Select(cg => new ChannelGroupData
                     {
-                        Name = c.Name,
-                        FrequencyMhz = c.FrequencyMhz,
-                        Type = c.Type,
-                        HotkeyCode = c.HotKey.ToString(),
-                        Enabled = c.IsEnabled
+                        Name = cg.Name,
+                        TxPowerDbm = cg.TxPowerDbm,
+                        RxSensitivityDbm = cg.RxSensitivityDbm,
+                        AcmiTrackingId = cg.AcmiTrackingId,
+                        AntennaElevationM = cg.AntennaElevationM,
+                        Position = cg.Position,
+                        Channels = cg.Channels.Select(c => new ChannelData
+                        {
+                            Name = c.Name,
+                            FrequencyMhz = c.FrequencyMhz,
+                            Type = c.Type,
+                            HotkeyCode = c.HotKey.ToString(),
+                            Enabled = c.IsEnabled
+                        }).ToList()
                     }).ToList()
-                }).ToList()
             };
 
             await _configurationService.SaveConfigurationAsync(config);

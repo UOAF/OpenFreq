@@ -25,15 +25,15 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
     [ObservableProperty] public partial string? AcmiTrackingId { get; set; }
     [ObservableProperty] public partial bool FixedPosition { get; set; }
     [ObservableProperty] public partial bool EditMode { get; set; }
-    
+
     public record TacviewAircraftItem(string CallSign, string ObjectId)
     {
         public override string ToString() => CallSign;
     }
-    
+
     [ObservableProperty] private ObservableCollection<TacviewAircraftItem> _tacviewFlightCallsigns = [];
     [ObservableProperty] private TacviewAircraftItem? _selectedTacviewCallsign;
-    
+
     [ObservableProperty] public partial RadioStationPreset GroupPreset { get; set; } = RadioStationPresets.AWACS;
 
     private readonly IOpenFreqService _openFreqService;
@@ -41,24 +41,20 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
     private readonly IAcmiClientService _acmiClientService;
 
     [ObservableProperty] public partial ObservableCollection<ChannelCardViewModel> Channels { get; set; } = [];
-    
+
     private readonly CancellationTokenSource? _callsignUpdateCts = new();
+    [ObservableProperty] public partial bool IsBmsGroup { get; set; }
 
-
-    public ChannelCardGroupViewModel(IOpenFreqService openFreqService, IHotkeyService hotkeyService, string name,
-        double txPowerDbm, double rxSensitivityDbm, double antennaElevationM, Position position,
-        string? acmiTrackingId, IAcmiClientService acmiClientService, bool fixedPosition = true, bool editMode = true)
+    public ChannelCardGroupViewModel(IOpenFreqService openFreqService, IHotkeyService hotkeyService,
+        IAcmiClientService acmiClientService, string name,
+        RadioStationPreset preset, bool isBmsGroup, bool editMode = true)
     {
         _openFreqService = openFreqService;
         _hotkeyService = hotkeyService;
         Name = name;
-        TxPowerDbm = txPowerDbm;
-        RxSensitivityDbm = rxSensitivityDbm;
-        AntennaElevationM = antennaElevationM;
-        Position = position;
-        AcmiTrackingId = acmiTrackingId;
+        GroupPreset = preset;
         _acmiClientService = acmiClientService;
-        FixedPosition = fixedPosition; 
+        IsBmsGroup = isBmsGroup;
         EditMode = editMode;
 
         // Subscribe to connection state for auto-join
@@ -110,7 +106,8 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
             }
 
             // Always join the new frequency
-            _openFreqService.JoinFrequencyAsync(message.NewFrequencyMhz, GroupPreset).Wait(TimeSpan.FromMilliseconds(100));
+            _openFreqService.JoinFrequencyAsync(message.NewFrequencyMhz, GroupPreset)
+                .Wait(TimeSpan.FromMilliseconds(100));
         }
     }
 
@@ -211,7 +208,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
             Channels.FirstOrDefault(c => Math.Abs(c.FrequencyMhz - oldFreqMhz) < 0.01);
         if (oldChannel == null) return false;
 
-        oldChannel.FrequencyMhz = oldFreqMhz;
+        oldChannel.FrequencyMhz = newFreqMhz;
         OnChannelUpdated(this,
             new ChannelUpdatedMessage(oldChannel.Id, oldFreqMhz, newFreqMhz,
                 oldChannel.Type, newChannelType, oldChannel.Status, oldChannel.HotKey,
@@ -245,7 +242,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         _hotkeyService.HotkeyReleased -= OnHotkeyReleased;
         _openFreqService.FrequencyStatusChanged -= OnFrequencyStatusChanged;
         _openFreqService.ConnectionStateChanged -= OnConnectionStateChanged;
-        
+
         _callsignUpdateCts?.Cancel();
         _callsignUpdateCts?.Dispose();
 
@@ -253,7 +250,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         WeakReferenceMessenger.Default.Unregister<StartTransmissionMessage>(this);
         WeakReferenceMessenger.Default.Unregister<StopTransmissionMessage>(this);
     }
-    
+
     partial void OnSelectedTacviewCallsignChanged(TacviewAircraftItem? oldValue, TacviewAircraftItem? newValue)
     {
         _acmiClientService.RemoveTrackingForAircraft(oldValue.ObjectId);
@@ -273,9 +270,9 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     public void ToggleEditing()
     {
-        EditMode =  !EditMode;
+        EditMode = !EditMode;
     }
-    
+
     [RelayCommand]
     private async Task UpdateTacviewCallsigns(CancellationToken cancellationToken)
     {
@@ -294,7 +291,6 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
             if (currentAircraft.Count > 0)
             {
                 _callsignUpdateCts?.Cancel(false);
-                
             }
 
             // Incremental update

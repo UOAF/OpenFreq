@@ -16,6 +16,7 @@ using OpenFreq.Services.Acmi;
 using OpenFreqAudio;
 using OpenFreqClient.Models;
 using OpenFreqClient.Services.Interfaces;
+using SharpHook.Data;
 
 namespace OpenFreqClient.ViewModels;
 
@@ -66,7 +67,16 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
     private void OnConnectionParametersChanged(object? sender,
         ConnectionParametersChangedEventArgs e)
     {
-        ImportBmsRadioChannels();
+        if (e.NewParameters.TerminateClient)
+        {
+            if (_falconChannelGroup == null) return;
+            DeleteChannelGroup(_falconChannelGroup);
+            _falconChannelGroup = null;
+        }
+        else if (e.NewParameters.ReadyToTransmit)
+        {
+            ImportBmsRadioChannels();
+        }
     }
 
     private void OnFlyingStateChanged(object? sender, FlyingStateChangedEventArgs e)
@@ -90,7 +100,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
             {
                 if (_falconChannelGroup == null)
                 {
-                    _falconChannelGroup = CreateChannelGroup(BMS_GROUP_NAME, 35d, 35d, 0, null, null);
+                    _falconChannelGroup = CreateChannelGroup(BMS_GROUP_NAME, RadioStationPresets.Fighter, true);
                 }
 
                 else if (clearExisting)
@@ -105,9 +115,26 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                     if (falconChannel != null && !_falconChannelGroup.Channels.Any(c =>
                             Math.Abs(c.FrequencyMhz - falconChannel.Frequency / 1000d) < 0.1d))
                     {
-                        _falconChannelGroup.CreateChannel(falconChannel.Frequency / 1000d, "BMS Channel " + type,
+                        var channel = _falconChannelGroup.CreateChannel(falconChannel.Frequency / 1000d,
+                            "BMS Channel " + type,
                             Channel.ToChannelType(type),
                             false);
+
+                        switch (type)
+                        {
+                            case RadioType.VHF:
+                                channel.HotKey = KeyCode.VcF1;
+                                break;
+                            case RadioType.UHF:
+                                channel.HotKey = KeyCode.VcF2;
+                                break;
+                            case RadioType.GUARD:
+                                channel.HotKey = KeyCode.VcF3;
+                                break;
+                            default:
+                                // dont care
+                                break;
+                        }
                     }
                 }
 
@@ -126,7 +153,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
             _logger.LogWarning("Ignoring PTT: no Falcon channel group");
             return;
         }
-        
+
         var channel = _falconChannelGroup.Channels.FirstOrDefault(c => c.Type == Channel.ToChannelType(e.RadioType));
         if (channel == null || channel.Status == Channel.ChannelStatus.Disconnected) return;
         switch (e)
@@ -151,15 +178,22 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
 
         _logger.LogDebug(
             $"FalconRadioSharedMemoryServiceOnFrequencyChanged: {e.OldFrequencyKhz} -> {e.NewFrequencyKhz}");
+
+        if (_falconChannelGroup.ChangeChannelFrequency(e.OldFrequencyKhz / 1000d, e.NewFrequencyKhz / 1000d,
+                Channel.ToChannelType(e.RadioType))) return;
+
         lock (_channelImportLock)
         {
-            if (_falconChannelGroup.ChangeChannelFrequency(e.OldFrequencyKhz / 1000d, e.NewFrequencyKhz / 1000d,
-                    Channel.ToChannelType(e.RadioType))) return;
-
-            var newChannel = _falconChannelGroup.CreateChannel(e.NewFrequencyKhz / 1000d, BMS_GROUP_NAME,
-                Channel.ToChannelType(e.RadioType),
-                false);
-            JoinFrequencyAsync(newChannel.FrequencyMhz, _falconChannelGroup.GroupPreset).Wait(TimeSpan.FromMilliseconds(500));
+            var newChannel = Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                return _falconChannelGroup.CreateChannel(
+                    e.NewFrequencyKhz / 1000d,
+                    BMS_GROUP_NAME,
+                    Channel.ToChannelType(e.RadioType),
+                    false);
+            }).GetAwaiter().GetResult();
+            JoinFrequencyAsync(newChannel.FrequencyMhz, _falconChannelGroup.GroupPreset)
+                .Wait(TimeSpan.FromMilliseconds(500));
         }
     }
 
@@ -236,22 +270,29 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public ChannelCardGroupViewModel CreateChannelGroup(string name,
-        double txPowerDbm, double rxSensitivityDbm, double antennaElevationM, Position? position,
-        string? acmiTrackingId)
+    public ChannelCardGroupViewModel CreateChannelGroup(string name, RadioStationPreset preset, bool isBmsGroup = false,
+        bool editMode = false)
     {
-        var channelGroup = new ChannelCardGroupViewModel(_openFreqService, _hotkeyService, name, txPowerDbm,
-            rxSensitivityDbm,
-            antennaElevationM, position ?? new Position(), acmiTrackingId, _acmiClientService);
+        var channelGroup = new ChannelCardGroupViewModel(_openFreqService, _hotkeyService, _acmiClientService, name,
+            preset, isBmsGroup, editMode);
         ChannelGroups.Add(channelGroup);
         return channelGroup;
     }
 
-    public ChannelCardGroupViewModel CreateChannelGroup(ChannelGroupData channelGroupData)
+    public ChannelCardGroupViewModel CreateChannelGroup(ChannelGroupData channelGroupData, bool isBmsGroup = false,
+        bool editMode = false)
     {
-        return CreateChannelGroup(channelGroupData.Name, channelGroupData.TxPowerDbm,
-            channelGroupData.RxSensitivityDbm, channelGroupData.AntennaElevationM, channelGroupData.Position,
-            channelGroupData.AcmiTrackingId);
+        return CreateChannelGroup(channelGroupData.Name, channelGroupData.Preset, isBmsGroup, editMode);
+    }
+
+    public void DeleteChannelGroup(ChannelCardGroupViewModel channelGroup)
+    {
+        channelGroup.LeaveAllChannelsAsync().Wait(100);
+        Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            ChannelGroups.Remove(channelGroup);
+            channelGroup.Dispose();
+        });
     }
 
     public void Dispose()

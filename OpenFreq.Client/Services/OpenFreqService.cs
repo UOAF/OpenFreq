@@ -45,8 +45,10 @@ public class OpenFreqService : IOpenFreqService
 
     // Cache for audio params: Key is (PeerId, FrequencyMhz)
     private readonly Dictionary<(string PeerId, double FrequencyMhz), AudioParamsCacheEntry> _audioParamsCache = new();
+
     // Cache duration
     private readonly TimeSpan _audioParamsCacheDuration = TimeSpan.FromMilliseconds(100);
+
     // Cache cleanup
     private CancellationTokenSource? _cleanupCts;
 
@@ -79,7 +81,7 @@ public class OpenFreqService : IOpenFreqService
     private readonly ILogger<OpenFreqService> _logger;
 
     // Events for UI updates
-    public IOpenFreqService.Mode OwnPositionMode { get; }
+    public IOpenFreqService.Mode OwnPositionMode { get; private set; }
     public event EventHandler<ConnectionState>? ConnectionStateChanged;
     public event EventHandler<string>? StatusMessageReceived;
     public event EventHandler<FrequencyStatusEventArgs>? FrequencyStatusChanged;
@@ -130,7 +132,7 @@ public class OpenFreqService : IOpenFreqService
 
         _falconSharedMemoryService.FlyingStateChanged += OnFlyingStateChanged;
         _falconSharedMemoryService.StateChanged += OnFalconStateChanged;
-        
+
         // Initialize Audio Params cache cleanup
         _cleanupCts = new CancellationTokenSource();
         _ = CleanupAudioParamsCacheAsync(_cleanupCts.Token);
@@ -362,9 +364,31 @@ public class OpenFreqService : IOpenFreqService
         OnStatusMessage($"Stopped transmitting on {frequencyMhz}");
     }
 
-    public Task SetOwnPositionModeAsync(IOpenFreqService.Mode newMode)
+    public void SetOwnPositionMode(IOpenFreqService.Mode newMode)
     {
-        throw new NotImplementedException();
+        if (newMode == OwnPositionMode) return;
+
+        switch (newMode)
+        {
+            case IOpenFreqService.Mode.BMS:
+            {
+                _acmiClientService.Stop();
+                if (_falconSharedMemoryService.State == ServiceState.Stopped)
+                {
+                    _falconSharedMemoryService.Start();
+                }
+
+                break;
+            }
+            case IOpenFreqService.Mode.GCI:
+                _falconSharedMemoryService.Stop();
+                // TODO
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(newMode), newMode, null);
+        }
+
+        OwnPositionMode = newMode;
     }
 
     /// <summary>
@@ -614,7 +638,7 @@ public class OpenFreqService : IOpenFreqService
         {
             _logger.LogWarning($"Audio data received without frequencies, dropping");
         }
-        
+
         foreach (var frequencyTransmission in e.Metadata.Frequencies)
         {
             AudioParams audioParams;
@@ -694,12 +718,12 @@ public class OpenFreqService : IOpenFreqService
             {
                 _playbackService?.UpdateStreamParams(streamId, audioParams);
             }
-            
+
             _playbackService.PushAudioData(streamId, e.AudioData, frequencyTransmission.BeginMarker,
                 frequencyTransmission.EndMarker);
         }
     }
-    
+
     // Periodical Cache cleanup
     private async Task CleanupAudioParamsCacheAsync(CancellationToken cancellationToken)
     {
@@ -750,7 +774,7 @@ public class OpenFreqService : IOpenFreqService
         // Stop the cache cleanup
         _cleanupCts?.Cancel();
         _cleanupCts?.Dispose();
-        
+
         // Stop all transmissions and free recording handle
         Bass.ChannelStop(_recordHandle);
         Bass.StreamFree(_recordHandle);

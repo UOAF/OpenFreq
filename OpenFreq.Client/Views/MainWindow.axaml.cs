@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Material.Styles.Controls;
+using OpenFreqAudio;
 using OpenFreqClient.Models;
 using OpenFreqClient.ViewModels;
 
@@ -28,7 +29,7 @@ public partial class MainWindow : Window
         var channelGroup = _viewModel?.ChannelList.ChannelGroups.FirstOrDefault();
         if (channelGroup == null)
         {
-            channelGroup = _viewModel?.ChannelList.CreateChannelGroup("Default Group", 30, 30, 1, null, null);
+            channelGroup = _viewModel?.ChannelList.CreateChannelGroup("Default Group", RadioStationPresets.AWACS);
         }
         channelGroup?.CreateChannel(225.0, $"Channel #{channelGroup.Channels.Count + 1}", Channel.ChannelType.UHF);
     }

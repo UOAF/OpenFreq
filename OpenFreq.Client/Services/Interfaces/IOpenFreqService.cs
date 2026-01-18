@@ -34,7 +34,7 @@ public interface IOpenFreqService : IDisposable
     Task LeaveFrequencyAsync(double frequencyMhz);
     Task StartTransmissionAsync(double frequencyMhz, RadioStationPreset preset);
     Task StopTransmissionAsync(double frequencyMhz);
-    Task SetOwnPositionModeAsync(Mode newMode);
+    
     
     public enum OpenFreqStatus
     {
@@ -47,6 +47,8 @@ public interface IOpenFreqService : IDisposable
     public OpenFreqStatus Status { get; }
     
     public void LoadHeightmap(string path, int width = 32768, int height = 32768, int bytesPerSample = 2);
+    
+    public void SetOwnPositionMode(Mode newMode);
 
     public enum Mode
     {

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using OpenFreq.Common;
+using OpenFreqAudio;
 
 namespace OpenFreqClient.Models;
 
@@ -19,6 +20,7 @@ public class ChannelGroupData
     public Position? Position { get; set; }
     public string? AcmiTrackingId { get; set; }
     public List<ChannelData> Channels { get; set; } = new();
+    public RadioStationPreset Preset { get; set; } = RadioStationPresets.AWACS;
 }
 
 public class ChannelData

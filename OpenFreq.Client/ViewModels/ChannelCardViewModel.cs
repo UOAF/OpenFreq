@@ -51,8 +51,9 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private bool _channelWasChanged = false;
 
     // Hotkey binding
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HotkeyDisplay), nameof(HasHotkey))]
-    private KeyCode _hotKey = KeyCode.VcUndefined;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HotkeyDisplay), nameof(HasHotkey))]
+    public partial KeyCode HotKey { get; set; } = KeyCode.VcUndefined;
 
     public bool HasHotkey => HotKey != KeyCode.VcUndefined;
 
@@ -169,16 +170,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         try
         {
             var capturedKey = await _hotkeyService.CaptureNextKeyAsync();
-
-            // Unregister old binding
-            if (HotKey != KeyCode.VcUndefined)
-            {
-                _hotkeyService.UnregisterHotkey(HotKey, Id);
-            }
-
-            // Update and register new binding
             HotKey = capturedKey;
-            _hotkeyService.RegisterHotkey(HotKey, Id);
         }
         catch (OperationCanceledException)
         {
@@ -187,6 +179,24 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         finally
         {
             IsCapturingHotkey = false;
+        }
+    }
+    
+    partial void OnHotKeyChanging(KeyCode oldValue, KeyCode newValue)
+    {
+        // Unregister old binding
+        if (oldValue != KeyCode.VcUndefined)
+        {
+            _hotkeyService.UnregisterHotkey(oldValue, Id);
+        }
+    }
+
+    partial void OnHotKeyChanged(KeyCode oldValue, KeyCode newValue)
+    {
+        // Register new binding
+        if (newValue != KeyCode.VcUndefined)
+        {
+            _hotkeyService.RegisterHotkey(newValue, Id);
         }
     }
 
