@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Server;
+using OpenFreqServer.Json;
 using Serilog;
 using Serilog.Events;
 
@@ -149,11 +150,8 @@ class Program
                     MaxChannelsPerClient = 10,
                     EnableOpusCompression =  true
                 };
-
-                var json = JsonSerializer.Serialize(defaultConfig, new JsonSerializerOptions
-                {
-                    WriteIndented = true
-                });
+                
+                var json = Json.Instance.Serialize(defaultConfig);
 
                 File.WriteAllText(configPath, json);
                 Log.Information("Default configuration created at: {ConfigPath}", configPath);
@@ -161,7 +159,7 @@ class Program
             }
 
             var configJson = File.ReadAllText(configPath);
-            var config = JsonSerializer.Deserialize<ServerConfig>(configJson);
+            var config = Json.Instance.Deserialize<ServerConfig>(configJson);
 
             if (config == null)
             {

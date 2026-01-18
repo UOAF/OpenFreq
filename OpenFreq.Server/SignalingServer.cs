@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Common.Signaling;
+using OpenFreqServer.Json;
 
 namespace OpenFreq.Server;
 
@@ -228,7 +229,7 @@ public class SignalingServer
     {
         try
         {
-            var message = JsonSerializer.Deserialize<SignalingMessage>(messageText);
+            var message = Json.Instance.Deserialize<SignalingMessage>(messageText);
             if (message == null) return;
 
             switch (message.Type)
@@ -460,7 +461,7 @@ public class SignalingServer
     {
         if (session.WebSocket.State == WebSocketState.Open)
         {
-            var json = JsonSerializer.Serialize(message);
+            var json = Json.Instance.Serialize(message);
             var buffer = Encoding.UTF8.GetBytes(json);
             await session.WebSocket.SendAsync(
                 new ArraySegment<byte>(buffer),

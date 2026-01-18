@@ -14,12 +14,6 @@ public class ConfigurationService : IConfigurationService
     private static readonly string ConfigFilePath = 
         Path.Combine(ConfigDirectory, "config.json");
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNameCaseInsensitive = true
-    };
-
     public async Task<AppConfiguration> LoadConfigurationAsync()
     {
         try
@@ -30,7 +24,7 @@ public class ConfigurationService : IConfigurationService
             }
 
             var json = await File.ReadAllTextAsync(ConfigFilePath);
-            return JsonSerializer.Deserialize<AppConfiguration>(json, JsonOptions) 
+            return Json.Json.Instance.Deserialize<AppConfiguration>(json) 
                    ?? new AppConfiguration();
         }
         catch (Exception ex)
@@ -47,7 +41,7 @@ public class ConfigurationService : IConfigurationService
             // Ensure directory exists
             Directory.CreateDirectory(ConfigDirectory);
 
-            var json = JsonSerializer.Serialize(config, JsonOptions);
+            var json = Json.Json.Instance.Serialize(config);
             await File.WriteAllTextAsync(ConfigFilePath, json);
         }
         catch (Exception ex)

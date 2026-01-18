@@ -466,10 +466,8 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
                 {
                     _radioDevices[kvp.Key] = kvp.Value;
                 }
-
                 
-
-// Detect connection parameter changes
+                // Detect connection parameter changes
                 if (_connectionParameters != null && _initialReadDone)
                 {
                     DetectConnectionParameterChanges(_connectionParameters, connParams);

@@ -370,7 +370,7 @@ public class OpenFreqRtcClient : IDisposable
     {
         try
         {
-            var message = JsonSerializer.Deserialize<SignalingMessage>(json);
+            var message = JsonSerializer.Deserialize<SignalingMessage>(json, OpenFreqJsonContext.Default.Options);
             if (message == null) return;
 
             switch (message.Type)
@@ -461,7 +461,7 @@ public class OpenFreqRtcClient : IDisposable
 
         try
         {
-            var json = JsonSerializer.Serialize(message);
+            var json = JsonSerializer.Serialize(message, OpenFreqJsonContext.Default.Options);
             var buffer = Encoding.UTF8.GetBytes(json);
             await _webSocket.SendAsync(new ArraySegment<byte>(buffer), WebSocketMessageType.Text, true, _cts.Token);
         }

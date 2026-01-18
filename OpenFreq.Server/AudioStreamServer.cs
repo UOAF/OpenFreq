@@ -3,10 +3,10 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Common;
-using OpenFreq.Common.Rtp;  // Import RTP classes
+using OpenFreq.Common.Rtp;
+using OpenFreqServer.Json; // Import RTP classes
 
 namespace OpenFreq.Server;
 
@@ -238,7 +238,7 @@ public class AudioStreamServer
             var metadataJson = Encoding.UTF8.GetString(metadataBytes);
             
             // Parse metadata
-            var metadata = JsonSerializer.Deserialize<AudioPacketMetadata>(metadataJson);
+            var metadata = Json.Instance.Deserialize<AudioPacketMetadata>(metadataJson);
             if (metadata == null)
             {
                 if (_logger.IsEnabled(LogLevel.Warning))
@@ -279,7 +279,7 @@ public class AudioStreamServer
 
         // Build metadata payload: [2 bytes header len][JSON metadata][audio data]
         metadata.ServerSendTimestamp =  DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        var metadataJson = JsonSerializer.Serialize(metadata);
+        var metadataJson = Json.Instance.Serialize(metadata);
         var metadataBytes = Encoding.UTF8.GetBytes(metadataJson);
         var headerLength = (ushort)metadataBytes.Length;
 

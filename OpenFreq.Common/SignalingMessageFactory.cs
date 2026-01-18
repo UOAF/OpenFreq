@@ -7,10 +7,7 @@ namespace OpenFreq.Common.Signaling;
 /// </summary>
 public static class SignalingMessageFactory
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
+    private static readonly JsonSerializerOptions SerializerOptions = OpenFreqJsonContext.Default.Options;
 
     /// <summary>
     /// Create an authentication message
@@ -164,9 +161,6 @@ public static class SignalingMessageFactory
     /// </summary>
     public static T? DeserializePayload<T>(JsonElement? payload) where T : class
     {
-        if (payload == null || !payload.HasValue)
-            return null;
-
-        return payload.Value.Deserialize<T>(SerializerOptions);
+        return payload?.Deserialize<T>(SerializerOptions);
     }
 }
