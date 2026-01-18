@@ -177,7 +177,7 @@ public class RtpAudioReceiver : IDisposable
 
             // Extract metadata JSON
             string metadataJson = Encoding.UTF8.GetString(packet.Payload, 2, metadataLength);
-            var metadata = JsonSerializer.Deserialize<AudioPacketMetadata>(metadataJson);
+            var metadata = JsonSerializer.Deserialize(metadataJson, OpenFreqJsonContext.Default.AudioPacketMetadata);
 
             if (metadata == null)
             {

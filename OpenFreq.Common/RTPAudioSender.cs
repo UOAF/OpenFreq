@@ -255,7 +255,7 @@ public class RtpAudioSender : IDisposable
                 Frequencies = queuedValue.FrequencyTransmissions,
             };
 
-            string metadataJson = JsonSerializer.Serialize(metadata);
+            string metadataJson = JsonSerializer.Serialize(metadata, OpenFreqJsonContext.Default.AudioPacketMetadata);
             byte[] metadataBytes = Encoding.UTF8.GetBytes(metadataJson);
             ushort metadataLength = (ushort)metadataBytes.Length;
 
