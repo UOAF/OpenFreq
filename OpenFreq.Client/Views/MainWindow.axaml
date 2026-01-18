@@ -82,9 +82,20 @@
                             Content="No Heightmap selected!"
                             Click="HeightmapButton_OnClick" />
                         <HyperlinkButton
-                            IsVisible="{Binding  Settings.HeightmapPath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                            Content="{Binding Settings.HeightmapPath}"
-                            Click="HeightmapButton_OnClick" />
+                            IsVisible="{Binding Settings.HeightmapPath,
+                        Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                            Click="HeightmapButton_OnClick"
+                            MaxWidth="260"
+                            Padding="0"
+                            Margin="0"
+                            BorderThickness="0">
+                            <TextBlock
+                                Text="{Binding Settings.HeightmapPath}"
+                                TextTrimming="CharacterEllipsis"
+                                TextWrapping="NoWrap"
+                                TextAlignment="Left"
+                                ToolTip.Tip="{Binding Settings.HeightmapPath}" />
+                        </HyperlinkButton>
                     </StackPanel>
                 </StackPanel>
 
@@ -107,7 +118,7 @@
                 </StackPanel>
                 <Button IsVisible="{Binding DebugMode}"
                         Command="{Binding DebugCommand}"
-                        Content="DEBUG"/>
+                        Content="DEBUG" />
 
                 <Separator Margin="0,32,0,4" Foreground="{DynamicResource MaterialDividerBrush}"></Separator>
                 <!-- Audio Settings -->
