@@ -4,23 +4,39 @@
              x:Class="OpenFreqClient.App"
              xmlns:avalonia="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
              xmlns:openFreqClient="clr-namespace:OpenFreqClient"
+             xmlns:vm="clr-namespace:OpenFreqClient.ViewModels"
+             xmlns:views="clr-namespace:OpenFreqClient.Views"
              RequestedThemeVariant="Default">
-             <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
+    <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
 
     <Application.DataTemplates>
-        <openFreqClient:ViewLocator/>
+        <DataTemplate DataType="{x:Type vm:ChannelCardGroupViewModel}">
+            <views:ChannelCardListView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:ChannelCardListViewModel}">
+            <views:ChannelCardListView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:ChannelCardViewModel}">
+            <views:ChannelCardView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
+            <views:MainWindow />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:MainWindowViewModel}">
+            <views:MainWindow />
+        </DataTemplate>
     </Application.DataTemplates>
-  
+
     <Application.Styles>
         <themes:MaterialTheme PrimaryColor="Green" SecondaryColor="Red" />
         <avalonia:MaterialIconStyles />
     </Application.Styles>
-             
-     <Application.Resources>
-         <!-- Channel Status colors -->
-         <StaticResource x:Key="ChannelStatusReceivingBrush" ResourceKey="PrimaryHueMidBrush"/>
-         <StaticResource x:Key="ChannelStatusConnectedBrush" ResourceKey="MaterialCardBackgroundBrush"/>
-         <StaticResource x:Key="ChannelStatusDisconnectedBrush" ResourceKey="MaterialTextFieldBoxBackgroundBrush"/>
-         <StaticResource x:Key="ChannelStatusTransmittingBrush" ResourceKey="SecondaryHueLightBrush"/>
-     </Application.Resources>
+
+    <Application.Resources>
+        <!-- Channel Status colors -->
+        <StaticResource x:Key="ChannelStatusReceivingBrush" ResourceKey="PrimaryHueMidBrush" />
+        <StaticResource x:Key="ChannelStatusConnectedBrush" ResourceKey="MaterialCardBackgroundBrush" />
+        <StaticResource x:Key="ChannelStatusDisconnectedBrush" ResourceKey="MaterialTextFieldBoxBackgroundBrush" />
+        <StaticResource x:Key="ChannelStatusTransmittingBrush" ResourceKey="SecondaryHueLightBrush" />
+    </Application.Resources>
 </Application>
