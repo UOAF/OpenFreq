@@ -454,11 +454,6 @@ public class OpenFreqService : IOpenFreqService
                 var position = new Position { X = 0, Y = 0, Z = 0 };
                 var frequency = transmission.Key;
                 _logger.LogDebug($"RecordProcedure processing frequency: {frequency}");
-    
-                if (frequency <= 0)
-                {
-                    _logger.LogError($"FOUND ZERO FREQUENCY IN _activeTransmissions!");
-                }
                 
                 if (transmission.Value.Type == RadioStationPreset.RadioStationPresetType.BMS)
                 {
