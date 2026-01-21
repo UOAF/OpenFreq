@@ -178,6 +178,9 @@
                 </DockPanel>
             </controls:ColorZone>
 
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Background="Gray">
+                <ToggleSwitch Margin="10" Content=" 3D Mode" HorizontalAlignment="Right" IsChecked="{Binding Is3dMode}"/>
+            </StackPanel>
             <!-- Status at bottom -->
             <TextBlock DockPanel.Dock="Bottom"
                        Text="{Binding StatusMessage}" />

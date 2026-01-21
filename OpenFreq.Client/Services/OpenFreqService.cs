@@ -73,6 +73,17 @@ public class OpenFreqService : IOpenFreqService
     }
 
     public int AudioParamsUpdateFrequency { get; set; }
+
+    public bool Apply3dAudioEffects
+    {
+        get;
+        set
+        {
+            field = value;
+            _playbackService?.Apply3dEffects = value;
+        }
+    }
+
     private bool _isInitialized;
 
     // Store own position for RF calculations
@@ -450,11 +461,9 @@ public class OpenFreqService : IOpenFreqService
             var frequenciesData = new List<(double frequency, double txPowerWatts, Position? position)>();
             foreach (var transmission in _activeTransmissions)
             {
-                
                 var position = new Position { X = 0, Y = 0, Z = 0 };
                 var frequency = transmission.Key;
-                _logger.LogDebug($"RecordProcedure processing frequency: {frequency}");
-                
+
                 if (transmission.Value.Type == RadioStationPreset.RadioStationPresetType.BMS)
                 {
                     position = _falconSharedMemoryService.HeightMapPosition;

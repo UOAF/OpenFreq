@@ -17,6 +17,7 @@ public interface IOpenFreqService : IDisposable
     int RecordingDeviceIndex { get; set; }
     int PlaybackDeviceIndex { get; set; }
     int AudioParamsUpdateFrequency { get; set; }
+    bool Apply3dAudioEffects { get; set; }
     
     Mode OwnPositionMode { get; }
 

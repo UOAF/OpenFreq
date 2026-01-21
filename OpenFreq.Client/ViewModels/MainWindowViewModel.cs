@@ -56,9 +56,12 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private bool _hasError;
     [ObservableProperty] private string _errorMessage = "";
     [ObservableProperty] private ObservableCollection<string> _errorLog = new();
+    [ObservableProperty] public partial bool Is3dMode { get; set; }
 
     public ColorZoneMode AppBarColorZone =>
         (OpenFreqConnected && TacviewConnected) ? ColorZoneMode.PrimaryMid : ColorZoneMode.Accent;
+
+    
 
 
     public MainWindowViewModel(
@@ -416,10 +419,17 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             ShowError($"Failed to save configuration: {ex.Message}");
         }
     }
+    
+    
+    partial void OnIs3dModeChanged(bool value)
+    {
+        _openFreqService?.Apply3dAudioEffects = value;
+    }
 
     [RelayCommand]
     private async Task Debug()
     {
+        Settings.OpenFreqServerAddress = "127.0.0.1";
         await ConnectAsync();
     }
 }
