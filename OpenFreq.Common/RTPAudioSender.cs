@@ -40,7 +40,6 @@ public class RtpAudioSender : IDisposable
     {
         public byte[] PcmData;
         public string ClientId;
-        public Position? Position;
         public List<FrequencyTransmission> FrequencyTransmissions;
         public bool BeginMarker;
         public bool EndMarker;
@@ -133,7 +132,7 @@ public class RtpAudioSender : IDisposable
     /// <param name="position">Aircraft position</param>
     /// <param name="frequencyTransmissions">List of FrequencyTransmissions</param>
     /// 
-    public void SendAudio(byte[] audioData, string clientId, Position? position, List<FrequencyTransmission> frequencyTransmissions)
+    public void SendAudio(byte[] audioData, string clientId, List<FrequencyTransmission> frequencyTransmissions)
     {
         try
         {
@@ -158,9 +157,9 @@ public class RtpAudioSender : IDisposable
                     // First chunk uses original markers, subsequent chunks clear beginMarkers
                     var markers = isFirstChunk 
                         ? frequencyTransmissions 
-                        : frequencyTransmissions.Select(f => new FrequencyTransmission(f.Mhz, f.TxPowerWatts,false, f.EndMarker)).ToList();
+                        : frequencyTransmissions.Select(f => new FrequencyTransmission(f.Mhz, f.TxPowerWatts, f.Position,false, f.EndMarker)).ToList();
                 
-                    QueueRawFrame(clientId, position, markers);
+                    QueueRawFrame(clientId, markers);
                     isFirstChunk = false;
                     _bufferPosition = 0;
                 }
@@ -172,7 +171,7 @@ public class RtpAudioSender : IDisposable
         }
     }
 
-    private void QueueRawFrame(string clientId, Position? position, List<FrequencyTransmission> frequencyTransmissions)
+    private void QueueRawFrame(string clientId, List<FrequencyTransmission> frequencyTransmissions)
     {
        // Copy the buffer data (must copy since _audioBuffer will be reused)
         byte[] pcmCopy = new byte[_audioBuffer.Length];
@@ -182,7 +181,6 @@ public class RtpAudioSender : IDisposable
         {
             PcmData = pcmCopy,
             ClientId = clientId,
-            Position = position,
             FrequencyTransmissions = frequencyTransmissions,
             Timestamp = _timestamp,
             SequenceNumber = _sequenceNumber,
@@ -251,7 +249,6 @@ public class RtpAudioSender : IDisposable
             var metadata = new AudioPacketMetadata
             {
                 clientId = queuedValue.ClientId,
-                Position = queuedValue.Position,
                 Frequencies = queuedValue.FrequencyTransmissions,
             };
 

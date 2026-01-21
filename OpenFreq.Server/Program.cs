@@ -135,7 +135,7 @@ class Program
     {
         try
         {
-            var configPath = Path.Combine(AppContext.BaseDirectory, "config.json");
+            var configPath = Path.Combine(AppContext.BaseDirectory, "OpenFreq.Server.json");
             
             if (!File.Exists(configPath))
             {
@@ -144,7 +144,7 @@ class Program
                 var defaultConfig = new ServerConfig
                 {
                     ServerPassword = "",
-                    WebSocketPort = 8080,
+                    WebSocketPort = 9987,
                     AudioBasePort = 10000,
                     MaxClientsPerChannel = 50,
                     MaxChannelsPerClient = 10,

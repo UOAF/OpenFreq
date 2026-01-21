@@ -118,6 +118,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         if (e.NewParameters.AttemptingToConnect)
         {
             _falconRadioSharedMemoryService.AddClientStatus(ClientStatusFlags.TryingToConnect);
+            Settings.OpenFreqPassword = e.NewParameters.Password;
             Settings.OpenFreqServerAddress = e.NewParameters.Address + ":" + e.NewParameters.Port;
             _ = ConnectAsync().Wait(TimeSpan.FromSeconds(3));
 
@@ -388,7 +389,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             {
                 Settings = Settings.GetSettings(),
                 ChannelGroups = ChannelList.ChannelGroups
-                    .Where(cg => !cg.IsBmsGroup)
+                    .Where(cg => cg != ChannelList.FalconChannelGroup)
                     .Select(cg => new ChannelGroupData
                     {
                         Name = cg.Name,

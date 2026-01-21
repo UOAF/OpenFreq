@@ -30,7 +30,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
     private readonly IFalconSharedMemoryService _falconSharedMemoryService;
 
     private readonly string BMS_GROUP_NAME = "BMS Channels";
-    private ChannelCardGroupViewModel? _falconChannelGroup;
+    public ChannelCardGroupViewModel? FalconChannelGroup { get; private set; }
 
     private readonly Lock _channelImportLock = new();
 
@@ -69,9 +69,9 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
     {
         if (e.NewParameters.TerminateClient)
         {
-            if (_falconChannelGroup == null) return;
-            DeleteChannelGroup(_falconChannelGroup);
-            _falconChannelGroup = null;
+            if (FalconChannelGroup == null) return;
+            DeleteChannelGroup(FalconChannelGroup);
+            FalconChannelGroup = null;
         }
         else if (e.NewParameters.ReadyToTransmit)
         {
@@ -98,24 +98,24 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         {
             lock (_channelImportLock)
             {
-                if (_falconChannelGroup == null)
+                if (FalconChannelGroup == null)
                 {
-                    _falconChannelGroup = CreateChannelGroup(BMS_GROUP_NAME, RadioStationPresets.Fighter, true);
+                    FalconChannelGroup = CreateChannelGroup(BMS_GROUP_NAME, RadioStationPresets.Fighter, true);
                 }
 
                 else if (clearExisting)
                 {
-                    _falconChannelGroup.LeaveAllChannelsAsync().Wait(300);
-                    _falconChannelGroup.Channels.Clear();
+                    FalconChannelGroup.LeaveAllChannelsAsync().Wait(300);
+                    FalconChannelGroup.Channels.Clear();
                 }
 
                 foreach (var type in Enum.GetValues<RadioType>())
                 {
                     var falconChannel = _falconRadioSharedMemoryService.GetRadioChannel(type);
-                    if (falconChannel != null && !_falconChannelGroup.Channels.Any(c =>
+                    if (falconChannel != null && !FalconChannelGroup.Channels.Any(c =>
                             Math.Abs(c.FrequencyMhz - falconChannel.Frequency / 1000d) < 0.1d))
                     {
-                        var channel = _falconChannelGroup.CreateChannel(falconChannel.Frequency / 1000d,
+                        var channel = FalconChannelGroup.CreateChannel(falconChannel.Frequency / 1000d,
                             "BMS Channel " + type,
                             Channel.ToChannelType(type),
                             false);
@@ -148,18 +148,18 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
 
     private void OnPttChanged(object? sender, RadioPttChangedEventArgs e)
     {
-        if (_falconChannelGroup == null)
+        if (FalconChannelGroup == null)
         {
             _logger.LogWarning("Ignoring PTT: no Falcon channel group");
             return;
         }
 
-        var channel = _falconChannelGroup.Channels.FirstOrDefault(c => c.Type == Channel.ToChannelType(e.RadioType));
+        var channel = FalconChannelGroup.Channels.FirstOrDefault(c => c.Type == Channel.ToChannelType(e.RadioType));
         if (channel == null || channel.Status == Channel.ChannelStatus.Disconnected) return;
         switch (e)
         {
             case { OldPtt: false, NewPtt: true }:
-                _openFreqService.StartTransmissionAsync(channel.FrequencyMhz, _falconChannelGroup.GroupPreset).Wait();
+                _openFreqService.StartTransmissionAsync(channel.FrequencyMhz, FalconChannelGroup.GroupPreset).Wait();
                 break;
             case { OldPtt: true, NewPtt: false }:
                 _openFreqService.StopTransmissionAsync(channel.FrequencyMhz).Wait();
@@ -169,7 +169,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
 
     private void OnFrequencyChanged(object? sender, RadioFrequencyChangedEventArgs e)
     {
-        if (_falconChannelGroup == null)
+        if (FalconChannelGroup == null)
         {
             _logger.LogWarning("Unclean state: _falconChannelGroup is null, reimporting");
             ImportBmsRadioChannels();
@@ -179,20 +179,20 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         _logger.LogDebug(
             $"FalconRadioSharedMemoryServiceOnFrequencyChanged: {e.OldFrequencyKhz} -> {e.NewFrequencyKhz}");
 
-        if (_falconChannelGroup.ChangeChannelFrequency(e.OldFrequencyKhz / 1000d, e.NewFrequencyKhz / 1000d,
+        if (FalconChannelGroup.ChangeChannelFrequency(e.OldFrequencyKhz / 1000d, e.NewFrequencyKhz / 1000d,
                 Channel.ToChannelType(e.RadioType))) return;
 
         lock (_channelImportLock)
         {
             var newChannel = Dispatcher.UIThread.InvokeAsync(() =>
             {
-                return _falconChannelGroup.CreateChannel(
+                return FalconChannelGroup.CreateChannel(
                     e.NewFrequencyKhz / 1000d,
                     BMS_GROUP_NAME,
                     Channel.ToChannelType(e.RadioType),
                     false);
             }).GetAwaiter().GetResult();
-            JoinFrequencyAsync(newChannel.FrequencyMhz, _falconChannelGroup.GroupPreset)
+            JoinFrequencyAsync(newChannel.FrequencyMhz, FalconChannelGroup.GroupPreset)
                 .Wait(TimeSpan.FromMilliseconds(500));
         }
     }

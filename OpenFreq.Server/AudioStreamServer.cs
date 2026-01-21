@@ -153,10 +153,15 @@ public class AudioStreamServer
 
                 if (validFrequencies.Count < metadata.Frequencies.Count)
                 {
-                    var invalid = metadata.Frequencies.Except(validFrequencies).ToList();
+                    var validMhz = validFrequencies.Select(f => f.Mhz).ToHashSet();
+                    var invalidMhz = metadata.Frequencies
+                        .Where(f => !validMhz.Contains(f.Mhz))
+                        .Select(f => $"{f.Mhz:F1} MHz")
+                        .ToList();
+    
                     if (_logger.IsEnabled(LogLevel.Warning))
                         _logger.LogWarning("Client {ClientId} attempted to transmit on unjoined frequencies: {Frequencies}", 
-                            clientId, string.Join(", ", invalid));
+                            clientId, string.Join(", ", invalidMhz));
                 }
 
                 if (validFrequencies.Count == 0)

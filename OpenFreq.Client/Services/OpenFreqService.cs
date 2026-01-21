@@ -450,9 +450,16 @@ public class OpenFreqService : IOpenFreqService
             var frequenciesData = new List<(double frequency, double txPowerWatts, Position? position)>();
             foreach (var transmission in _activeTransmissions)
             {
+                
                 var position = new Position { X = 0, Y = 0, Z = 0 };
                 var frequency = transmission.Key;
-
+                _logger.LogDebug($"RecordProcedure processing frequency: {frequency}");
+    
+                if (frequency <= 0)
+                {
+                    _logger.LogError($"FOUND ZERO FREQUENCY IN _activeTransmissions!");
+                }
+                
                 if (transmission.Value.Type == RadioStationPreset.RadioStationPresetType.BMS)
                 {
                     position = _falconSharedMemoryService.HeightMapPosition;
@@ -645,7 +652,7 @@ public class OpenFreqService : IOpenFreqService
             var streamId = GetStreamId(e.PeerId, frequencyTransmission.Mhz);
 
             var ownPosition = GetOwnPosition(frequencyTransmission.Mhz);
-            if (e.Metadata.Position == null || ownPosition == null || _audioSim == null)
+            if (frequencyTransmission.Position == null || ownPosition == null || _audioSim == null)
             {
                 _logger.LogDebug($"No position data, using defaults for {frequencyTransmission}");
                 audioParams = FastPathAudioSim.GetDefaultAudioParams(frequencyTransmission.Mhz);
@@ -679,9 +686,9 @@ public class OpenFreqService : IOpenFreqService
                 {
                     // Calculate new value
                     audioParams = _audioSim.CalculateAudioParams(
-                        _audioSim.PixelsToMeters(e.Metadata.Position.X),
-                        _audioSim.PixelsToMeters(e.Metadata.Position.Y),
-                        e.Metadata.Position.Z,
+                        _audioSim.PixelsToMeters(frequencyTransmission.Position.X),
+                        _audioSim.PixelsToMeters(frequencyTransmission.Position.Y),
+                        frequencyTransmission.Position.Z,
                         _audioSim.PixelsToMeters(ownPosition.X),
                         _audioSim.PixelsToMeters(ownPosition.Y),
                         ownPosition.Z,

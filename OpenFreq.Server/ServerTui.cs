@@ -412,14 +412,14 @@ public class TerminalGuiServer : IDisposable
                         ? "● TX"
                         : "● RX";
                     _clientLines.Add(
-                        $"{shortId,-38} {firstFreq.Key/1000d,-12:F3} {audioPort,6} {firstStatus,8} {activityStr,10}");
+                        $"{shortId,-38} {firstFreq.Key,-12:F3} {audioPort,6} {firstStatus,8} {activityStr,10}");
 
                     // Additional frequencies on subsequent lines
                     for (int i = 1; i < frequencies.Count; i++)
                     {
                         var freq = frequencies[i];
                         var status = freq.Value == ClientSession.FrequencyClientStatus.Transmitting ? "● TX" : "● RX";
-                        _clientLines.Add($"{"",-38} {freq.Key/1000d,-12:F3} {"-",6} {status,8} {"",10}");
+                        _clientLines.Add($"{"",-38} {freq.Key,-12:F3} {"-",6} {status,8} {"",10}");
                     }
                 }
             }

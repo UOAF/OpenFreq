@@ -8,6 +8,7 @@ namespace OpenFreqClient.Json;
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(AppConfiguration))]
+[JsonSerializable(typeof(OpenFreqAudio.RadioStationPreset))]
 public partial class ClientJsonContext : JsonSerializerContext
 {
 }
