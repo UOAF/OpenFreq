@@ -93,6 +93,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         // Falcon Radio Shared Memory
         _falconRadioSharedMemoryService.ConnectionParametersChanged +=
             FalconRadioSharedMemoryServiceOnConnectionParametersChanged;
+        _falconSharedMemoryService.FlyingStateChanged += OnFlyingStateChanged;
 
         // Load config
         _ = LoadConfigurationAsync();
@@ -100,6 +101,11 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         UpdateConnectionStatusString();
 
         _openFreqService.SetOwnPositionMode(Settings.ConnectionMode);
+    }
+
+    private void OnFlyingStateChanged(object? sender, FlyingStateChangedEventArgs e)
+    {
+        Is3dMode = e.NewFlyingState;
     }
 
     private void FalconRadioSharedMemoryServiceOnConnectionParametersChanged(object? sender,

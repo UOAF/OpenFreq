@@ -60,11 +60,7 @@ public partial class SettingsViewModel : ViewModelBase
                                     );
 
     partial void OnConnectionModeChanged(IOpenFreqService.Mode value)
-    {
-        Debug.WriteLine($"OwnPositionMode changed to: {value}");
-        Debug.WriteLine($"OwnPositionMode ToString: '{value.ToString()}'");
-        Debug.WriteLine($"OwnPositionMode type: {value.GetType().FullName}");
-
+    { 
         switch (value)
         {
             case IOpenFreqService.Mode.BMS:

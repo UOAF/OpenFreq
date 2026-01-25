@@ -80,7 +80,7 @@
                         </TextBlock>
                         <ComboBox ItemsSource="{x:Static local:TheaterCoordinateConverter.AllTheaters}"
                                   SelectedItem="{Binding Settings.SelectedTheater}"
-                                  HorizontalAlignment="Stretch"/>
+                                  HorizontalAlignment="Stretch" />
                         <HyperlinkButton
                             IsVisible="{Binding  Settings.HeightmapPath, Converter={x:Static StringConverters.IsNullOrEmpty}}"
                             Content="No Heightmap selected!"
@@ -183,7 +183,8 @@
             </controls:ColorZone>
 
             <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Background="Gray">
-                <ToggleSwitch Margin="10" Content=" 3D Mode" HorizontalAlignment="Right" IsChecked="{Binding Is3dMode}"/>
+                <ToggleSwitch Margin="10" Content=" 3D Mode" HorizontalAlignment="Right" IsChecked="{Binding Is3dMode}"
+                              IsEnabled="{Binding Settings.ModeIsGci}" />
             </StackPanel>
             <!-- Status at bottom -->
             <TextBlock DockPanel.Dock="Bottom"
