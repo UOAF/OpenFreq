@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using OpenFreq.Client.Models;
 using OpenFreqAudio;
 using OpenFreqClient.Models;
+using OpenFreqClient.Services;
 using OpenFreqClient.Services.Interfaces;
 using SharpHook.Data;
 
@@ -41,6 +42,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private float _rxDb;
     [ObservableProperty] private Channel.ChannelType _type;
     [ObservableProperty] private bool _isEnabled = true;
+    [ObservableProperty] public partial float SignalStrength { get; set; }
 
     public Channel.ChannelType[] ChannelTypes =>
         Enum.GetValues(typeof(Channel.ChannelType)).Cast<Channel.ChannelType>().ToArray();
@@ -112,6 +114,11 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     {
         _hotkeyService = hotkeyService;
         RadioStationData = radioStationData;
+        
+        WeakReferenceMessenger.Default.Register<SignalStrengthTracker.SignalStrengthUpdateMessage>(this, (r, m) =>
+        {
+                SignalStrength = m.Strength;
+        });
     }
 
     public ChannelCardViewModel(IHotkeyService hotkeyService, Channel channel, RadioStationData radioStationData)

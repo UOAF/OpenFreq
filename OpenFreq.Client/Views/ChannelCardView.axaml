@@ -24,7 +24,7 @@
                 <TextBlock Text="{Binding FrequencyMhzString, StringFormat={}{0} MHz}" Classes="Headline6" />
                 <TextBlock Text="{Binding Type}" Classes="Body1">UHF</TextBlock>
                 <TextBlock Text="{Binding Status}" Classes="Body1">RX</TextBlock>
-                <ProgressBar Grid.Row="1" Background="Gray" Value="3"></ProgressBar>
+                <ProgressBar Background="Gray" Value="{Binding SignalStrength}"></ProgressBar>
             </StackPanel>
 
             <!-- Editing Mode -->

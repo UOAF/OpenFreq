@@ -5,6 +5,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.Messaging;
 using FalconBmsDataService.Models;
 using FalconBmsDataService.Services;
 using FalconRadioService.Models;
@@ -37,6 +38,7 @@ public class OpenFreqService : IOpenFreqService
     private DEMReader? _demReader;
     private FastPathAudioSim? _audioSim;
     private readonly IAcmiClientService _acmiClientService;
+    private readonly SignalStrengthTracker _signalStrengthTracker;
 
     public int RecordingDeviceIndex { get; set; }
     private int _playbackDeviceIndex;
@@ -62,6 +64,16 @@ public class OpenFreqService : IOpenFreqService
         _logger = logger;
         _loggerFactory = loggerFactory;
         _acmiClientService = acmiClientService;
+        
+        // Initialize signal strength tracker with callback
+        _signalStrengthTracker = new SignalStrengthTracker(
+            onSignalStrengthChanged: (frequencyMhz, strength) =>
+            {
+                WeakReferenceMessenger.Default.Send(new SignalStrengthTracker.SignalStrengthUpdateMessage(frequencyMhz, strength));
+            },
+            updateIntervalMs: 100,    // UI update rate
+            signalTimeoutMs: 500      // How long until "no signal"
+        );
     }
 
     public int PlaybackDeviceIndex
@@ -730,6 +742,8 @@ public class OpenFreqService : IOpenFreqService
                     _logger.LogInformation(
                         $"Calculated Audio params for stream {streamId}: Gain={audioParams.Gain}, SNR={audioParams.SNR_dB}");
                 }
+                
+                _signalStrengthTracker.UpdateSignalStrength(audioParams.RadioFrequencyMHz, audioParams);
             }
 
             // Check if stream exists
