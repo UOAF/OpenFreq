@@ -6,8 +6,10 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
+using OpenFreq.Client.Models;
 using OpenFreq.Common;
 using OpenFreq.Services.Acmi;
+using OpenFreq.Utilities;
 using OpenFreqAudio;
 using OpenFreqClient.Models;
 using OpenFreqClient.Services;
@@ -17,13 +19,10 @@ namespace OpenFreqClient.ViewModels;
 
 public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
 {
+    public SettingsViewModel Settings { get; }
+
     [ObservableProperty] public partial string Name { get; set; }
-    [ObservableProperty] public partial double TxPowerDbm { get; set; }
-    [ObservableProperty] public partial double RxSensitivityDbm { get; set; }
-    [ObservableProperty] public partial double AntennaElevationM { get; set; }
-    [ObservableProperty] public partial Position Position { get; set; }
-    [ObservableProperty] public partial string? AcmiTrackingId { get; set; }
-    [ObservableProperty] public partial bool FixedPosition { get; set; }
+    [ObservableProperty] public partial bool UseFixedPosition { get; set; }
     [ObservableProperty] public partial bool EditMode { get; set; }
 
     public record TacviewAircraftItem(string CallSign, string ObjectId)
@@ -33,8 +32,9 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty] private ObservableCollection<TacviewAircraftItem> _tacviewFlightCallsigns = [];
     [ObservableProperty] private TacviewAircraftItem? _selectedTacviewCallsign;
-
-    [ObservableProperty] public partial RadioStationPreset GroupPreset { get; set; } = RadioStationPresets.AWACS;
+    
+    public RadioStationData RadioStationData { get; } = new();
+    [ObservableProperty] public partial RadioStationPreset GroupPreset { get; set; }
 
     private readonly IOpenFreqService _openFreqService;
     private readonly IHotkeyService _hotkeyService;
@@ -45,14 +45,26 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
     private readonly CancellationTokenSource? _callsignUpdateCts = new();
     [ObservableProperty] public partial bool IsBmsGroup { get; set; }
 
+    [ObservableProperty] public partial double Latitude { get; set; }
+    [ObservableProperty] public partial double Longitude { get; set; }
+    [ObservableProperty] public partial string LatLonInput { get; set; } = "";
+    [ObservableProperty] public partial double AltitudeInput { get; set; } = 0d;
+    [ObservableProperty] public partial string? CoordinateError { get; set; }
+    [ObservableProperty] public partial bool HasCoordinateError { get; set; }
+
+    private bool _isUpdatingFromInput = false;
+
+
     public ChannelCardGroupViewModel(IOpenFreqService openFreqService, IHotkeyService hotkeyService,
-        IAcmiClientService acmiClientService, string name,
+        IAcmiClientService acmiClientService, SettingsViewModel settingsViewModel, string name,
         RadioStationPreset preset, bool isBmsGroup, bool editMode = true)
     {
         _openFreqService = openFreqService;
         _hotkeyService = hotkeyService;
+        Settings = settingsViewModel;
         Name = name;
         GroupPreset = preset;
+        RadioStationData.Preset = preset;
         _acmiClientService = acmiClientService;
         IsBmsGroup = isBmsGroup;
         EditMode = editMode;
@@ -72,13 +84,23 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         WeakReferenceMessenger.Default.Register<ChannelEnabledDisabledMessage>(this, OnChannelEnabledDisabled);
         WeakReferenceMessenger.Default.Register<ChannelDeleteRequestedMessage>(this, OnChannelDeleteRequested);
 
-        GroupPreset.FixedPosition ??= new Position(0d, 0d, 0d);
+        if (isBmsGroup)
+        {
+            RadioStationData.Type = RadioStationData.RadioStationType.BMS;
+        }
+        else
+        {
+            // For non-BMS groups, default to stationary
+            RadioStationData.Type = RadioStationData.RadioStationType.STATIONARY;
+            // Initialize position for stationary radios
+            RadioStationData.Position = new Position(0d, 0d, 0d);
+        }
     }
 
     public ChannelCardViewModel CreateChannel(double frequencyMhz, string name, Channel.ChannelType channelType,
         bool isInEditMode = true)
     {
-        var channel = new ChannelCardViewModel(_hotkeyService, GroupPreset);
+        var channel = new ChannelCardViewModel(_hotkeyService, RadioStationData);
         channel.Name = name;
         channel.Type = channelType;
         channel.FrequencyMhz = frequencyMhz;
@@ -90,7 +112,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
 
     public ChannelCardViewModel CreateChannel(Channel channel)
     {
-        var viewModel = new ChannelCardViewModel(_hotkeyService, channel, GroupPreset);
+        var viewModel = new ChannelCardViewModel(_hotkeyService, channel, RadioStationData);
         Channels.Add(viewModel);
         return viewModel;
     }
@@ -106,7 +128,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
             }
 
             // Always join the new frequency
-            _openFreqService.JoinFrequencyAsync(message.NewFrequencyMhz, GroupPreset)
+            _openFreqService.JoinFrequencyAsync(message.NewFrequencyMhz, RadioStationData)
                 .Wait(TimeSpan.FromMilliseconds(100));
         }
     }
@@ -138,7 +160,8 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
     {
         if (_openFreqService.IsAuthenticated && message.Enabled)
         {
-            _openFreqService.JoinFrequencyAsync(message.FrequencyMhz, GroupPreset).Wait(TimeSpan.FromMilliseconds(100));
+            _openFreqService.JoinFrequencyAsync(message.FrequencyMhz, RadioStationData)
+                .Wait(TimeSpan.FromMilliseconds(100));
         }
         else if (_openFreqService.IsAuthenticated && !message.Enabled)
         {
@@ -173,7 +196,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
                 var channel = Channels.FirstOrDefault(c => c.Id == channelId);
                 if (channel != null && channel.Status != Channel.ChannelStatus.Disconnected && !channel.IsEditing)
                 {
-                    await _openFreqService.StartTransmissionAsync(channel.FrequencyMhz, GroupPreset);
+                    await _openFreqService.StartTransmissionAsync(channel.FrequencyMhz, RadioStationData);
                 }
             }
         }
@@ -221,7 +244,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
     {
         foreach (var channel in Channels)
         {
-            await _openFreqService.JoinFrequencyAsync(channel.FrequencyMhz, GroupPreset);
+            await _openFreqService.JoinFrequencyAsync(channel.FrequencyMhz, RadioStationData);
         }
     }
 
@@ -327,11 +350,95 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         }
     }
 
+    partial void OnLatLonInputChanged(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            CoordinateError = null;
+            HasCoordinateError = false;
+            return;
+        }
+
+        var parts = value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 2)
+        {
+            CoordinateError = "Please enter both latitude and longitude separated by a space";
+            HasCoordinateError = true;
+            return;
+        }
+
+        if (!double.TryParse(parts[0], out var lat) ||
+            !double.TryParse(parts[1], out var lon))
+        {
+            CoordinateError = "Invalid coordinate format. Please enter valid numbers";
+            HasCoordinateError = true;
+            return;
+        }
+
+        // Round to 5 decimal places
+        lat = Math.Round(lat, 5);
+        lon = Math.Round(lon, 5);
+
+        // Check theater bounds
+        if (!TheaterCoordinateConverter.IsWithinTheaterBounds(Settings.SelectedTheater, lat, lon))
+        {
+            CoordinateError = "Coordinates are outside the theater bounds";
+            HasCoordinateError = true;
+            return;
+        }
+
+        // All validation passed
+        CoordinateError = null;
+        HasCoordinateError = false;
+
+        _isUpdatingFromInput = true;
+        Latitude = lat;
+        Longitude = lon;
+        _isUpdatingFromInput = false;
+    }
+
+    partial void OnLatitudeChanged(double value)
+    {
+        UpdatePosition(value, Longitude);
+        if (!_isUpdatingFromInput)
+        {
+            LatLonInput = $"{value:F5} {Longitude:F5}";
+        }
+    }
+
+    partial void OnLongitudeChanged(double value)
+    {
+        UpdatePosition(Latitude, value);
+        if (!_isUpdatingFromInput)
+        {
+            LatLonInput = $"{Latitude:F5} {value:F5}";
+        }
+    }
+
+    private void UpdatePosition(double lat, double lon)
+    {
+        if (RadioStationData.Position == null)
+        {
+            RadioStationData.Position = new Position(0d, 0d, 0d);
+        }
+        var xy = TheaterCoordinateConverter.LatLonToXY(
+            Settings.SelectedTheater,
+            lat,
+            lon,
+            TheaterCoordinateConverter.CoordinateSystem.BMS_HEIGHTMAP_COORDINATE_SYTEM);
+        RadioStationData.Position.X = xy.x;
+        RadioStationData.Position.Y = xy.y;
+    }
+
     partial void OnGroupPresetChanged(RadioStationPreset value)
     {
-        foreach (var channelCardViewModel in Channels)
-        {
-            channelCardViewModel.Preset = value;
-        }
+        RadioStationData.Preset = value;
+    }
+
+    partial void OnAltitudeInputChanged(double value)
+    {
+        const double FEET_PER_METER = 3.28084d;
+        RadioStationData.Position ??= new Position(0d, 0d, 0d);
+        RadioStationData.Position.Z = value / FEET_PER_METER;
     }
 }

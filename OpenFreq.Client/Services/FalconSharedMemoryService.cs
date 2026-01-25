@@ -299,7 +299,8 @@ public class FalconSharedMemoryService : IFalconSharedMemoryService
             // Update position
             lock (_dataLock)
             {
-                _position = new FlightPosition((int) x, (int) y, (int) z);
+                // For some reason BMS switches x & y in shmem, correct this
+                _position = new FlightPosition((int) y, (int) x, (int) z);
                 _isFlying = isFlying;
             }
 

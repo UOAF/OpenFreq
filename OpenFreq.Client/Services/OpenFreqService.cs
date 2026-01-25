@@ -10,8 +10,10 @@ using FalconBmsDataService.Services;
 using FalconRadioService.Models;
 using ManagedBass;
 using Microsoft.Extensions.Logging;
+using OpenFreq.Client.Models;
 using OpenFreq.Common;
 using OpenFreq.Services.Acmi;
+using OpenFreq.Utilities;
 using OpenFreqAudio;
 using OpenFreqClient.Models;
 using OpenFreqClient.Services.Interfaces;
@@ -28,8 +30,8 @@ public class OpenFreqService : IOpenFreqService
 
     private OpenFreqRtcClient? _client;
     private int _recordHandle;
-    private readonly Dictionary<double, RadioStationPreset> _activeTransmissions = new();
-    private readonly Dictionary<double, RadioStationPreset> _tunedFrequencies = new();
+    private readonly Dictionary<double, RadioStationData> _activeTransmissions = new();
+    private readonly Dictionary<double, RadioStationData> _tunedFrequencies = new();
 
     private RadioPlayback? _playbackService;
     private DEMReader? _demReader;
@@ -261,7 +263,7 @@ public class OpenFreqService : IOpenFreqService
     /// <summary>
     /// Join a frequency channel
     /// </summary>
-    public async Task JoinFrequencyAsync(double frequencyMhz, RadioStationPreset preset)
+    public async Task JoinFrequencyAsync(double frequencyMhz, RadioStationData radioStationData)
     {
         if (_client == null || !_client.IsAuthenticated)
         {
@@ -278,7 +280,7 @@ public class OpenFreqService : IOpenFreqService
         await _client.JoinFrequencyAsync(frequencyMhz);
         OnStatusMessage($"Joined frequency {frequencyMhz}");
 
-        _tunedFrequencies.Add(frequencyMhz, preset);
+        _tunedFrequencies.Add(frequencyMhz, radioStationData);
         _playbackService.TuneFrequency(frequencyMhz);
 
         // TODO
@@ -311,7 +313,7 @@ public class OpenFreqService : IOpenFreqService
     /// <summary>
     /// Start transmitting on a frequency
     /// </summary>
-    public async Task StartTransmissionAsync(double frequency, RadioStationPreset preset)
+    public async Task StartTransmissionAsync(double frequency, RadioStationData radioStationData)
     {
         if (_client == null || _playbackService == null)
         {
@@ -319,7 +321,7 @@ public class OpenFreqService : IOpenFreqService
         }
 
         // Add to active transmissions
-        _activeTransmissions.Add(frequency, preset);
+        _activeTransmissions.Add(frequency, radioStationData);
         // Mute the noise
         //_playbackService.SetSquelchLevel(frequency, 1.0f);
 
@@ -464,27 +466,43 @@ public class OpenFreqService : IOpenFreqService
                 var position = new Position { X = 0, Y = 0, Z = 0 };
                 var frequency = transmission.Key;
 
-                if (transmission.Value.Type == RadioStationPreset.RadioStationPresetType.BMS)
+                switch (transmission.Value.Type)
                 {
-                    position = _falconSharedMemoryService.HeightMapPosition;
+                    case RadioStationData.RadioStationType.BMS:
+                    {
+                        position = _falconSharedMemoryService.HeightMapPosition;
+                        if (_falconSharedMemoryService.Position != null)
+                        {
+                            var rawPositionInMeters = _falconSharedMemoryService.Position.ToMeters();
+                            var latLon = TheaterCoordinateConverter.XYToLatLon("Korea KTO", rawPositionInMeters.X,
+                                rawPositionInMeters.Y, TheaterCoordinateConverter.CoordinateSystem.BMS_HEIGHTMAP_COORDINATE_SYTEM);
+                            _logger.LogDebug($"Position: {rawPositionInMeters} | LAT, LON: {latLon.latitude}, {latLon.longitude}");
+                        }
+
+                        break;
+                    }
+                    case RadioStationData.RadioStationType.STATIONARY:
+                        position = _activeTransmissions[frequency].Position;
+                        break;
+                    case RadioStationData.RadioStationType.ACMI:
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(transmission.Value.Type));
                 }
-                else if (transmission.Value.Type == RadioStationPreset.RadioStationPresetType.STATIONARY)
-                {
-                    position = _activeTransmissions[frequency].FixedPosition;
-                }
+                _logger.LogDebug($"[Recording] {frequency} Position: {position}");
 
                 if (RadioStationPreset.IsVHF(frequency))
                 {
                     frequenciesData.Add((frequency,
                         _tunedFrequencies.TryGetValue(frequency, out var tunedFrequency)
-                            ? tunedFrequency.TxPower_VHF_W
+                            ? tunedFrequency.Preset.TxPower_VHF_W
                             : 0, position));
                 }
                 else
                 {
                     frequenciesData.Add((frequency,
                         _tunedFrequencies.TryGetValue(frequency, out var tunedFrequency)
-                            ? tunedFrequency.TxPower_UHF_W
+                            ? tunedFrequency.Preset.TxPower_UHF_W
                             : 0, position));
                 }
             }
@@ -501,21 +519,21 @@ public class OpenFreqService : IOpenFreqService
 
     private Position? GetOwnPosition(double frequency)
     {
-        _tunedFrequencies.TryGetValue(frequency, out var radioStationPreset);
-        if (radioStationPreset == null)
+        _tunedFrequencies.TryGetValue(frequency, out var radioStationData);
+        if (radioStationData == null)
         {
             return null;
         }
 
-        switch (radioStationPreset.Type)
+        switch (radioStationData.Type)
         {
-            case RadioStationPreset.RadioStationPresetType.BMS:
+            case RadioStationData.RadioStationType.BMS:
                 return _falconSharedMemoryService.State != ServiceState.Connected
                     ? null
                     : _falconSharedMemoryService.HeightMapPosition;
-            case RadioStationPreset.RadioStationPresetType.STATIONARY:
-                return _tunedFrequencies[frequency].FixedPosition;
-            case RadioStationPreset.RadioStationPresetType.ACMI:
+            case RadioStationData.RadioStationType.STATIONARY:
+                return _tunedFrequencies[frequency].Position;
+            case RadioStationData.RadioStationType.ACMI:
                 //TODO
                 // return _acmiClientService.TrackedAircraft[tunedFrequency.]
                 break;
@@ -663,18 +681,20 @@ public class OpenFreqService : IOpenFreqService
             }
             else
             {
-                _tunedFrequencies.TryGetValue(frequencyTransmission.Mhz, out var receiverPreset);
-                if (receiverPreset == null)
+                _tunedFrequencies.TryGetValue(frequencyTransmission.Mhz, out var receiverData);
+                if (receiverData == null)
                 {
                     _logger.LogWarning(
                         "Received audio data for non-tuned frequency {FrequencyTransmissionMhz}, skipping",
                         frequencyTransmission.Mhz);
                     return;
                 }
+                
+                _logger.LogDebug("TX POS: {txPos} | RX POS: {rxPos}", frequencyTransmission.Position, ownPosition);
 
                 var receiverSensitivityDb = RadioStationPreset.IsVHF(frequencyTransmission.Mhz)
-                    ? receiverPreset.RxSensitivity_VHF_dBm
-                    : receiverPreset.RxSensitivity_UHF_dBm;
+                    ? receiverData.Preset.RxSensitivity_VHF_dBm
+                    : receiverData.Preset.RxSensitivity_UHF_dBm;
 
                 // Check cache
                 var cacheKey = (e.PeerId, frequencyTransmission.Mhz);
@@ -690,11 +710,11 @@ public class OpenFreqService : IOpenFreqService
                 {
                     // Calculate new value
                     audioParams = _audioSim.CalculateAudioParams(
-                        _audioSim.PixelsToMeters(frequencyTransmission.Position.X),
-                        _audioSim.PixelsToMeters(frequencyTransmission.Position.Y),
+                        frequencyTransmission.Position.X,
+                        frequencyTransmission.Position.Y,
                         frequencyTransmission.Position.Z,
-                        _audioSim.PixelsToMeters(ownPosition.X),
-                        _audioSim.PixelsToMeters(ownPosition.Y),
+                        ownPosition.X,
+                        ownPosition.Y,
                         ownPosition.Z,
                         frequencyTransmission.Mhz,
                         frequencyTransmission.TxPowerWatts,
@@ -729,7 +749,7 @@ public class OpenFreqService : IOpenFreqService
             {
                 _playbackService?.UpdateStreamParams(streamId, audioParams);
             }
-
+            
             _playbackService.PushAudioData(streamId, e.AudioData, frequencyTransmission.BeginMarker,
                 frequencyTransmission.EndMarker);
         }

@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using OpenFreq.Client.Models;
 using OpenFreq.Common;
 using OpenFreqAudio;
 
@@ -31,11 +32,10 @@ public interface IOpenFreqService : IDisposable
     void Initialize(OpenFreqClient.Models.OpenFreqSettings settings, int recordingDeviceIndex, int playbackDeviceIndex);
     Task ConnectAsync();
     Task DisconnectAsync();
-    Task JoinFrequencyAsync(double frequencyMhz, RadioStationPreset preset);
+    Task JoinFrequencyAsync(double frequencyMhz, RadioStationData radioStationData);
     Task LeaveFrequencyAsync(double frequencyMhz);
-    Task StartTransmissionAsync(double frequencyMhz, RadioStationPreset preset);
+    Task StartTransmissionAsync(double frequencyMhz, RadioStationData radioStationData);
     Task StopTransmissionAsync(double frequencyMhz);
-    
     
     public enum OpenFreqStatus
     {

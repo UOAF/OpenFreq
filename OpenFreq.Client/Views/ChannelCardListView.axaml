@@ -69,35 +69,40 @@
                                 <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="10">
                                     <!-- Fixed Position Option -->
                                     <RadioButton Grid.Row="0" Grid.Column="0"
-                                                 IsChecked="{Binding FixedPosition}"
+                                                 IsChecked="{Binding UseFixedPosition}"
                                                  GroupName="PositionSource"
                                                  Content="Fixed Position"
                                                  VerticalAlignment="Center" />
                                     <StackPanel Grid.Row="0" Grid.Column="1"
-                                                Orientation="Horizontal"
-                                                Spacing="10"
-                                                IsEnabled="{Binding FixedPosition}">
-                                        <TextBox Text="{Binding GroupPreset.FixedPosition.X}"
-                                                 Watermark="X Position"
-                                                 MinWidth="100" />
-                                        <TextBox Text="{Binding GroupPreset.FixedPosition.Y}"
-                                                 Watermark="Y Position"
-                                                 MinWidth="100" />
+                                                Orientation="Vertical"
+                                                Spacing="5"
+                                                IsEnabled="{Binding UseFixedPosition}">
+                                        <TextBox Text="{Binding LatLonInput}"
+                                                 Watermark="Latitude Longitude (e.g., 37.12345 -122.98765)"
+                                                 MinWidth="220"
+                                                 Classes.error="{Binding HasCoordinateError}" />
+                                        <TextBlock Text="{Binding CoordinateError}"
+                                                   Foreground="Red"
+                                                   FontSize="11"
+                                                   IsVisible="{Binding HasCoordinateError}" />
+                                        <TextBox Text="{Binding AltitudeInput}"
+                                                 Watermark="Altitude ft (AGL)"
+                                                 MinWidth="220"/>
                                     </StackPanel>
 
                                     <!-- Aircraft Callsign Option -->
                                     <RadioButton Grid.Row="1" Grid.Column="0"
-                                                 IsChecked="{Binding !FixedPosition}"
+                                                 IsChecked="{Binding !UseFixedPosition}"
                                                  GroupName="PositionSource"
                                                  Content="Aircraft"
-                                                 VerticalAlignment="Center"
+                                                 VerticalAlignment="Top"
                                                  Margin="0,8,0,0" />
                                     <ComboBox Grid.Row="1" Grid.Column="1"
                                               Margin="0,8,0,0"
                                               PlaceholderText="Select aircraft callsign..."
                                               ItemsSource="{Binding TacviewFlightCallsigns}"
                                               SelectedItem="{Binding SelectedTacviewCallsign}" 
-                                              IsEnabled="{Binding !FixedPosition}"
+                                              IsEnabled="{Binding !UseFixedPosition}"
                                               MinWidth="200"/>
                                 </Grid>
                             </StackPanel>

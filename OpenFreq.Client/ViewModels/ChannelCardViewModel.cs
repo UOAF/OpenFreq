@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
+using OpenFreq.Client.Models;
 using OpenFreqAudio;
 using OpenFreqClient.Models;
 using OpenFreqClient.Services.Interfaces;
@@ -14,7 +15,6 @@ namespace OpenFreqClient.ViewModels;
 public partial class ChannelCardViewModel : ViewModelBase, IDisposable
 {
     private readonly IHotkeyService _hotkeyService;
-    public RadioStationPreset Preset { get; set; }
 
     public Guid Id { get; } = Guid.NewGuid();
 
@@ -62,6 +62,8 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         false;
 
     public string HotkeyDisplay => GetKeyDisplayName(HotKey);
+    
+    public RadioStationData RadioStationData { get; set; }
 
 // Store original values when entering edit mode
     private double _originalFrequencyMhz;
@@ -106,22 +108,23 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     }
 
 
-    public ChannelCardViewModel(IHotkeyService hotkeyService, RadioStationPreset preset)
+    public ChannelCardViewModel(IHotkeyService hotkeyService, RadioStationData radioStationData)
     {
         _hotkeyService = hotkeyService;
-        Preset = preset;
+        RadioStationData = radioStationData;
     }
 
-    public ChannelCardViewModel(IHotkeyService hotkeyService, Channel channel, RadioStationPreset preset)
+    public ChannelCardViewModel(IHotkeyService hotkeyService, Channel channel, RadioStationData radioStationData)
     {
         _hotkeyService = hotkeyService;
-        Preset = preset;
+        RadioStationData = radioStationData;
         _frequencyMhz = channel.FrequencyMhz;
         _name = channel.Name;
         _rxDb = channel.RxDb;
         _type = channel.Type;
         _status = channel.Status;
     }
+    
 
     [RelayCommand]
     public void ToggleEnabled()
@@ -246,7 +249,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         if (Status == Channel.ChannelStatus.Disconnected || FrequencyError != null)
             return;
 
-        WeakReferenceMessenger.Default.Send(new StartTransmissionMessage(Id, FrequencyMhz, Preset));
+        WeakReferenceMessenger.Default.Send(new StartTransmissionMessage(Id, FrequencyMhz, RadioStationData));
     }
 
     public void StopTransmission()
@@ -301,11 +304,11 @@ public class ChannelEnabledDisabledMessage(
     public bool Enabled { get; } = enabled;
 }
 
-public class StartTransmissionMessage(Guid channelId, double frequencyMhz, RadioStationPreset stationPreset)
+public class StartTransmissionMessage(Guid channelId, double frequencyMhz, RadioStationData radioStationData)
 {
     public Guid ChannelId { get; } = channelId;
     public double FrequencyMhz { get; } = frequencyMhz;
-    public RadioStationPreset stationPreset { get; } = stationPreset;
+    public RadioStationData RadioStationData { get; } = radioStationData;
 }
 
 public class StopTransmissionMessage

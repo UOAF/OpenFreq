@@ -20,6 +20,7 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] private ObservableCollection<string> _recordingDeviceNames = new();
     [ObservableProperty] private int _recordingDeviceIndex;
     [ObservableProperty] private int _playbackDeviceIndex;
+    [ObservableProperty] public partial string SelectedTheater { get; set; } = "Korea KTO";
     
 
 
@@ -100,6 +101,7 @@ public partial class SettingsViewModel : ViewModelBase
         ConnectionMode = settings.OwnPositionMode;
         TacviewServerAddress = settings.TacviewServerAddress;
         TacviewServerPassword = settings.TacviewServerPassword;
+        SelectedTheater = settings.SelectedTheater;
 
         // Restore audio device selection
         InputDeviceName = settings.InputDeviceName;
@@ -131,7 +133,8 @@ public partial class SettingsViewModel : ViewModelBase
             TacviewServerPassword = TacviewServerPassword,
             InputDeviceName = InputDeviceName,
             OutputDeviceName = OutputDeviceName,
-            HeightmapPath = HeightmapPath
+            HeightmapPath = HeightmapPath,
+            SelectedTheater =  SelectedTheater
         };
     }
 }

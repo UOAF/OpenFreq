@@ -7,6 +7,7 @@ namespace FalconBmsDataService.Models;
 /// </summary>
 public class FlightPosition
 {
+    private bool isFeet = true;
     /// <summary>
     /// Ownship North position (Feet)
     /// </summary>
@@ -38,6 +39,13 @@ public class FlightPosition
         Y = y;
         Z = z;
         Timestamp = DateTime.UtcNow;
+    }
+    
+    public (double X, double Y, double Z) ToMeters()
+    {
+        if (!isFeet) return (X, Y, Z);
+        const double FEET_PER_METER = 3.28084d;
+        return (Y / FEET_PER_METER, X / FEET_PER_METER, Z/ FEET_PER_METER);
     }
 
     public override string ToString()

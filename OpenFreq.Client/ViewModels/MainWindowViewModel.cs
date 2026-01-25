@@ -12,6 +12,7 @@ using Material.Styles.Controls;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Common;
 using OpenFreq.Services.Acmi;
+using OpenFreq.Utilities;
 using OpenFreqClient.Models;
 using OpenFreqClient.Services;
 using OpenFreqClient.Services.Interfaces;
@@ -396,11 +397,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
                     .Select(cg => new ChannelGroupData
                     {
                         Name = cg.Name,
-                        TxPowerDbm = cg.TxPowerDbm,
-                        RxSensitivityDbm = cg.RxSensitivityDbm,
-                        AcmiTrackingId = cg.AcmiTrackingId,
-                        AntennaElevationM = cg.AntennaElevationM,
-                        Position = cg.Position,
+                        Position = cg.RadioStationData.Position,
                         Channels = cg.Channels.Select(c => new ChannelData
                         {
                             Name = c.Name,
@@ -429,7 +426,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     private async Task Debug()
     {
+        /*
         Settings.OpenFreqServerAddress = "127.0.0.1";
         await ConnectAsync();
+        */
     }
 }

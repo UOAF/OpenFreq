@@ -15,4 +15,5 @@ public class OpenFreqSettings
 
     public string InputDeviceName { get; set; } = "";
     public string OutputDeviceName { get; set; } = "";
+    public string SelectedTheater { get; set; } = "Korea KTO";
 }

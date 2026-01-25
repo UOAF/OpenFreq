@@ -11,6 +11,7 @@ using FalconBmsDataService.Services;
 using FalconRadioService.Models;
 using FalconRadioService.Services;
 using Microsoft.Extensions.Logging;
+using OpenFreq.Client.Models;
 using OpenFreq.Common;
 using OpenFreq.Services.Acmi;
 using OpenFreqAudio;
@@ -28,6 +29,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
     private readonly ILogger<ChannelCardListViewModel> _logger;
     private readonly IFalconRadioSharedMemoryService _falconRadioSharedMemoryService;
     private readonly IFalconSharedMemoryService _falconSharedMemoryService;
+    private readonly SettingsViewModel _settings;
 
     private readonly string BMS_GROUP_NAME = "BMS Channels";
     public ChannelCardGroupViewModel? FalconChannelGroup { get; private set; }
@@ -40,7 +42,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
     public ChannelCardListViewModel(IOpenFreqService openFreqService, IHotkeyService hotkeyService,
         IAcmiClientService acmiClientService, ILogger<ChannelCardListViewModel> logger,
         IFalconRadioSharedMemoryService falconRadioSharedMemoryService,
-        IFalconSharedMemoryService falconSharedMemoryService)
+        IFalconSharedMemoryService falconSharedMemoryService, SettingsViewModel settingsViewModel)
     {
         _openFreqService = openFreqService;
         _hotkeyService = hotkeyService;
@@ -48,6 +50,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         _logger = logger;
         _falconRadioSharedMemoryService = falconRadioSharedMemoryService;
         _falconSharedMemoryService = falconSharedMemoryService;
+        _settings = settingsViewModel;
 
         // Subscribe to BMS Frequency update messages
         _falconRadioSharedMemoryService.ConnectionParametersChanged +=
@@ -159,7 +162,8 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         switch (e)
         {
             case { OldPtt: false, NewPtt: true }:
-                _openFreqService.StartTransmissionAsync(channel.FrequencyMhz, FalconChannelGroup.GroupPreset).Wait();
+                _openFreqService.StartTransmissionAsync(channel.FrequencyMhz, FalconChannelGroup.RadioStationData)
+                    .Wait();
                 break;
             case { OldPtt: true, NewPtt: false }:
                 _openFreqService.StopTransmissionAsync(channel.FrequencyMhz).Wait();
@@ -186,13 +190,14 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         {
             var newChannel = Dispatcher.UIThread.InvokeAsync(() =>
             {
-                return FalconChannelGroup.CreateChannel(
+                var channel = FalconChannelGroup.CreateChannel(
                     e.NewFrequencyKhz / 1000d,
                     BMS_GROUP_NAME,
                     Channel.ToChannelType(e.RadioType),
                     false);
+                return channel;
             }).GetAwaiter().GetResult();
-            JoinFrequencyAsync(newChannel.FrequencyMhz, FalconChannelGroup.GroupPreset)
+            JoinFrequencyAsync(newChannel.FrequencyMhz, FalconChannelGroup.RadioStationData)
                 .Wait(TimeSpan.FromMilliseconds(500));
         }
     }
@@ -204,7 +209,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
 
         try
         {
-            await _openFreqService.StartTransmissionAsync(msg.FrequencyMhz, msg.stationPreset);
+            await _openFreqService.StartTransmissionAsync(msg.FrequencyMhz, msg.RadioStationData);
         }
         catch (Exception ex)
         {
@@ -226,13 +231,13 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public async Task JoinFrequencyAsync(double frequencyMhz, RadioStationPreset preset)
+    public async Task JoinFrequencyAsync(double frequencyMhz, RadioStationData radioStationData)
     {
         if (!_openFreqService.IsAuthenticated) return;
 
         try
         {
-            await _openFreqService.JoinFrequencyAsync(frequencyMhz, preset);
+            await _openFreqService.JoinFrequencyAsync(frequencyMhz, radioStationData);
         }
         catch (Exception ex)
         {
@@ -273,7 +278,8 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
     public ChannelCardGroupViewModel CreateChannelGroup(string name, RadioStationPreset preset, bool isBmsGroup = false,
         bool editMode = false)
     {
-        var channelGroup = new ChannelCardGroupViewModel(_openFreqService, _hotkeyService, _acmiClientService, name,
+        var channelGroup = new ChannelCardGroupViewModel(_openFreqService, _hotkeyService, _acmiClientService,
+            _settings, name,
             preset, isBmsGroup, editMode);
         ChannelGroups.Add(channelGroup);
         return channelGroup;

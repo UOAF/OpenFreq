@@ -30,6 +30,9 @@
     <Application.Styles>
         <themes:MaterialTheme PrimaryColor="Green" SecondaryColor="Red" />
         <avalonia:MaterialIconStyles />
+        <Style Selector="TextBox.error">
+            <Setter Property="BorderBrush" Value="Red"/>
+        </Style>
     </Application.Styles>
 
     <Application.Resources>
