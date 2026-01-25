@@ -62,8 +62,6 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     public ColorZoneMode AppBarColorZone =>
         (OpenFreqConnected && TacviewConnected) ? ColorZoneMode.PrimaryMid : ColorZoneMode.Accent;
 
-    
-
 
     public MainWindowViewModel(
         IOpenFreqService openFreqService,
@@ -416,8 +414,8 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             ShowError($"Failed to save configuration: {ex.Message}");
         }
     }
-    
-    
+
+
     partial void OnIs3dModeChanged(bool value)
     {
         _openFreqService?.Apply3dAudioEffects = value;

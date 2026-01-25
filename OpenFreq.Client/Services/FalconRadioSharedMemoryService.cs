@@ -9,6 +9,7 @@ using FalconBmsDataService.Models;
 using FalconRadioService.Models;
 using FalconRadioService.Parsers;
 using FalconRadioService.Services;
+using Microsoft.Extensions.Logging;
 using OpenFreq.Client.NativeMethods;
 
 namespace OpenFreq.Client.Services;
@@ -50,6 +51,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
 
     private readonly object _dataLock = new();
     private bool _disposed;
+    private readonly ILogger<FalconRadioSharedMemoryService> _logger;
 
     // Events
     public event EventHandler<ServiceStateChangedEventArgs>? StateChanged;
@@ -59,6 +61,10 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
     public event EventHandler<RadioPowerChangedEventArgs>? PowerChanged;
     public event EventHandler<ConnectionParametersChangedEventArgs>? ConnectionParametersChanged;
 
+    public FalconRadioSharedMemoryService(ILogger<FalconRadioSharedMemoryService> logger)
+    {
+        _logger = logger;
+    }
     public ServiceState State
     {
         get
@@ -188,6 +194,8 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
         var rcsInterval = TimeSpan.FromSeconds(1.0);
         _rcsTimer = new PeriodicTimer(rcsInterval);
         _rcsPollingTask = Task.Run(() => RcsUpdateLoop(_cts.Token));
+        
+        _logger.LogInformation("Started");
     }
 
     public void Stop()
@@ -211,6 +219,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
         {
             ChangeState(ServiceState.Stopped);
         }
+        _logger.LogInformation("Stopped");
     }
 
     private bool CreateRcsSharedMemory()

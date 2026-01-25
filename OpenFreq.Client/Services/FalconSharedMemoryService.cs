@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using FalconBmsDataService.Models;
 using FalconBmsDataService.Services;
 using FalconRadioService.Models;
+using Microsoft.Extensions.Logging;
 using OpenFreq.Client.NativeMethods;
 
 namespace OpenFreq.Client.Services;
@@ -17,7 +18,7 @@ namespace OpenFreq.Client.Services;
 /// </summary>
 
 #if WINDOWS
-public class FalconSharedMemoryService : IFalconSharedMemoryService
+public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger) : IFalconSharedMemoryService
 {
     // Shared memory area names
     private const string PRIMARY_SHARED_MEMORY = "FalconSharedMemoryArea";
@@ -50,6 +51,7 @@ public class FalconSharedMemoryService : IFalconSharedMemoryService
     private bool _disposed;
     private bool _wasFlying;
     private bool _isFlying;
+    private readonly ILogger<FalconSharedMemoryService> _logger = logger;
 
     public event EventHandler<ServiceStateChangedEventArgs>? StateChanged;
     public event EventHandler<FlyingStateChangedEventArgs>? FlyingStateChanged;
@@ -118,6 +120,7 @@ public class FalconSharedMemoryService : IFalconSharedMemoryService
         var interval = TimeSpan.FromSeconds(1.0 / _pollingFrequencyHz);
         _timer = new PeriodicTimer(interval);
         _pollingTask = Task.Run(() => PollingLoop(_cts.Token));
+        _logger.LogInformation("Started");
     }
 
     public void Stop()
@@ -132,6 +135,7 @@ public class FalconSharedMemoryService : IFalconSharedMemoryService
         {
             ChangeState(ServiceState.Stopped);
         }
+        _logger.LogInformation("Stopped");
     }
 
     private async Task PollingLoop(CancellationToken cancellationToken)

@@ -3,7 +3,11 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices.JavaScript;
+using Avalonia.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
+using FalconBmsDataService.Services;
+using FalconRadioService.Services;
+using OpenFreq.Services.Acmi;
 using OpenFreqClient.Models;
 using OpenFreqClient.Services.Interfaces;
 
@@ -44,6 +48,9 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] private string _inputDeviceName = string.Empty;
     [ObservableProperty] private string _outputDeviceName = string.Empty;
     private readonly IAudioService _audioService;
+    private readonly IFalconRadioSharedMemoryService _falconRadioSharedMemoryService;
+    private readonly IFalconSharedMemoryService _falconSharedMemoryService;
+    private readonly IAcmiClientService _acmiClientService;
 
     public bool IsReadyToConnect => OpenFreqServerAddress != string.Empty &&
                                     (
@@ -57,11 +64,30 @@ public partial class SettingsViewModel : ViewModelBase
         Debug.WriteLine($"OwnPositionMode changed to: {value}");
         Debug.WriteLine($"OwnPositionMode ToString: '{value.ToString()}'");
         Debug.WriteLine($"OwnPositionMode type: {value.GetType().FullName}");
+
+        switch (value)
+        {
+            case IOpenFreqService.Mode.BMS:
+                _falconSharedMemoryService.Start();
+                _falconRadioSharedMemoryService.Start();
+                _acmiClientService.DisconnectAsync().Wait(50);
+                _acmiClientService.Stop();
+                break;
+            case IOpenFreqService.Mode.GCI:
+                _falconSharedMemoryService.Stop();
+                _falconRadioSharedMemoryService.Stop();
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(value), value, null);
+        }
     }
 
-    public SettingsViewModel(IAudioService audioService)
+    public SettingsViewModel(IAudioService audioService, IFalconRadioSharedMemoryService falconRadioSharedMemoryService, IFalconSharedMemoryService falconSharedMemoryService, IAcmiClientService acmiClientService)
     {
         _audioService = audioService;
+        _falconSharedMemoryService = falconSharedMemoryService;
+        _falconRadioSharedMemoryService = falconRadioSharedMemoryService;
+        _acmiClientService = acmiClientService;
         InitializeAudioDevices();
     }
 
