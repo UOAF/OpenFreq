@@ -364,7 +364,6 @@ public class FalconSharedMemoryService : IFalconSharedMemoryService
 
     public void Start()
     {
-        throw new PlatformNotSupportedException("Falcon BMS Shared Memory Service is only supported on Windows");
     }
 
     public void Stop()

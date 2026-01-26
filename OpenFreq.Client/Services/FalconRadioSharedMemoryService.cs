@@ -668,7 +668,6 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
 
     public void Start()
     {
-        throw new PlatformNotSupportedException("Falcon BMS Radio Service is only supported on Windows");
     }
 
     public void Stop()
