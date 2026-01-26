@@ -1,0 +1,105 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:OpenFreqClient.ViewModels"
+        xmlns:mapsui="clr-namespace:Mapsui.UI.Avalonia;assembly=Mapsui.UI.Avalonia"
+        xmlns:avalonia="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+        x:Class="OpenFreqClient.Views.MapPickerWindow"
+        x:DataType="vm:MapPickerViewModel"
+        Title="Pick Position"
+        Width="800" Height="600"
+        WindowStartupLocation="CenterOwner">
+    
+    <Grid RowDefinitions="Auto,*,Auto">
+        <!-- Search bar -->
+        <Border Grid.Row="0" 
+                Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+                Padding="10">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBox Grid.Column="0"
+                         Text="{Binding SearchQuery}"
+                         Watermark="Search for address or place..."
+                         IsEnabled="{Binding !IsSearching}">
+                    <TextBox.KeyBindings>
+                        <KeyBinding Gesture="Enter" 
+                                   Command="{Binding SearchAddressCommand}"/>
+                    </TextBox.KeyBindings>
+                </TextBox>
+                
+                <Button Grid.Column="1"
+                        Command="{Binding SearchAddressCommand}"
+                        IsEnabled="{Binding !IsSearching}"
+                        Margin="5,0,0,0"
+                        Classes="Flat"
+                        Width="24" Height="24">
+                    <avalonia:MaterialIcon Kind="Search" Width="24" Height="24" />
+                </Button>
+            </Grid>
+        </Border>
+        
+        <!-- Search error message -->
+        <TextBlock Grid.Row="0"
+                   Text="{Binding SearchError}"
+                   Foreground="Red"
+                   IsVisible="{Binding SearchError, Converter={x:Static ObjectConverters.IsNotNull}}"
+                   Margin="10,45,10,0"/>
+        
+        <!-- Map -->
+        <Grid Grid.Row="1">
+            <mapsui:MapControl x:Name="MapControl"
+                              Map="{Binding Map}"/>
+            
+            <!-- Coordinates overlay -->
+            <Border Background="#CC000000" 
+                    Padding="12" 
+                    HorizontalAlignment="Right" 
+                    VerticalAlignment="Top"
+                    CornerRadius="4"
+                    Margin="10">
+                <StackPanel Spacing="4">
+                    <TextBlock Foreground="White" FontWeight="Bold">
+                        Selected Position:
+                    </TextBlock>
+                    <TextBlock Foreground="White">
+                        <Run Text="Lat: "/>
+                        <Run Text="{Binding Latitude, StringFormat='{}{0:F6}'}"/>
+                    </TextBlock>
+                    <TextBlock Foreground="White">
+                        <Run Text="Lon: "/>
+                        <Run Text="{Binding Longitude, StringFormat='{}{0:F6}'}"/>
+                    </TextBlock>
+                </StackPanel>
+            </Border>
+            
+            <!-- Instructions overlay -->
+            <Border Background="#55000000" 
+                    Padding="8" 
+                    HorizontalAlignment="Left" 
+                    VerticalAlignment="Bottom"
+                    CornerRadius="4"
+                    Margin="10">
+                <TextBlock Foreground="White" FontSize="12">
+                    Left-Click to Pan, Right-Click to set position
+                </TextBlock>
+            </Border>
+        </Grid>
+        
+        <!-- Bottom buttons -->
+        <Border Grid.Row="2" 
+                Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+                Padding="10"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                BorderThickness="0,1,0,0">
+            <StackPanel Orientation="Horizontal" 
+                       HorizontalAlignment="Right"
+                       Spacing="10">
+                <Button Content="Cancel"
+                        Classes="Flat"
+                        Click="OnCancel"
+                        Width="100"/>
+                <Button Content="Confirm" 
+                        Command="{Binding ConfirmPositionCommand}"
+                        Width="100"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

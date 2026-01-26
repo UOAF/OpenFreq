@@ -33,6 +33,8 @@
         <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
         <PackageReference Include="DotSpatial.Projections" Version="4.0.656" />
         <PackageReference Include="ManagedBass" Version="4.0.2" />
+        <PackageReference Include="Mapsui" Version="5.0.2" />
+        <PackageReference Include="Mapsui.Avalonia" Version="5.0.2" />
         <PackageReference Include="Material.Avalonia" Version="3.13.2" />
         <PackageReference Include="Material.Icons.Avalonia" Version="2.4.1" />
         <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />

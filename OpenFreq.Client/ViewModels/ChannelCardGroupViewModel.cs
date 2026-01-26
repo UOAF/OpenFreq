@@ -1,8 +1,11 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Net.Mime;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia;
+using Avalonia.Controls.ApplicationLifetimes;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
@@ -14,6 +17,7 @@ using OpenFreqAudio;
 using OpenFreqClient.Models;
 using OpenFreqClient.Services;
 using OpenFreqClient.Services.Interfaces;
+using OpenFreqClient.Views;
 
 namespace OpenFreqClient.ViewModels;
 
@@ -440,5 +444,22 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         const double FEET_PER_METER = 3.28084d;
         RadioStationData.Position ??= new Position(0d, 0d, 0d);
         RadioStationData.Position.Z = value / FEET_PER_METER;
+    }
+    
+    [RelayCommand]
+    private async Task OpenMapPickerAsync()
+    {
+        var window = new MapPickerWindow(Latitude, Longitude, Settings.SelectedTheater);
+    
+        var result = await window.ShowDialog<(double lat, double lon)?>(
+            (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
+                ? desktop.MainWindow
+                : null) ?? throw new InvalidOperationException());
+    
+        if (result.HasValue)
+        {
+            Latitude = result.Value.lat;
+            Longitude = result.Value.lon;
+        }
     }
 }

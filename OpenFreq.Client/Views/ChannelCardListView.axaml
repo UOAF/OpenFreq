@@ -74,20 +74,28 @@
                                                  Content="Fixed Position"
                                                  VerticalAlignment="Center" />
                                     <StackPanel Grid.Row="0" Grid.Column="1"
-                                                Orientation="Vertical"
+                                                Orientation="Horizontal"
                                                 Spacing="5"
                                                 IsEnabled="{Binding UseFixedPosition}">
-                                        <TextBox Text="{Binding LatLonInput}"
-                                                 Watermark="Latitude Longitude (e.g., 37.12345 -122.98765)"
-                                                 MinWidth="220"
-                                                 Classes.error="{Binding HasCoordinateError}" />
-                                        <TextBlock Text="{Binding CoordinateError}"
-                                                   Foreground="Red"
-                                                   FontSize="11"
-                                                   IsVisible="{Binding HasCoordinateError}" />
+                                        <StackPanel Orientation="Vertical">
+                                            <TextBox Text="{Binding LatLonInput}"
+                                                     Watermark="Latitude Longitude (e.g., 37.12345 -122.98765)"
+                                                     MinWidth="100"
+                                                     Classes.error="{Binding HasCoordinateError}" />
+                                            <TextBlock Text="{Binding CoordinateError}"
+                                                       Foreground="Red"
+                                                       FontSize="11"
+                                                       IsVisible="{Binding HasCoordinateError}" />
+                                        </StackPanel>
+                                        <Button Classes="flat"
+                                                Command="{Binding OpenMapPickerCommand}"
+                                                ToolTip.Tip="Open map window to pick position">
+                                            <avalonia:MaterialIcon Kind="MapSearch" Width="24" Height="24" />
+                                        </Button>
                                         <TextBox Text="{Binding AltitudeInput}"
                                                  Watermark="Altitude ft (AGL)"
-                                                 MinWidth="220"/>
+                                                 MinWidth="50" />
+                                        
                                     </StackPanel>
 
                                     <!-- Aircraft Callsign Option -->
@@ -101,9 +109,9 @@
                                               Margin="0,8,0,0"
                                               PlaceholderText="Select aircraft callsign..."
                                               ItemsSource="{Binding TacviewFlightCallsigns}"
-                                              SelectedItem="{Binding SelectedTacviewCallsign}" 
+                                              SelectedItem="{Binding SelectedTacviewCallsign}"
                                               IsEnabled="{Binding !UseFixedPosition}"
-                                              MinWidth="200"/>
+                                              MinWidth="200" />
                                 </Grid>
                             </StackPanel>
 

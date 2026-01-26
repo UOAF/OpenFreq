@@ -6,6 +6,7 @@
              xmlns:openFreqClient="clr-namespace:OpenFreqClient"
              xmlns:vm="clr-namespace:OpenFreqClient.ViewModels"
              xmlns:views="clr-namespace:OpenFreqClient.Views"
+             xmlns:converters="clr-namespace:OpenFreqClient.Converters"
              RequestedThemeVariant="Default">
     <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
 
@@ -31,7 +32,7 @@
         <themes:MaterialTheme PrimaryColor="Green" SecondaryColor="Red" />
         <avalonia:MaterialIconStyles />
         <Style Selector="TextBox.error">
-            <Setter Property="BorderBrush" Value="Red"/>
+            <Setter Property="BorderBrush" Value="Red" />
         </Style>
     </Application.Styles>
 
@@ -41,5 +42,6 @@
         <StaticResource x:Key="ChannelStatusConnectedBrush" ResourceKey="MaterialCardBackgroundBrush" />
         <StaticResource x:Key="ChannelStatusDisconnectedBrush" ResourceKey="MaterialTextFieldBoxBackgroundBrush" />
         <StaticResource x:Key="ChannelStatusTransmittingBrush" ResourceKey="SecondaryHueLightBrush" />
+        <converters:BoolToSearchButtonTextConverter x:Key="BoolToSearchButtonText" />
     </Application.Resources>
 </Application>

@@ -50,7 +50,11 @@ namespace OpenFreq.Utilities
             public string ProjString { get; }
             private readonly ProjectionInfo _projectionInfo;
             private readonly ProjectionInfo _wgs84;
-
+            
+            // Pre-calculated corners in lat/lon (WGS84)
+            public (double lat, double lon)[] CornersLatLon { get; }
+            public (double lat, double lon) CenterLatLon { get; }
+            
             public Theater(string name, string projString)
             {
                 Name = name;
@@ -58,6 +62,27 @@ namespace OpenFreq.Utilities
 
                 _wgs84 = KnownCoordinateSystems.Geographic.World.WGS1984;
                 _projectionInfo = ProjectionInfo.FromProj4String(ProjString);
+                
+                // Pre-calculate corners (in BMS position coordinate system)
+                var corners = new[]
+                {
+                    (x: 0.0, y: 0.0),                                    // Bottom-left
+                    (x: (double)HEIGHTMAP_SIZE_M, y: 0.0),              // Bottom-right
+                    (x: (double)HEIGHTMAP_SIZE_M, y: (double)HEIGHTMAP_SIZE_M), // Top-right
+                    (x: 0.0, y: (double)HEIGHTMAP_SIZE_M),              // Top-left
+                    (x: 0.0, y: 0.0)                                     // Close the polygon
+                };
+                
+                CornersLatLon = new (double lat, double lon)[corners.Length];
+                for (int i = 0; i < corners.Length; i++)
+                {
+                    CornersLatLon[i] = InverseTransform(corners[i].x, corners[i].y);
+                }
+                
+                // Pre-calculate center
+                CenterLatLon = InverseTransform(
+                    (double)HEIGHTMAP_SIZE_M / 2, 
+                    (double)HEIGHTMAP_SIZE_M / 2);
             }
 
             public (double x, double y) Transform(double latitude, double longitude)
@@ -132,6 +157,33 @@ namespace OpenFreq.Utilities
             }
 
             return theater.InverseTransform(x, y);
+        }
+
+        /// <summary>
+        /// Gets the center lat/lon for the specified theater.
+        /// </summary>
+        public static (double latitude, double longitude) CenterLatLon(string theaterName)
+        {
+            if (!Theaters.TryGetValue(theaterName, out var theater))
+            {
+                throw new ArgumentException(
+                    $"Theater '{theaterName}' not found. Available theaters: {string.Join(", ", Theaters.Keys)}");
+            }
+            return theater.CenterLatLon;
+        }
+        
+        /// <summary>
+        /// Gets the corner coordinates (lat/lon) for the specified theater.
+        /// Returns 5 points: bottom-left, bottom-right, top-right, top-left, bottom-left (closed polygon).
+        /// </summary>
+        public static (double lat, double lon)[] GetTheaterCornersLatLon(string theaterName)
+        {
+            if (!Theaters.TryGetValue(theaterName, out var theater))
+            {
+                throw new ArgumentException(
+                    $"Theater '{theaterName}' not found. Available theaters: {string.Join(", ", Theaters.Keys)}");
+            }
+            return theater.CornersLatLon;
         }
 
         /// <summary>
