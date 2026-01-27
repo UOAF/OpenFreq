@@ -59,12 +59,13 @@ namespace OpenFreq.Utilities
             
             // Pre-calculated corners in lat/lon (WGS84)
             public (double lat, double lon)[] CornersLatLon { get; }
-            public (double lat, double lon) CenterLatLon { get; }
+            public (double lat, double lon) CenterLatLon { get; set; }
             
             public Theater(string name, string projString, double centerLat, double centerLon)
             {
                 Name = name;
                 ProjString = NormalizeProj4(projString);
+                CenterLatLon = (centerLat, centerLon);
 
                 _wgs84 = KnownCoordinateSystems.Geographic.World.WGS1984;
                 _projectionInfo = ProjectionInfo.FromProj4String(ProjString);
@@ -181,7 +182,7 @@ namespace OpenFreq.Utilities
         /// <summary>
         /// Gets the center lat/lon for the specified theater.
         /// </summary>
-        public static (double latitude, double longitude) CenterLatLon(string theaterName)
+        public static (double latitude, double longitude) GetCenterLatLon(string theaterName)
         {
             if (!Theaters.TryGetValue(theaterName, out var theater))
             {

@@ -80,7 +80,7 @@ public partial class MapPickerViewModel : ViewModelBase
         if (Latitude == 0 && Longitude == 0)
         {
             // Default to center of Theater if no position set
-            var latLon = TheaterCoordinateConverter.CenterLatLon(_selectedTheatername);
+            var latLon = TheaterCoordinateConverter.GetCenterLatLon(_selectedTheatername);
             viewCenter = SphericalMercator.FromLonLat(latLon.longitude, latLon.latitude);
         }
         else
