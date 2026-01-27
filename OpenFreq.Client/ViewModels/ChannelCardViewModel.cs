@@ -5,7 +5,6 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using OpenFreq.Client.Models;
-using OpenFreqAudio;
 using OpenFreqClient.Models;
 using OpenFreqClient.Services;
 using OpenFreqClient.Services.Interfaces;
@@ -19,7 +18,8 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
 
     public Guid Id { get; } = Guid.NewGuid();
 
-    [ObservableProperty] private double _frequencyMhz;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(FrequencyMhzString))]
+    private double _frequencyMhz;
 
     /// <summary>
     /// Frequency display string in MHz

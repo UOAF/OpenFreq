@@ -26,7 +26,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
     public SettingsViewModel Settings { get; }
 
     [ObservableProperty] public partial string Name { get; set; }
-    [ObservableProperty] public partial bool UseFixedPosition { get; set; }
+    [ObservableProperty] public partial bool UseFixedPosition { get; set; } = true;
     [ObservableProperty] public partial bool EditMode { get; set; }
 
     public record TacviewAircraftItem(string CallSign, string ObjectId)
