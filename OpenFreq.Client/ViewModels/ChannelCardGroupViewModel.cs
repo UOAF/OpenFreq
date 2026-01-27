@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
@@ -109,16 +110,22 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         channel.Type = channelType;
         channel.FrequencyMhz = frequencyMhz;
         channel.IsEditing = isInEditMode;
+        Dispatcher.UIThread.Post(() =>
+        {
+            Channels.Add(channel);
+        });
 
-        Channels.Add(channel);
         return channel;
     }
 
     public ChannelCardViewModel CreateChannel(Channel channel)
     {
-        var viewModel = new ChannelCardViewModel(_hotkeyService, channel, RadioStationData);
-        Channels.Add(viewModel);
-        return viewModel;
+        var vm = new ChannelCardViewModel(_hotkeyService, channel, RadioStationData);
+        Dispatcher.UIThread.Post(() =>
+        {
+            Channels.Add(vm);
+        });
+        return vm;
     }
 
     private void OnChannelUpdated(object recipient, ChannelUpdatedMessage message)
@@ -181,8 +188,11 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
 
         if (vm != null)
         {
-            Channels.Remove(vm);
-            vm.Dispose();
+            Dispatcher.UIThread.Post(() =>
+            {
+                Channels.Remove(vm);
+                vm.Dispose();    
+            });
         }
 
         if (_openFreqService.IsAuthenticated)

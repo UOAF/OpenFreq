@@ -40,10 +40,6 @@
                          Background="Transparent"
                          Watermark="Frequency (MHz)"
                          Padding="0,5" />
-                <TextBlock Text="{Binding FrequencyError}"
-                           Foreground="Red"
-                           FontSize="11"
-                           IsVisible="{Binding FrequencyError, Converter={x:Static ObjectConverters.IsNotNull}}" />
                 <ComboBox ItemsSource="{Binding ChannelTypes}"
                           SelectedItem="{Binding Type}"
                           Padding="0,5">
@@ -53,8 +49,6 @@
                     <Button
                         Theme="{StaticResource MaterialOutlineButton}"
                         Command="{Binding ToggleEditingCommand}"
-                        IsEnabled="{Binding FrequencyError, Converter={x:Static ObjectConverters.IsNull}}"
-
                         MinWidth="80">
                         Save
                     </Button>

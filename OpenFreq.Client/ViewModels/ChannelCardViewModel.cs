@@ -19,12 +19,10 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
 
     public Guid Id { get; } = Guid.NewGuid();
 
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(FrequencyError), nameof(FrequencyMhzString))]
-    private double _frequencyMhz;
+    [ObservableProperty] private double _frequencyMhz;
 
     /// <summary>
     /// Frequency display string in MHz
-    /// Internal storage is in Hz (SI unit)
     /// </summary>
     public string FrequencyMhzString
     {
@@ -64,7 +62,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         false;
 
     public string HotkeyDisplay => GetKeyDisplayName(HotKey);
-    
+
     public RadioStationData RadioStationData { get; set; }
 
 // Store original values when entering edit mode
@@ -72,23 +70,6 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     private Channel.ChannelType _originalType;
     private KeyCode _originalBinding;
 
-    public string? FrequencyError
-    {
-        get
-        {
-            if (Type == Channel.ChannelType.UHF && FrequencyMhz is < 225.000 or > 399.975)
-                return "UHF frequency must be between 225.0 and 399.975 MHz";
-
-            if (Type == Channel.ChannelType.VHF && FrequencyMhz is < 118.0 or > 137.0)
-                return "VHF frequency must be between 118.0 and 137.0 MHz";
-            
-            // Custom: don't care
-            
-            // No error
-            return null;
-        }
-    }
-    
     [RelayCommand]
     public void BmsLobby1Clicked()
     {
@@ -98,7 +79,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         Type = Channel.ChannelType.Custom;
         ToggleEditing();
     }
-    
+
     [RelayCommand]
     public void BmsLobby2Clicked()
     {
@@ -114,11 +95,9 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     {
         _hotkeyService = hotkeyService;
         RadioStationData = radioStationData;
-        
-        WeakReferenceMessenger.Default.Register<SignalStrengthTracker.SignalStrengthUpdateMessage>(this, (r, m) =>
-        {
-                SignalStrength = m.Strength;
-        });
+
+        WeakReferenceMessenger.Default.Register<SignalStrengthTracker.SignalStrengthUpdateMessage>(this,
+            (r, m) => { SignalStrength = m.Strength; });
     }
 
     public ChannelCardViewModel(IHotkeyService hotkeyService, Channel channel, RadioStationData radioStationData)
@@ -131,13 +110,14 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         _type = channel.Type;
         _status = channel.Status;
     }
-    
+
 
     [RelayCommand]
     public void ToggleEnabled()
     {
         IsEnabled = !IsEnabled;
-        WeakReferenceMessenger.Default.Send(new ChannelEnabledDisabledMessage(channelId: Id, frequencyMhz: FrequencyMhz, enabled: IsEnabled));
+        WeakReferenceMessenger.Default.Send(
+            new ChannelEnabledDisabledMessage(channelId: Id, frequencyMhz: FrequencyMhz, enabled: IsEnabled));
     }
 
     [RelayCommand]
@@ -152,22 +132,19 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         }
         else
         {
-            // Exiting edit mode - send update if valid and changed
-            if (FrequencyError == null)
-            {
-                var message = new ChannelUpdatedMessage(
-                    Id,
-                    _originalFrequencyMhz,
-                    FrequencyMhz,
-                    _originalType,
-                    Type,
-                    Status,
-                    _originalBinding,
-                    HotKey
-                );
+            // Exiting edit mode - send update if changed
+            var message = new ChannelUpdatedMessage(
+                Id,
+                _originalFrequencyMhz,
+                FrequencyMhz,
+                _originalType,
+                Type,
+                Status,
+                _originalBinding,
+                HotKey
+            );
 
-                WeakReferenceMessenger.Default.Send(message);
-            }
+            WeakReferenceMessenger.Default.Send(message);
         }
 
         IsEditing = !IsEditing;
@@ -191,7 +168,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
             IsCapturingHotkey = false;
         }
     }
-    
+
     partial void OnHotKeyChanging(KeyCode oldValue, KeyCode newValue)
     {
         // Unregister old binding
@@ -228,7 +205,6 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     partial void OnTypeChanged(Channel.ChannelType value)
     {
         // Revalidate frequency when type changes
-        OnPropertyChanged(nameof(FrequencyError));
         _channelWasChanged = true;
     }
 
@@ -250,10 +226,10 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     {
         WeakReferenceMessenger.Default.Send(new ChannelDeleteRequestedMessage(Id, FrequencyMhz));
     }
-    
+
     public void StartTransmission()
     {
-        if (Status == Channel.ChannelStatus.Disconnected || FrequencyError != null)
+        if (Status == Channel.ChannelStatus.Disconnected)
             return;
 
         WeakReferenceMessenger.Default.Send(new StartTransmissionMessage(Id, FrequencyMhz, RadioStationData));
@@ -334,7 +310,7 @@ public class ChannelDeleteRequestedMessage
 {
     public Guid ChannelId { get; }
     public double FrequencyMhz { get; }
-    
+
     public ChannelDeleteRequestedMessage(Guid channelId, double frequencyMhz)
     {
         ChannelId = channelId;
