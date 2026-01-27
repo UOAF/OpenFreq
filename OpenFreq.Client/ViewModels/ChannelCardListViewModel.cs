@@ -12,7 +12,6 @@ using FalconRadioService.Models;
 using FalconRadioService.Services;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Client.Models;
-using OpenFreq.Common;
 using OpenFreq.Services.Acmi;
 using OpenFreqAudio;
 using OpenFreqClient.Models;
@@ -57,14 +56,65 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
             OnConnectionParametersChanged;
         _falconRadioSharedMemoryService.FrequencyChanged += OnFrequencyChanged;
         _falconRadioSharedMemoryService.PttChanged += OnPttChanged;
-        _falconSharedMemoryService.FlyingStateChanged += OnFlyingStateChanged;
+        _falconRadioSharedMemoryService.PowerChanged += OnRadioPowerChanged;
+        _falconRadioSharedMemoryService.VolumeChanged += OnRadioVolumeChanged;
 
+        _falconSharedMemoryService.FlyingStateChanged += OnFlyingStateChanged;
 
         // Subscribe to transmission messages
         WeakReferenceMessenger.Default.Register<StartTransmissionMessage>(this,
             async (r, m) => await HandleStartTransmissionAsync(m));
         WeakReferenceMessenger.Default.Register<StopTransmissionMessage>(this,
             async (r, m) => await HandleStopTransmissionAsync(m));
+    }
+
+    private void OnRadioVolumeChanged(object? sender, RadioVolumeChangedEventArgs e)
+    {
+        if (FalconChannelGroup == null)
+        {
+            _logger.LogError("Attempting to change volume on null FalconChannelGroup");
+            return;
+        }
+
+        _logger.LogDebug($"VOLUME {e.OldVolume} -> {e.NewVolume}");
+        const int minBms = 1000;
+        const int maxBms = 10000;
+
+        // Invert and normalize to 0-1
+        float normalized = (maxBms - e.NewVolume) / (float)(maxBms - minBms);
+        // Clamp to valid range
+        normalized = Math.Clamp(normalized, 0f, 1f);
+
+        // Apply logarithmic curve (dB-like behavior)
+        normalized *= normalized;
+
+        var channels = FalconChannelGroup?.Channels.Where(c => c.Type == Channel.ToChannelType(e.RadioType)).ToList();
+        foreach (var channel in channels)
+        {
+            _openFreqService.SetVolume(channel.FrequencyMhz, normalized);
+        }
+    }
+
+    private void OnRadioPowerChanged(object? sender, RadioPowerChangedEventArgs e)
+    {
+        if (FalconChannelGroup == null)
+        {
+            _logger.LogError("Attempting to change power on null FalconChannelGroup");
+            return;
+        }
+
+        var channels = FalconChannelGroup.Channels.Where(c => c.Type == Channel.ToChannelType(e.RadioType)).ToList();
+        foreach (var channel in channels)
+        {
+            if (e.NewPower)
+            {
+                JoinFrequencyAsync(channel.FrequencyMhz, FalconChannelGroup.RadioStationData).Wait(100);
+            }
+            else
+            {
+                LeaveFrequencyAsync(channel.FrequencyMhz).Wait(100);
+            }
+        }
     }
 
     private void OnConnectionParametersChanged(object? sender,

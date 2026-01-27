@@ -389,6 +389,26 @@ public class OpenFreqService : IOpenFreqService
         OnStatusMessage($"Stopped transmitting on {frequencyMhz}");
     }
 
+    public void SetVolume(double frequencyMhz, float volumeValue)
+    {
+        _playbackService?.SetFrequencyVolume(frequencyMhz, volumeValue);
+    }
+
+    public void SetAudioChannel(double frequencyMhz, RadioPlayback.AudioChannel channel)
+    {
+        throw new NotImplementedException();
+    }
+
+    public void EnableFrequency(double frequencyMhz)
+    {
+        throw new NotImplementedException();
+    }
+
+    public void DisableFrequency(double frequencyMhz)
+    {
+        throw new NotImplementedException();
+    }
+
     public void SetOwnPositionMode(IOpenFreqService.Mode newMode)
     {
         if (newMode == OwnPositionMode) return;
@@ -475,32 +495,9 @@ public class OpenFreqService : IOpenFreqService
             var frequenciesData = new List<(double frequency, double txPowerWatts, Position? position)>();
             foreach (var transmission in _activeTransmissions)
             {
-                var position = new Position { X = 0, Y = 0, Z = 0 };
                 var frequency = transmission.Key;
 
-                switch (transmission.Value.Type)
-                {
-                    case RadioStationData.RadioStationType.BMS:
-                    {
-                        position = _falconSharedMemoryService.HeightMapPosition;
-                        if (_falconSharedMemoryService.Position != null)
-                        {
-                            var rawPositionInMeters = _falconSharedMemoryService.Position.ToMeters();
-                            var latLon = TheaterCoordinateConverter.XYToLatLon("Korea KTO", rawPositionInMeters.X,
-                                rawPositionInMeters.Y, TheaterCoordinateConverter.CoordinateSystem.BMS_HEIGHTMAP_COORDINATE_SYTEM);
-                            _logger.LogDebug($"Position: {rawPositionInMeters} | LAT, LON: {latLon.latitude}, {latLon.longitude}");
-                        }
-
-                        break;
-                    }
-                    case RadioStationData.RadioStationType.STATIONARY:
-                        position = _activeTransmissions[frequency].Position;
-                        break;
-                    case RadioStationData.RadioStationType.ACMI:
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException(nameof(transmission.Value.Type));
-                }
+                var position = GetOwnPosition(frequency) ?? new Position(0, 0, 0);
                 _logger.LogDebug($"[Recording] {frequency} Position: {position}");
 
                 if (RadioStationPreset.IsVHF(frequency))

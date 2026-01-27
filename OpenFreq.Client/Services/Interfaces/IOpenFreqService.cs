@@ -36,6 +36,12 @@ public interface IOpenFreqService : IDisposable
     Task LeaveFrequencyAsync(double frequencyMhz);
     Task StartTransmissionAsync(double frequencyMhz, RadioStationData radioStationData);
     Task StopTransmissionAsync(double frequencyMhz);
+
+    void SetVolume(double frequencyMhz, float volumeValue);
+    void SetAudioChannel(double frequencyMhz, RadioPlayback.AudioChannel channel);
+    
+    void EnableFrequency(double frequencyMhz);
+    void DisableFrequency(double frequencyMhz);
     
     public enum OpenFreqStatus
     {

@@ -14,19 +14,23 @@ namespace OpenFreq.Utilities
         {
             ["Korea KTO"] = new Theater(
                 "Korea KTO",
-                "+proj=tmerc +lon_0=127.5 +ellps=WGS84 +k=0.9996 +units=m +x_0=512000 +y_0=-3.74929e+06"
+                "+proj=tmerc +lon_0=127.5 +ellps=WGS84 +k=0.9996 +units=m +x_0=512000 +y_0=-3.74929e+06",
+                38.5, 127.5
             ),
             ["Balkans"] = new Theater(
                 "Balkans",
-                "+proj=tmerc +lon_0=16.4191 +ellps=WGS84 +k=0.9996 +units=m +x_0=512000 +y_0=-4.1192e+06"
+                "+proj=tmerc +lon_0=16.4191 +ellps=WGS84 +k=0.9996 +units=m +x_0=512000 +y_0=-4.1192e+06",
+                41.8327, 16.4191
             ),
-            ["HTO"] = new Theater(
-                "HTO",
-                "+proj=tmerc +lon_0=25 +ellps=WGS84 +k=0.9996 +units=m +x_0=512000 +y_0=-3.69382e+06"
+            ["Ikaros"] = new Theater(
+                "Ikaros",
+                "+proj=tmerc +lon_0=25 +ellps=WGS84 +k=0.9996 +units=m +x_0=512000 +y_0=-3.69382e+06",
+                38, 25
             ),
             ["ITO"] = new Theater(
                 "ITO",
-                "+proj=tmerc +lon_0=35 +ellps=WGS84 +k=0.9996 +units=m +x_0=512000 +y_0=-3.02844e+06"
+                "+proj=tmerc +lon_0=35 +ellps=WGS84 +k=0.9996 +units=m +x_0=512000 +y_0=-3.02844e+06",
+                32, 35
             )
         };
 
@@ -50,18 +54,26 @@ namespace OpenFreq.Utilities
             public string ProjString { get; }
             private readonly ProjectionInfo _projectionInfo;
             private readonly ProjectionInfo _wgs84;
+            private double XOffsetM, YOffsetM;
+            public (double x, double y) CenterProjected { get; private set; }
             
             // Pre-calculated corners in lat/lon (WGS84)
             public (double lat, double lon)[] CornersLatLon { get; }
             public (double lat, double lon) CenterLatLon { get; }
             
-            public Theater(string name, string projString)
+            public Theater(string name, string projString, double centerLat, double centerLon)
             {
                 Name = name;
                 ProjString = NormalizeProj4(projString);
 
                 _wgs84 = KnownCoordinateSystems.Geographic.World.WGS1984;
                 _projectionInfo = ProjectionInfo.FromProj4String(ProjString);
+                
+                // Use the authoritative center from theater definition
+                CenterProjected = Transform(centerLat, centerLon);
+                XOffsetM = CenterProjected.x - (HEIGHTMAP_SIZE_M / 2);
+                YOffsetM = CenterProjected.y - (HEIGHTMAP_SIZE_M / 2);
+
                 
                 // Pre-calculate corners (in BMS position coordinate system)
                 var corners = new[]
@@ -78,11 +90,6 @@ namespace OpenFreq.Utilities
                 {
                     CornersLatLon[i] = InverseTransform(corners[i].x, corners[i].y);
                 }
-                
-                // Pre-calculate center
-                CenterLatLon = InverseTransform(
-                    (double)HEIGHTMAP_SIZE_M / 2, 
-                    (double)HEIGHTMAP_SIZE_M / 2);
             }
 
             public (double x, double y) Transform(double latitude, double longitude)
@@ -127,7 +134,19 @@ namespace OpenFreq.Utilities
             var xy = theater.Transform(latitude, longitude);
             if (targetCoordinateSystem == CoordinateSystem.BMS_HEIGHTMAP_COORDINATE_SYTEM)
             {
-                xy.y = HEIGHTMAP_SIZE_M - xy.y;
+                const double HEIGHTMAP_SIZE_M = 1024000.0;
+                const double METERS_PER_PIXEL = 31.25;
+                const double HALF_SIZE_M = HEIGHTMAP_SIZE_M / 2;
+                
+                // Heightmap bottom-left corner in projection space
+                double xOffset = theater.CenterProjected.x - HALF_SIZE_M;
+                double yOffset = theater.CenterProjected.y - HALF_SIZE_M;
+    
+                // Convert to heightmap pixels
+                double heightmapX = (xy.x - xOffset) / METERS_PER_PIXEL;
+                double heightmapY = 32768.0 - ((xy.y - yOffset) / METERS_PER_PIXEL);
+    
+                return (heightmapX, heightmapY);
             }
 
             return xy;

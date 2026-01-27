@@ -1,7 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
-using System.Net.Mime;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
@@ -440,8 +439,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
             lat,
             lon,
             TheaterCoordinateConverter.CoordinateSystem.BMS_HEIGHTMAP_COORDINATE_SYTEM);
-        RadioStationData.Position.X = xy.x;
-        RadioStationData.Position.Y = xy.y;
+        RadioStationData.Position = new Position(xy.x, xy.y, RadioStationData.Position.Z);
     }
 
     partial void OnGroupPresetChanged(RadioStationPreset value)
