@@ -321,7 +321,7 @@ public class SignalingServer
             return;
         }
 
-        var channelCount = _channelManager.GetChannelCount(joinMsg.FrequencyMhz);
+        var channelCount = _channelManager.GetChannelCount(joinMsg.FrequencyKhz);
 
         if (channelCount >= _config.MaxClientsPerChannel)
         {
@@ -329,28 +329,28 @@ public class SignalingServer
             return;
         }
 
-        if (session.CurrentFrequencies.ContainsKey(joinMsg.FrequencyMhz))
+        if (session.CurrentFrequencies.ContainsKey(joinMsg.FrequencyKhz))
         {
             await SendError(session, "Frequency already joined");
             return;
         }
 
-        _channelManager.JoinChannel(joinMsg.FrequencyMhz, session.Id);
+        _channelManager.JoinChannel(joinMsg.FrequencyKhz, session.Id);
         
-        session.CurrentFrequencies.TryAdd(joinMsg.FrequencyMhz, ClientSession.FrequencyClientStatus.Receiving);
+        session.CurrentFrequencies.TryAdd(joinMsg.FrequencyKhz, ClientSession.FrequencyClientStatus.Receiving);
 
-        var peers = _channelManager.GetClientsInChannel(joinMsg.FrequencyMhz)
+        var peers = _channelManager.GetClientsInChannel(joinMsg.FrequencyKhz)
             .Where(id => id != session.Id)
             .ToList();
 
-        await SendChannelState(session, joinMsg.FrequencyMhz, peers);
+        await SendChannelState(session, joinMsg.FrequencyKhz, peers);
 
         BroadcastToChannel(
-            joinMsg.FrequencyMhz,
+            joinMsg.FrequencyKhz,
             session.Id,
-            SignalingMessageFactory.CreatePeerJoined(session.Id, joinMsg.FrequencyMhz));
+            SignalingMessageFactory.CreatePeerJoined(session.Id, joinMsg.FrequencyKhz));
 
-        _logClientJoinedFrequency(_logger, session.Id, joinMsg.FrequencyMhz, null);
+        _logClientJoinedFrequency(_logger, session.Id, joinMsg.FrequencyKhz, null);
     }
 
     private async Task HandleLeaveChannel(ClientSession session, SignalingMessage message)
@@ -365,16 +365,16 @@ public class SignalingServer
         var transmissionMsg = SignalingMessageFactory.DeserializePayload<AudioTransmissionMessage>(message.Payload);
         if (transmissionMsg == null) return;
 
-        var frequencyMhz = transmissionMsg.FrequencyMhz;
-        _channelManager.LeaveChannel(frequencyMhz, session.Id);
+        var frequencyKhz = transmissionMsg.FrequencyKhz;
+        _channelManager.LeaveChannel(frequencyKhz, session.Id);
         
         BroadcastToChannel(
-            frequencyMhz,
+            frequencyKhz,
             session.Id,
-            SignalingMessageFactory.CreatePeerLeft(session.Id, frequencyMhz));
+            SignalingMessageFactory.CreatePeerLeft(session.Id, frequencyKhz));
 
-        session.CurrentFrequencies.TryRemove(frequencyMhz, out var frequencyClientStatus);
-        _logClientLeftFrequency(_logger, session.Id, frequencyMhz, null);
+        session.CurrentFrequencies.TryRemove(frequencyKhz, out var frequencyClientStatus);
+        _logClientLeftFrequency(_logger, session.Id, frequencyKhz, null);
     }
 
     private async Task LeaveAllChannels(ClientSession session)
@@ -403,37 +403,37 @@ public class SignalingServer
         var transmissionMsg = SignalingMessageFactory.DeserializePayload<AudioTransmissionMessage>(message.Payload);
         if (transmissionMsg == null) return;
 
-        if (session.CurrentFrequencies.TryGetValue(transmissionMsg.FrequencyMhz,
+        if (session.CurrentFrequencies.TryGetValue(transmissionMsg.FrequencyKhz,
                 out ClientSession.FrequencyClientStatus frequencyStatus))
         {
-            session.CurrentFrequencies.TryUpdate(transmissionMsg.FrequencyMhz,
+            session.CurrentFrequencies.TryUpdate(transmissionMsg.FrequencyKhz,
                 transmissionMsg.Transmitting
                     ? ClientSession.FrequencyClientStatus.Transmitting
                     : ClientSession.FrequencyClientStatus.Receiving, frequencyStatus);
         }
         else return;
 
-        if (!session.CurrentFrequencies.ContainsKey(transmissionMsg.FrequencyMhz)) return;
+        if (!session.CurrentFrequencies.ContainsKey(transmissionMsg.FrequencyKhz)) return;
 
-        var peersInChannel = _channelManager.GetClientsInChannel(transmissionMsg.FrequencyMhz)
+        var peersInChannel = _channelManager.GetClientsInChannel(transmissionMsg.FrequencyKhz)
             .Where(id => id != session.Id)
             .ToArray();
 
         _logTransmissionState(_logger, session.Id, transmissionMsg.Transmitting, 
-            transmissionMsg.FrequencyMhz, peersInChannel.Length, null);
+            transmissionMsg.FrequencyKhz, peersInChannel.Length, null);
 
         BroadcastToChannel(
-            transmissionMsg.FrequencyMhz,
+            transmissionMsg.FrequencyKhz,
             session.Id,
             SignalingMessageFactory.CreateTransmissionEvent(
                 session.Id,
-                transmissionMsg.FrequencyMhz,
+                transmissionMsg.FrequencyKhz,
                 transmissionMsg.Transmitting));
     }
 
-    private void BroadcastToChannel(double frequencyMhz, string excludeClientId, SignalingMessage message)
+    private void BroadcastToChannel(int frequencyKhz, string excludeClientId, SignalingMessage message)
     {
-        var clients = _channelManager.GetClientsInChannel(frequencyMhz);
+        var clients = _channelManager.GetClientsInChannel(frequencyKhz);
 
         foreach (var clientId in clients)
         {
@@ -446,13 +446,13 @@ public class SignalingServer
                     {
                         if (!t.IsFaulted || t.Exception == null) return;
                         var ex = t.Exception.GetBaseException();
-                        _logger.LogError(ex, "Error broadcasting to client {ClientId} in channel {Frequency}", 
-                            clientId, frequencyMhz);
+                        _logger.LogError(ex, "Error broadcasting to client {ClientId} in channel {Frequency/1000:F3}", 
+                            clientId, frequencyKhz);
                     }, TaskScheduler.Default);
 
                 if (_logger.IsEnabled(LogLevel.Debug))
-                    _logger.LogDebug("Broadcasting {MessageType} to client {ClientId} in channel {Frequency}", 
-                        message.Type, clientId, frequencyMhz);
+                    _logger.LogDebug("Broadcasting {MessageType} to client {ClientId} in channel {Frequency/1000:F3}", 
+                        message.Type, clientId, frequencyKhz);
             }
         }
     }
@@ -481,9 +481,9 @@ public class SignalingServer
         await SendToClient(session, SignalingMessageFactory.CreateSuccess(message, peerId, audioPort, opusEnabled));
     }
 
-    private async Task SendChannelState(ClientSession session, double frequencyMhz, List<string> peers)
+    private async Task SendChannelState(ClientSession session, int frequencyKhz, List<string> peers)
     {
-        await SendToClient(session, SignalingMessageFactory.CreateChannelState(frequencyMhz, peers));
+        await SendToClient(session, SignalingMessageFactory.CreateChannelState(frequencyKhz, peers));
     }
 
     private async Task CleanupClient(string clientId)

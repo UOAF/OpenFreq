@@ -8,10 +8,10 @@ namespace OpenFreq.Common;
 public class FrequencyTransmission
 {
     /// <summary>
-    /// Frequency in MHz
+    /// Frequency in KHz
     /// </summary>
-    [JsonPropertyName("mhz")]
-    public double Mhz { get; set; }
+    [JsonPropertyName("khz")]
+    public int Khz { get; set; }
     [JsonPropertyName("txpower")]
     public double TxPowerWatts { get; set; }
     
@@ -34,10 +34,10 @@ public class FrequencyTransmission
     {
     }
 
-    public FrequencyTransmission(double mhz, double txPowerWatts, Position position, bool beginMarker = false,
+    public FrequencyTransmission(int khz, double txPowerWatts, Position position, bool beginMarker = false,
         bool endMarker = false)
     {
-        Mhz = mhz;
+        Khz = khz;
         TxPowerWatts = txPowerWatts;
         BeginMarker = beginMarker;
         EndMarker = endMarker;
@@ -49,6 +49,6 @@ public class FrequencyTransmission
         var markers = "";
         if (BeginMarker) markers += "BEGIN ";
         if (EndMarker) markers += "END ";
-        return $"{Mhz:F1} MHz {(markers.Length > 0 ? $"[{markers.Trim()}]" : "")}";
+        return $"{Khz/1000:F3} MHz {(markers.Length > 0 ? $"[{markers.Trim()}]" : "")}";
     }
 }

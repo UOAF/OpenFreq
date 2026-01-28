@@ -101,13 +101,13 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public ChannelCardViewModel CreateChannel(double frequencyMhz, string name, Channel.ChannelType channelType,
+    public ChannelCardViewModel CreateChannel(int frequencyKhz, string name, Channel.ChannelType channelType,
         bool isInEditMode = true)
     {
         var channel = new ChannelCardViewModel(_hotkeyService, RadioStationData);
         channel.Name = name;
         channel.Type = channelType;
-        channel.FrequencyMhz = frequencyMhz;
+        channel.FrequencyKhz = frequencyKhz;
         channel.IsEditing = isInEditMode;
         Dispatcher.UIThread.Post(() =>
         {
@@ -134,11 +134,11 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
             // Only leave old frequency if the channel was previously connected
             if (message.OldStatus != Channel.ChannelStatus.Disconnected)
             {
-                _openFreqService.LeaveFrequencyAsync(message.OldFrequencyMhz).Wait(TimeSpan.FromMilliseconds(100));
+                _openFreqService.LeaveFrequencyAsync(message.OldFrequencyKhz).Wait(TimeSpan.FromMilliseconds(100));
             }
 
             // Always join the new frequency
-            _openFreqService.JoinFrequencyAsync(message.NewFrequencyMhz, RadioStationData)
+            _openFreqService.JoinFrequencyAsync(message.NewFrequencyKhz, RadioStationData)
                 .Wait(TimeSpan.FromMilliseconds(100));
         }
     }
@@ -162,7 +162,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
 
     private void OnFrequencyStatusChanged(object? sender, FrequencyStatusEventArgs e)
     {
-        var channel = Channels.FirstOrDefault(c => Math.Abs(c.FrequencyMhz - e.FrequencyMhz) < 0.01);
+        var channel = Channels.FirstOrDefault(c => Math.Abs(c.FrequencyKhz - e.FrequencyKhz) < 0.01);
         channel?.Status = e.Status;
     }
 
@@ -170,12 +170,12 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
     {
         if (_openFreqService.IsAuthenticated && message.Enabled)
         {
-            _openFreqService.JoinFrequencyAsync(message.FrequencyMhz, RadioStationData)
+            _openFreqService.JoinFrequencyAsync(message.FrequencyKhz, RadioStationData)
                 .Wait(TimeSpan.FromMilliseconds(100));
         }
         else if (_openFreqService.IsAuthenticated && !message.Enabled)
         {
-            _openFreqService.LeaveFrequencyAsync(message.FrequencyMhz).Wait(TimeSpan.FromMilliseconds(100));
+            _openFreqService.LeaveFrequencyAsync(message.FrequencyKhz).Wait(TimeSpan.FromMilliseconds(100));
         }
 
         // dont care for the rest
@@ -196,7 +196,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
 
         if (_openFreqService.IsAuthenticated)
         {
-            _openFreqService.LeaveFrequencyAsync(message.FrequencyMhz);
+            _openFreqService.LeaveFrequencyAsync(message.FrequencyKhz);
         }
     }
 
@@ -209,7 +209,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
                 var channel = Channels.FirstOrDefault(c => c.Id == channelId);
                 if (channel != null && channel.Status != Channel.ChannelStatus.Disconnected && !channel.IsEditing)
                 {
-                    await _openFreqService.StartTransmissionAsync(channel.FrequencyMhz, RadioStationData);
+                    await _openFreqService.StartTransmissionAsync(channel.FrequencyKhz, RadioStationData);
                 }
             }
         }
@@ -228,7 +228,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
                 var channel = Channels.FirstOrDefault(c => c.Id == channelId);
                 if (channel != null && channel.Status != Channel.ChannelStatus.Disconnected)
                 {
-                    await _openFreqService.StopTransmissionAsync(channel.FrequencyMhz);
+                    await _openFreqService.StopTransmissionAsync(channel.FrequencyKhz);
                 }
             }
         }
@@ -238,15 +238,15 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public bool ChangeChannelFrequency(double oldFreqMhz, double newFreqMhz, Channel.ChannelType newChannelType)
+    public bool ChangeChannelFrequency(int oldFreqKhz, int newFreqKhz, Channel.ChannelType newChannelType)
     {
         var oldChannel =
-            Channels.FirstOrDefault(c => Math.Abs(c.FrequencyMhz - oldFreqMhz) < 0.01);
+            Channels.FirstOrDefault(c => Math.Abs(c.FrequencyKhz - oldFreqKhz) < 0.01);
         if (oldChannel == null) return false;
 
-        oldChannel.FrequencyMhz = newFreqMhz;
+        oldChannel.FrequencyKhz = newFreqKhz;
         OnChannelUpdated(this,
-            new ChannelUpdatedMessage(oldChannel.Id, oldFreqMhz, newFreqMhz,
+            new ChannelUpdatedMessage(oldChannel.Id, oldFreqKhz, newFreqKhz,
                 oldChannel.Type, newChannelType, oldChannel.Status, oldChannel.HotKey,
                 oldChannel.HotKey));
 
@@ -257,7 +257,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
     {
         foreach (var channel in Channels)
         {
-            await _openFreqService.JoinFrequencyAsync(channel.FrequencyMhz, RadioStationData);
+            await _openFreqService.JoinFrequencyAsync(channel.FrequencyKhz, RadioStationData);
         }
     }
 
@@ -267,7 +267,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         {
             if (channel.Status != Channel.ChannelStatus.Disconnected)
             {
-                await _openFreqService.LeaveFrequencyAsync(channel.FrequencyMhz);
+                await _openFreqService.LeaveFrequencyAsync(channel.FrequencyKhz);
             }
         }
     }

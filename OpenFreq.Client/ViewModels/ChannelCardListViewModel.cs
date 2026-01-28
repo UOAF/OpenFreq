@@ -91,7 +91,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         var channels = FalconChannelGroup?.Channels.Where(c => c.Type == Channel.ToChannelType(e.RadioType)).ToList();
         foreach (var channel in channels)
         {
-            _openFreqService.SetVolume(channel.FrequencyMhz, normalized);
+            _openFreqService.SetVolume(channel.FrequencyKhz, normalized);
         }
     }
 
@@ -108,11 +108,11 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         {
             if (e.NewPower)
             {
-                JoinFrequencyAsync(channel.FrequencyMhz, FalconChannelGroup.RadioStationData).Wait(100);
+                JoinFrequencyAsync(channel.FrequencyKhz, FalconChannelGroup.RadioStationData).Wait(100);
             }
             else
             {
-                LeaveFrequencyAsync(channel.FrequencyMhz).Wait(100);
+                LeaveFrequencyAsync(channel.FrequencyKhz).Wait(100);
             }
         }
     }
@@ -165,10 +165,9 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                 foreach (var type in Enum.GetValues<RadioType>())
                 {
                     var falconChannel = _falconRadioSharedMemoryService.GetRadioChannel(type);
-                    if (falconChannel != null && !FalconChannelGroup.Channels.Any(c =>
-                            Math.Abs(c.FrequencyMhz - falconChannel.Frequency / 1000d) < 0.1d))
+                    if (falconChannel != null && FalconChannelGroup.Channels.All(c => c.FrequencyKhz != falconChannel.Frequency))
                     {
-                        var channel = FalconChannelGroup.CreateChannel(falconChannel.Frequency / 1000d,
+                        var channel = FalconChannelGroup.CreateChannel(falconChannel.Frequency,
                             "BMS Channel " + type,
                             Channel.ToChannelType(type),
                             false);
@@ -212,11 +211,11 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         switch (e)
         {
             case { OldPtt: false, NewPtt: true }:
-                _openFreqService.StartTransmissionAsync(channel.FrequencyMhz, FalconChannelGroup.RadioStationData)
+                _openFreqService.StartTransmissionAsync(channel.FrequencyKhz, FalconChannelGroup.RadioStationData)
                     .Wait();
                 break;
             case { OldPtt: true, NewPtt: false }:
-                _openFreqService.StopTransmissionAsync(channel.FrequencyMhz).Wait();
+                _openFreqService.StopTransmissionAsync(channel.FrequencyKhz).Wait();
                 break;
         }
     }
@@ -233,7 +232,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         _logger.LogDebug(
             $"FalconRadioSharedMemoryServiceOnFrequencyChanged: {e.OldFrequencyKhz} -> {e.NewFrequencyKhz}");
 
-        if (FalconChannelGroup.ChangeChannelFrequency(e.OldFrequencyKhz / 1000d, e.NewFrequencyKhz / 1000d,
+        if (FalconChannelGroup.ChangeChannelFrequency(e.OldFrequencyKhz, e.NewFrequencyKhz,
                 Channel.ToChannelType(e.RadioType))) return;
 
         lock (_channelImportLock)
@@ -241,13 +240,13 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
             var newChannel = Dispatcher.UIThread.InvokeAsync(() =>
             {
                 var channel = FalconChannelGroup.CreateChannel(
-                    e.NewFrequencyKhz / 1000d,
+                    e.NewFrequencyKhz,
                     BMS_GROUP_NAME,
                     Channel.ToChannelType(e.RadioType),
                     false);
                 return channel;
             }).GetAwaiter().GetResult();
-            JoinFrequencyAsync(newChannel.FrequencyMhz, FalconChannelGroup.RadioStationData)
+            JoinFrequencyAsync(newChannel.FrequencyKhz, FalconChannelGroup.RadioStationData)
                 .Wait(TimeSpan.FromMilliseconds(500));
         }
     }
@@ -259,7 +258,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
 
         try
         {
-            await _openFreqService.StartTransmissionAsync(msg.FrequencyMhz, msg.RadioStationData);
+            await _openFreqService.StartTransmissionAsync(msg.FrequencyKhz, msg.RadioStationData);
         }
         catch (Exception ex)
         {
@@ -273,7 +272,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
 
         try
         {
-            await _openFreqService.StopTransmissionAsync(msg.FrequencyMhz);
+            await _openFreqService.StopTransmissionAsync(msg.FrequencyKhz);
         }
         catch (Exception ex)
         {
@@ -281,31 +280,31 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public async Task JoinFrequencyAsync(double frequencyMhz, RadioStationData radioStationData)
+    public async Task JoinFrequencyAsync(int frequencyKhz, RadioStationData radioStationData)
     {
         if (!_openFreqService.IsAuthenticated) return;
 
         try
         {
-            await _openFreqService.JoinFrequencyAsync(frequencyMhz, radioStationData);
+            await _openFreqService.JoinFrequencyAsync(frequencyKhz, radioStationData);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Failed to join frequency {frequencyMhz}: {ex.Message}");
+            Console.WriteLine($"Failed to join frequency {frequencyKhz/1000:F3}: {ex.Message}");
         }
     }
 
-    public async Task LeaveFrequencyAsync(double frequency)
+    public async Task LeaveFrequencyAsync(int frequencyKhz)
     {
         if (!_openFreqService.IsAuthenticated) return;
 
         try
         {
-            await _openFreqService.LeaveFrequencyAsync(frequency);
+            await _openFreqService.LeaveFrequencyAsync(frequencyKhz);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Failed to leave frequency {frequency}: {ex.Message}");
+            Console.WriteLine($"Failed to leave frequency {frequencyKhz/1000:F3}: {ex.Message}");
         }
     }
 

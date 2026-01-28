@@ -31,7 +31,7 @@ public partial class MainWindow : Window
         {
             channelGroup = _viewModel?.ChannelList.CreateChannelGroup("Default Group", RadioStationPresets.AWACS);
         }
-        channelGroup?.CreateChannel(225.0, $"Channel #{channelGroup.Channels.Count + 1}", Channel.ChannelType.UHF);
+        channelGroup?.CreateChannel(225000, $"Channel #{channelGroup.Channels.Count + 1}", Channel.ChannelType.UHF);
     }
 
     private void MenuButton_OnClick(object? sender, RoutedEventArgs e)

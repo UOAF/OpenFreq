@@ -16,29 +16,29 @@ public static class SignalingMessageFactory
         };
     }
 
-    public static SignalingMessage CreateJoin(double frequencyMhz)
+    public static SignalingMessage CreateJoin(int frequencyKhz)
     {
         return new SignalingMessage
         {
             Type = SignalingMessageTypes.Join,
             Payload = JsonSerializer.SerializeToElement(
-                new JoinChannelMessage { FrequencyMhz = frequencyMhz }, 
+                new JoinChannelMessage { FrequencyKhz = frequencyKhz }, 
                 OpenFreqJsonContext.Default.JoinChannelMessage)
         };
     }
 
-    public static SignalingMessage CreateLeave(double frequencyMhz)
+    public static SignalingMessage CreateLeave(int frequencyKhz)
     {
         return new SignalingMessage
         {
             Type = SignalingMessageTypes.Leave,
             Payload = JsonSerializer.SerializeToElement(
-                new LeaveChannelMessage { FrequencyMhz = frequencyMhz }, 
+                new LeaveChannelMessage { FrequencyKhz = frequencyKhz }, 
                 OpenFreqJsonContext.Default.LeaveChannelMessage)
         };
     }
 
-    public static SignalingMessage CreateTransmission(double frequency, bool transmitting)
+    public static SignalingMessage CreateTransmission(int frequencyKhz, bool transmitting)
     {
         return new SignalingMessage
         {
@@ -46,7 +46,7 @@ public static class SignalingMessageFactory
             Payload = JsonSerializer.SerializeToElement(
                 new AudioTransmissionMessage 
                 { 
-                    FrequencyMhz = frequency, 
+                    FrequencyKhz = frequencyKhz, 
                     Transmitting = transmitting 
                 }, 
                 OpenFreqJsonContext.Default.AudioTransmissionMessage)
@@ -81,7 +81,7 @@ public static class SignalingMessageFactory
         };
     }
 
-    public static SignalingMessage CreatePeerJoined(string peerId, double frequencyMhz)
+    public static SignalingMessage CreatePeerJoined(string peerId, int frequencyKhz)
     {
         return new SignalingMessage
         {
@@ -90,13 +90,13 @@ public static class SignalingMessageFactory
                 new PeerJoinedMessage 
                 { 
                     PeerId = peerId, 
-                    FrequencyMhz = frequencyMhz 
+                    FrequencyKhz = frequencyKhz 
                 }, 
                 OpenFreqJsonContext.Default.PeerJoinedMessage)
         };
     }
 
-    public static SignalingMessage CreatePeerLeft(string peerId, double frequencyMhz)
+    public static SignalingMessage CreatePeerLeft(string peerId, int frequencyKhz)
     {
         return new SignalingMessage
         {
@@ -105,13 +105,13 @@ public static class SignalingMessageFactory
                 new PeerLeftMessage 
                 { 
                     PeerId = peerId, 
-                    FrequencyMhz = frequencyMhz 
+                    FrequencyKhz = frequencyKhz 
                 }, 
                 OpenFreqJsonContext.Default.PeerLeftMessage)
         };
     }
 
-    public static SignalingMessage CreateTransmissionEvent(string peerId, double frequencyMhz, bool transmitting)
+    public static SignalingMessage CreateTransmissionEvent(string peerId, int frequencyKhz, bool transmitting)
     {
         return new SignalingMessage
         {
@@ -120,14 +120,14 @@ public static class SignalingMessageFactory
                 new TransmissionEventMessage 
                 { 
                     PeerId = peerId, 
-                    FrequencyMhz = frequencyMhz, 
+                    FrequencyKhz = frequencyKhz, 
                     Transmitting = transmitting 
                 }, 
                 OpenFreqJsonContext.Default.TransmissionEventMessage)
         };
     }
 
-    public static SignalingMessage CreateChannelState(double frequencyMhz, List<string> peers)
+    public static SignalingMessage CreateChannelState(int frequencyKhz, List<string> peers)
     {
         return new SignalingMessage
         {
@@ -135,7 +135,7 @@ public static class SignalingMessageFactory
             Payload = JsonSerializer.SerializeToElement(
                 new ChannelStateMessage 
                 { 
-                    FrequencyMhz = frequencyMhz, 
+                    FrequencyKhz = frequencyKhz, 
                     Peers = peers 
                 }, 
                 OpenFreqJsonContext.Default.ChannelStateMessage)

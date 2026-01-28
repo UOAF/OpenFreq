@@ -6,24 +6,24 @@ namespace OpenFreq.Server;
 /// </summary>
 public class FrequencyChannelManager
 {
-    private readonly ConcurrentDictionary<double, ConcurrentDictionary<string, byte>> _channels = new();
+    private readonly ConcurrentDictionary<int, ConcurrentDictionary<string, byte>> _channels = new();
 
-    public bool JoinChannel(double frequencyMhz, string clientId)
+    public bool JoinChannel(int frequencyKhz, string clientId)
     {
-        var channelClients = _channels.GetOrAdd(frequencyMhz, _ => new ConcurrentDictionary<string, byte>());
+        var channelClients = _channels.GetOrAdd(frequencyKhz, _ => new ConcurrentDictionary<string, byte>());
         return channelClients.TryAdd(clientId, 0);
     }
 
-    public bool LeaveChannel(double frequencyMhz, string clientId)
+    public bool LeaveChannel(int frequencyKhz, string clientId)
     {
-        if (_channels.TryGetValue(frequencyMhz, out var clients))
+        if (_channels.TryGetValue(frequencyKhz, out var clients))
         {
             var removed = clients.TryRemove(clientId, out _);
             
             // Clean up empty channels
             if (clients.IsEmpty)
             {
-                _channels.TryRemove(frequencyMhz, out _);
+                _channels.TryRemove(frequencyKhz, out _);
             }
 
             return removed;
@@ -55,9 +55,9 @@ public class FrequencyChannelManager
 
     /// <summary>
     /// </summary>
-    public string[] GetClientsInChannel(double frequencyMhz)
+    public string[] GetClientsInChannel(int frequencyKhz)
     {
-        if (_channels.TryGetValue(frequencyMhz, out var clients))
+        if (_channels.TryGetValue(frequencyKhz, out var clients))
         {
             return clients.Keys.ToArray();
         }
@@ -101,9 +101,9 @@ public class FrequencyChannelManager
 
     /// <summary>
     /// </summary>
-    public int GetChannelCount(double frequencyMhz)
+    public int GetChannelCount(int frequencyKhz)
     {
-        if (_channels.TryGetValue(frequencyMhz, out var clients))
+        if (_channels.TryGetValue(frequencyKhz, out var clients))
         {
             return clients.Count;
         }

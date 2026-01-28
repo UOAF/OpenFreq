@@ -157,7 +157,7 @@ public class RtpAudioSender : IDisposable
                     // First chunk uses original markers, subsequent chunks clear beginMarkers
                     var markers = isFirstChunk 
                         ? frequencyTransmissions 
-                        : frequencyTransmissions.Select(f => new FrequencyTransmission(f.Mhz, f.TxPowerWatts, f.Position,false, f.EndMarker)).ToList();
+                        : frequencyTransmissions.Select(f => new FrequencyTransmission(f.Khz, f.TxPowerWatts, f.Position,false, f.EndMarker)).ToList();
                 
                     QueueRawFrame(clientId, markers);
                     isFirstChunk = false;

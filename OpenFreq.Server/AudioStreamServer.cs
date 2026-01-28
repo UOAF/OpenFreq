@@ -148,15 +148,15 @@ public class AudioStreamServer
                     continue;
 
                 var validFrequencies = metadata.Frequencies
-                    .Where(freq => clientSession.CurrentFrequencies.ContainsKey(freq.Mhz))
+                    .Where(freq => clientSession.CurrentFrequencies.ContainsKey(freq.Khz))
                     .ToList();
 
                 if (validFrequencies.Count < metadata.Frequencies.Count)
                 {
-                    var validMhz = validFrequencies.Select(f => f.Mhz).ToHashSet();
+                    var validKhz = validFrequencies.Select(f => f.Khz).ToHashSet();
                     var invalidMhz = metadata.Frequencies
-                        .Where(f => !validMhz.Contains(f.Mhz))
-                        .Select(f => $"{f.Mhz:F1} MHz")
+                        .Where(f => !validKhz.Contains(f.Khz))
+                        .Select(f => $"{f.Khz/1000:F3} MHz")
                         .ToList();
     
                     if (_logger.IsEnabled(LogLevel.Warning))
@@ -174,7 +174,7 @@ public class AudioStreamServer
                 // Each recipient gets their own RTP packet with unique sequence number
                 foreach (var frequency in validFrequencies)
                 {
-                    ForwardAudioToChannel(frequency.Mhz, clientId, rtpPacket, metadata, audioData);
+                    ForwardAudioToChannel(frequency.Khz, clientId, rtpPacket, metadata, audioData);
                 }
             }
         }
@@ -324,13 +324,13 @@ public class AudioStreamServer
     /// Each recipient gets a unique RTP packet with their own sequence number
     /// </summary>
     private void ForwardAudioToChannel(
-        double frequencyMhz, 
+        int frequencyKhz, 
         string sourceClientId,
         RtpPacket originalRtpPacket,
         AudioPacketMetadata metadata,
         byte[] audioData)
     {
-        var clients = _channelManager.GetClientsInChannel(frequencyMhz);
+        var clients = _channelManager.GetClientsInChannel(frequencyKhz);
 
         foreach (var clientId in clients)
         {

@@ -5,10 +5,9 @@ namespace OpenFreqClient.Models;
 public class Channel
 {
     /// <summary>
-    /// Frequency in Hz (SI unit)
-    /// Example: 305.0 MHz = 305,000,000 Hz
+    /// Frequency in KHz
     /// </summary>
-    public double FrequencyMhz { get; set; }
+    public int FrequencyKhz { get; set; }
     
     public string? Name  { get; set; }
     public float RxDb {get; set;}

@@ -8,7 +8,7 @@ public class ClientSession
     public string Id { get; }
     public WebSocket WebSocket { get; }
     public bool IsAuthenticated { get; set; }
-    public ConcurrentDictionary<double, FrequencyClientStatus> CurrentFrequencies { get; set; } = new();
+    public ConcurrentDictionary<int, FrequencyClientStatus> CurrentFrequencies { get; set; } = new();
     public DateTime LastActivity { get; set; }
     public int AudioPort { get; set; }
 

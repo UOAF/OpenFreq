@@ -11,9 +11,9 @@ namespace OpenFreqClient.Services;
 /// </summary>
 public class SignalStrengthTracker : IDisposable
 {
-    private readonly ConcurrentDictionary<double, SignalStrengthData> _signalStrengths = new();
+    private readonly ConcurrentDictionary<int, SignalStrengthData> _signalStrengths = new();
     private readonly Timer _updateTimer;
-    private readonly Action<double, float> _onSignalStrengthChanged;
+    private readonly Action<int, float> _onSignalStrengthChanged;
 
     private class SignalStrengthData
     {
@@ -25,7 +25,7 @@ public class SignalStrengthTracker : IDisposable
     public int SignalTimeoutMs { get; }
 
     public SignalStrengthTracker(
-        Action<double, float> onSignalStrengthChanged,
+        Action<int, float> onSignalStrengthChanged,
         int updateIntervalMs = 100,
         int signalTimeoutMs = 500)
     {
@@ -42,11 +42,11 @@ public class SignalStrengthTracker : IDisposable
     /// Update the signal strength for a given frequency.
     /// Call this from your audio processing pipeline.
     /// </summary>
-    public void UpdateSignalStrength(double frequencyMhz, AudioParams audioParams)
+    public void UpdateSignalStrength(int frequencyKhz, AudioParams audioParams)
     {
         var strength = GetSignalStrength(audioParams);
         _signalStrengths.AddOrUpdate(
-            frequencyMhz,
+            frequencyKhz,
             new SignalStrengthData { Strength = strength, LastUpdate = DateTime.UtcNow },
             (_, existing) =>
             {
@@ -63,13 +63,13 @@ public class SignalStrengthTracker : IDisposable
 
         foreach (var kvp in _signalStrengths)
         {
-            var frequencyMhz = kvp.Key;
+            var frequencyKhz = kvp.Key;
             var data = kvp.Value;
 
             // Set to 0 if no recent transmission
             var strength = (now - data.LastUpdate) > timeout ? 0f : data.Strength;
 
-            _onSignalStrengthChanged(frequencyMhz, strength);
+            _onSignalStrengthChanged(frequencyKhz, strength);
         }
     }
 
@@ -103,12 +103,12 @@ public class SignalStrengthTracker : IDisposable
     
     public class SignalStrengthUpdateMessage
     {
-        public double FrequencyMhz { get; }
+        public int FrequencyKhz { get; }
         public float Strength { get; } // 0-100
     
-        public SignalStrengthUpdateMessage(double frequencyMhz, float strength)
+        public SignalStrengthUpdateMessage(int frequencyKhz, float strength)
         {
-            FrequencyMhz = frequencyMhz;
+            FrequencyKhz = frequencyKhz;
             Strength = strength;
         }
     }

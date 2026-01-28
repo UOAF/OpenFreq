@@ -26,7 +26,7 @@ public class ChannelGroupData
 public class ChannelData
 {
     public string? Name { get; set; }
-    public double FrequencyMhz { get; set; }  // KHz
+    public int FrequencyKhz { get; set; }  // KHz
     public Channel.ChannelType Type { get; set; }
     public string HotkeyCode { get; set; } = "VcUndefined";
     public bool Enabled { get; set; }

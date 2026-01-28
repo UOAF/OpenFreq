@@ -24,9 +24,9 @@ public class ServerStats
 
     public TimeSpan Uptime => DateTime.UtcNow - _startTime;
 
-    public List<(double Frequency, int ClientCount)> GetFrequencyStats()
+    public List<(int FrequencyKhz, int ClientCount)> GetFrequencyStats()
     {
-        var stats = new List<(double FrequencyMhz, int ClientCount)>();
+        var stats = new List<(int FrequencyKhz, int ClientCount)>();
         var allFrequencies = _clients
             .SelectMany(client => client.Value.CurrentFrequencies.Keys)
             .Distinct()
@@ -38,7 +38,7 @@ public class ServerStats
             stats.Add((freq, count));
         }
 
-        return stats.OrderBy(s => s.FrequencyMhz).ToList();
+        return stats.OrderBy(s => s.FrequencyKhz).ToList();
     }
     
     public List<ClientSession> GetActiveClients()

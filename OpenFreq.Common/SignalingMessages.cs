@@ -26,7 +26,7 @@ public class AuthenticateMessage
 /// </summary>
 public class JoinChannelMessage
 {
-    [JsonPropertyName("frequency")] public double FrequencyMhz { get; set; }
+    [JsonPropertyName("frequency")] public int FrequencyKhz { get; set; }
 }
 
 /// <summary>
@@ -34,7 +34,7 @@ public class JoinChannelMessage
 /// </summary>
 public class LeaveChannelMessage
 {
-    [JsonPropertyName("frequency")] public double FrequencyMhz { get; set; }
+    [JsonPropertyName("frequency")] public int FrequencyKhz { get; set; }
 }
 
 /// <summary>
@@ -42,7 +42,7 @@ public class LeaveChannelMessage
 /// </summary>
 public class AudioTransmissionMessage
 {
-    [JsonPropertyName("frequency")] public double FrequencyMhz { get; set; }
+    [JsonPropertyName("frequency")] public int FrequencyKhz { get; set; }
 
     [JsonPropertyName("transmitting")] public bool Transmitting { get; set; }
 }
@@ -76,7 +76,7 @@ public class PeerJoinedMessage
 {
     [JsonPropertyName("peerId")] public string PeerId { get; set; } = string.Empty;
 
-    [JsonPropertyName("frequency")] public double FrequencyMhz { get; set; }
+    [JsonPropertyName("frequency")] public int FrequencyKhz { get; set; }
 }
 
 /// <summary>
@@ -86,7 +86,7 @@ public class PeerLeftMessage
 {
     [JsonPropertyName("peerId")] public string PeerId { get; set; } = string.Empty;
 
-    [JsonPropertyName("frequency")] public double FrequencyMhz { get; set; }
+    [JsonPropertyName("frequency")] public int FrequencyKhz { get; set; }
 }
 
 /// <summary>
@@ -98,7 +98,7 @@ public class TransmissionEventMessage
 
     [JsonPropertyName("transmitting")] public bool Transmitting { get; set; }
 
-    [JsonPropertyName("frequency")] public double FrequencyMhz { get; set; }
+    [JsonPropertyName("frequency")] public int FrequencyKhz { get; set; }
 }
 
 /// <summary>
@@ -106,7 +106,7 @@ public class TransmissionEventMessage
 /// </summary>
 public class ChannelStateMessage
 {
-    [JsonPropertyName("frequency")] public double FrequencyMhz { get; set; }
+    [JsonPropertyName("frequency")] public int FrequencyKhz { get; set; }
 
     [JsonPropertyName("peers")] public List<string> Peers { get; set; } = new();
 }

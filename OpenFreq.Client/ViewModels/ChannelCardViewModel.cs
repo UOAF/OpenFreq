@@ -19,19 +19,19 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     public Guid Id { get; } = Guid.NewGuid();
 
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(FrequencyMhzString))]
-    private double _frequencyMhz;
+    private int _frequencyKhz;
 
     /// <summary>
     /// Frequency display string in MHz
     /// </summary>
     public string FrequencyMhzString
     {
-        get => (FrequencyMhz).ToString("F3");
+        get => (FrequencyKhz/1000).ToString("F3");
         set
         {
             if (double.TryParse(value, out var mhz))
             {
-                FrequencyMhz = mhz;
+                FrequencyKhz = (int)(mhz * 1000d);
             }
         }
     }
@@ -66,7 +66,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     public RadioStationData RadioStationData { get; set; }
 
 // Store original values when entering edit mode
-    private double _originalFrequencyMhz;
+    private int _originalFrequencyKhz;
     private Channel.ChannelType _originalType;
     private KeyCode _originalBinding;
 
@@ -74,7 +74,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     public void BmsLobby1Clicked()
     {
         Name = "BMS Lobby 1";
-        FrequencyMhz = 307.3;
+        FrequencyKhz = 307300;
         HotKey = KeyCode.VcF1;
         Type = Channel.ChannelType.Custom;
         ToggleEditing();
@@ -84,7 +84,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     public void BmsLobby2Clicked()
     {
         Name = "BMS Lobby 2";
-        FrequencyMhz = 1.234;
+        FrequencyKhz = 1234;
         HotKey = KeyCode.VcF2;
         Type = Channel.ChannelType.Custom;
         ToggleEditing();
@@ -97,14 +97,20 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         RadioStationData = radioStationData;
 
         WeakReferenceMessenger.Default.Register<SignalStrengthTracker.SignalStrengthUpdateMessage>(this,
-            (r, m) => { SignalStrength = m.Strength; });
+            (r, m) =>
+            {
+                if (FrequencyKhz == m.FrequencyKhz)
+                {
+                    SignalStrength = m.Strength;
+                }
+            });
     }
 
     public ChannelCardViewModel(IHotkeyService hotkeyService, Channel channel, RadioStationData radioStationData)
     {
         _hotkeyService = hotkeyService;
         RadioStationData = radioStationData;
-        _frequencyMhz = channel.FrequencyMhz;
+        _frequencyKhz = channel.FrequencyKhz;
         _name = channel.Name;
         _rxDb = channel.RxDb;
         _type = channel.Type;
@@ -117,7 +123,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     {
         IsEnabled = !IsEnabled;
         WeakReferenceMessenger.Default.Send(
-            new ChannelEnabledDisabledMessage(channelId: Id, frequencyMhz: FrequencyMhz, enabled: IsEnabled));
+            new ChannelEnabledDisabledMessage(channelId: Id, frequencyKhz: FrequencyKhz, enabled: IsEnabled));
     }
 
     [RelayCommand]
@@ -126,7 +132,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         if (!IsEditing)
         {
             // Entering edit mode - store current values
-            _originalFrequencyMhz = FrequencyMhz;
+            _originalFrequencyKhz = FrequencyKhz;
             _originalType = Type;
             _originalBinding = HotKey;
         }
@@ -135,8 +141,8 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
             // Exiting edit mode - send update if changed
             var message = new ChannelUpdatedMessage(
                 Id,
-                _originalFrequencyMhz,
-                FrequencyMhz,
+                _originalFrequencyKhz,
+                FrequencyKhz,
                 _originalType,
                 Type,
                 Status,
@@ -208,7 +214,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         _channelWasChanged = true;
     }
 
-    partial void OnFrequencyMhzChanged(double value)
+    partial void OnFrequencyKhzChanged(int value)
     {
         _channelWasChanged = true;
     }
@@ -217,14 +223,14 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     {
         return new Channel()
         {
-            Name = this.Name, FrequencyMhz = this.FrequencyMhz, RxDb = this.RxDb, Type = this.Type
+            Name = this.Name, FrequencyKhz = this.FrequencyKhz, RxDb = this.RxDb, Type = this.Type
         };
     }
 
     [RelayCommand]
     public void DeleteChannel()
     {
-        WeakReferenceMessenger.Default.Send(new ChannelDeleteRequestedMessage(Id, FrequencyMhz));
+        WeakReferenceMessenger.Default.Send(new ChannelDeleteRequestedMessage(Id, FrequencyKhz));
     }
 
     public void StartTransmission()
@@ -232,7 +238,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         if (Status == Channel.ChannelStatus.Disconnected)
             return;
 
-        WeakReferenceMessenger.Default.Send(new StartTransmissionMessage(Id, FrequencyMhz, RadioStationData));
+        WeakReferenceMessenger.Default.Send(new StartTransmissionMessage(Id, FrequencyKhz, RadioStationData));
     }
 
     public void StopTransmission()
@@ -240,7 +246,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         if (Status == Channel.ChannelStatus.Disconnected)
             return;
 
-        WeakReferenceMessenger.Default.Send(new StopTransmissionMessage(Id, FrequencyMhz));
+        WeakReferenceMessenger.Default.Send(new StopTransmissionMessage(Id, FrequencyKhz));
     }
 
     public void Dispose()
@@ -254,8 +260,8 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
 
 public class ChannelUpdatedMessage(
     Guid channelId,
-    double oldFrequencyMhz,
-    double newFrequencyMhz,
+    int oldFrequencyKhz,
+    int newFrequencyKhz,
     Channel.ChannelType oldType,
     Channel.ChannelType newType,
     Channel.ChannelStatus oldStatus,
@@ -263,8 +269,8 @@ public class ChannelUpdatedMessage(
     KeyCode newBinding)
 {
     public Guid ChannelId { get; } = channelId;
-    public double OldFrequencyMhz { get; } = oldFrequencyMhz;
-    public double NewFrequencyMhz { get; } = newFrequencyMhz;
+    public int OldFrequencyKhz { get; } = oldFrequencyKhz;
+    public int NewFrequencyKhz { get; } = newFrequencyKhz;
     public Channel.ChannelType OldType { get; } = oldType;
     public Channel.ChannelType NewType { get; } = newType;
     public Channel.ChannelStatus OldStatus { get; } = oldStatus;
@@ -273,47 +279,47 @@ public class ChannelUpdatedMessage(
     public KeyCode NewBinding { get; } = newBinding;
 
 
-    public bool NeedsReconnect => OldFrequencyMhz != NewFrequencyMhz || OldType != NewType;
+    public bool NeedsReconnect => OldFrequencyKhz != NewFrequencyKhz || OldType != NewType;
     public bool BindingChanged => OldBinding != NewBinding;
 }
 
 public class ChannelEnabledDisabledMessage(
     Guid channelId,
-    double frequencyMhz,
+    int frequencyKhz,
     bool enabled)
 {
     public Guid ChannelId { get; } = channelId;
-    public double FrequencyMhz { get; } = frequencyMhz;
+    public int FrequencyKhz { get; } = frequencyKhz;
     public bool Enabled { get; } = enabled;
 }
 
-public class StartTransmissionMessage(Guid channelId, double frequencyMhz, RadioStationData radioStationData)
+public class StartTransmissionMessage(Guid channelId, int frequencyKhz, RadioStationData radioStationData)
 {
     public Guid ChannelId { get; } = channelId;
-    public double FrequencyMhz { get; } = frequencyMhz;
+    public int FrequencyKhz { get; } = frequencyKhz;
     public RadioStationData RadioStationData { get; } = radioStationData;
 }
 
 public class StopTransmissionMessage
 {
     public Guid ChannelId { get; }
-    public double FrequencyMhz { get; }
+    public int FrequencyKhz { get; }
 
-    public StopTransmissionMessage(Guid channelId, double frequencyMhz)
+    public StopTransmissionMessage(Guid channelId, int frequencyKhz)
     {
         ChannelId = channelId;
-        FrequencyMhz = frequencyMhz;
+        FrequencyKhz = frequencyKhz;
     }
 }
 
 public class ChannelDeleteRequestedMessage
 {
     public Guid ChannelId { get; }
-    public double FrequencyMhz { get; }
+    public int FrequencyKhz { get; }
 
-    public ChannelDeleteRequestedMessage(Guid channelId, double frequencyMhz)
+    public ChannelDeleteRequestedMessage(Guid channelId, int frequencyKhz)
     {
         ChannelId = channelId;
-        FrequencyMhz = frequencyMhz;
+        FrequencyKhz = frequencyKhz;
     }
 }
