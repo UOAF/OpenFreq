@@ -23,10 +23,10 @@ namespace OpenFreqClient.ViewModels;
 
 public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
 {
-    public SettingsViewModel Settings { get; }
+    private SettingsViewModel Settings { get; }
 
     [ObservableProperty] public partial string Name { get; set; }
-    [ObservableProperty] public partial bool UseFixedPosition { get; set; } = true;
+
     [ObservableProperty] public partial bool EditMode { get; set; }
 
     public record TacviewAircraftItem(string CallSign, string ObjectId)
@@ -36,9 +36,8 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty] private ObservableCollection<TacviewAircraftItem> _tacviewFlightCallsigns = [];
     [ObservableProperty] private TacviewAircraftItem? _selectedTacviewCallsign;
-    
-    public RadioStationData RadioStationData { get; } = new();
-    [ObservableProperty] public partial RadioStationPreset GroupPreset { get; set; }
+
+    [ObservableProperty] public partial RadioStationData RadioStationData { get; set; }
 
     private readonly IOpenFreqService _openFreqService;
     private readonly IHotkeyService _hotkeyService;
@@ -47,8 +46,8 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
     [ObservableProperty] public partial ObservableCollection<ChannelCardViewModel> Channels { get; set; } = [];
 
     private readonly CancellationTokenSource? _callsignUpdateCts = new();
-    [ObservableProperty] public partial bool IsBmsGroup { get; set; }
 
+    // UI Properties
     [ObservableProperty] public partial double Latitude { get; set; }
     [ObservableProperty] public partial double Longitude { get; set; }
     [ObservableProperty] public partial string LatLonInput { get; set; } = "";
@@ -61,16 +60,20 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
 
     public ChannelCardGroupViewModel(IOpenFreqService openFreqService, IHotkeyService hotkeyService,
         IAcmiClientService acmiClientService, SettingsViewModel settingsViewModel, string name,
-        RadioStationPreset preset, bool isBmsGroup, bool editMode = true)
+        RadioStationPreset preset, RadioStationData.RadioStationType radioStationType, double latitude = 0, double longitude = 0, bool editMode = true)
     {
+        RadioStationData = new RadioStationData
+        {
+            Type = radioStationType,
+            Preset = preset
+        };
         _openFreqService = openFreqService;
         _hotkeyService = hotkeyService;
         Settings = settingsViewModel;
         Name = name;
-        GroupPreset = preset;
-        RadioStationData.Preset = preset;
+        Latitude = latitude;
+        Longitude = longitude;
         _acmiClientService = acmiClientService;
-        IsBmsGroup = isBmsGroup;
         EditMode = editMode;
 
         // Subscribe to connection state for auto-join
@@ -87,18 +90,6 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         WeakReferenceMessenger.Default.Register<ChannelUpdatedMessage>(this, OnChannelUpdated);
         WeakReferenceMessenger.Default.Register<ChannelEnabledDisabledMessage>(this, OnChannelEnabledDisabled);
         WeakReferenceMessenger.Default.Register<ChannelDeleteRequestedMessage>(this, OnChannelDeleteRequested);
-
-        if (isBmsGroup)
-        {
-            RadioStationData.Type = RadioStationData.RadioStationType.BMS;
-        }
-        else
-        {
-            // For non-BMS groups, default to stationary
-            RadioStationData.Type = RadioStationData.RadioStationType.STATIONARY;
-            // Initialize position for stationary radios
-            RadioStationData.Position = new Position(0d, 0d, 0d);
-        }
     }
 
     public ChannelCardViewModel CreateChannel(int frequencyKhz, string name, Channel.ChannelType channelType,
@@ -109,10 +100,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         channel.Type = channelType;
         channel.FrequencyKhz = frequencyKhz;
         channel.IsEditing = isInEditMode;
-        Dispatcher.UIThread.Post(() =>
-        {
-            Channels.Add(channel);
-        });
+        Dispatcher.UIThread.Post(() => { Channels.Add(channel); });
 
         return channel;
     }
@@ -120,10 +108,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
     public ChannelCardViewModel CreateChannel(Channel channel)
     {
         var vm = new ChannelCardViewModel(_hotkeyService, channel, RadioStationData);
-        Dispatcher.UIThread.Post(() =>
-        {
-            Channels.Add(vm);
-        });
+        Dispatcher.UIThread.Post(() => { Channels.Add(vm); });
         return vm;
     }
 
@@ -190,7 +175,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
             Dispatcher.UIThread.Post(() =>
             {
                 Channels.Remove(vm);
-                vm.Dispose();    
+                vm.Dispose();
             });
         }
 
@@ -434,6 +419,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         {
             RadioStationData.Position = new Position(0d, 0d, 0d);
         }
+
         var xy = TheaterCoordinateConverter.LatLonToXY(
             Settings.SelectedTheater,
             lat,
@@ -442,28 +428,23 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         RadioStationData.Position = new Position(xy.x, xy.y, RadioStationData.Position.Z);
     }
 
-    partial void OnGroupPresetChanged(RadioStationPreset value)
-    {
-        RadioStationData.Preset = value;
-    }
-
     partial void OnAltitudeInputChanged(double value)
     {
         const double FEET_PER_METER = 3.28084d;
         RadioStationData.Position ??= new Position(0d, 0d, 0d);
         RadioStationData.Position.Z = value / FEET_PER_METER;
     }
-    
+
     [RelayCommand]
     private async Task OpenMapPickerAsync()
     {
         var window = new MapPickerWindow(Latitude, Longitude, Settings.SelectedTheater);
-    
+
         var result = await window.ShowDialog<(double lat, double lon)?>(
             (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
                 ? desktop.MainWindow
                 : null) ?? throw new InvalidOperationException());
-    
+
         if (result.HasValue)
         {
             Latitude = result.Value.lat;

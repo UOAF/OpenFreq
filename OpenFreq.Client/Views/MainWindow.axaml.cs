@@ -29,8 +29,10 @@ public partial class MainWindow : Window
         var channelGroup = _viewModel?.ChannelList.ChannelGroups.FirstOrDefault();
         if (channelGroup == null)
         {
-            channelGroup = _viewModel?.ChannelList.CreateChannelGroup("Default Group", RadioStationPresets.AWACS);
+            channelGroup =
+                _viewModel?.ChannelList.CreateChannelGroup(new ChannelGroupData { Name = "Default Group" }, true);
         }
+
         channelGroup?.CreateChannel(225000, $"Channel #{channelGroup.Channels.Count + 1}", Channel.ChannelType.UHF);
     }
 
@@ -42,7 +44,7 @@ public partial class MainWindow : Window
             drawer.LeftDrawerOpened = !drawer.LeftDrawerOpened;
         }
     }
-    
+
     private async void HeightmapButton_OnClick(object? sender, RoutedEventArgs e)
     {
         var storage = StorageProvider;

@@ -8,7 +8,13 @@
              xmlns:local="clr-namespace:OpenFreqAudio;assembly=OpenFreqAudio"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="OpenFreqClient.Views.ChannelCardListView"
-             x:DataType="viewModels:ChannelCardListViewModel">
+             x:DataType="viewModels:ChannelCardListViewModel"
+             xmlns:converters="clr-namespace:Avalonia.Controls.Converters;assembly=Avalonia.Controls"
+             xmlns:models="clr-namespace:OpenFreq.Client.Models">
+
+    <UserControl.Resources>
+        <converters:EnumToBoolConverter x:Key="EnumToBoolConverter" />
+    </UserControl.Resources>
 
     <ItemsControl ItemsSource="{Binding ChannelGroups}">
         <ItemsControl.ItemTemplate>
@@ -27,9 +33,9 @@
                             <StackPanel Grid.Column="0" Spacing="2">
                                 <TextBlock Text="{Binding Name}"
                                            Classes="Headline6" />
-                                <TextBlock Text="{Binding GroupPreset.Name}"
+                                <TextBlock Text="{Binding RadioStationData.Preset.Name}"
                                            Classes="Subtitle2"
-                                           IsVisible="{Binding GroupPreset, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                                           IsVisible="{Binding RadioStationData.Preset, Converter={x:Static ObjectConverters.IsNotNull}}" />
                             </StackPanel>
 
                             <!-- Action Buttons -->
@@ -69,14 +75,18 @@
                                 <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="10">
                                     <!-- Fixed Position Option -->
                                     <RadioButton Grid.Row="0" Grid.Column="0"
-                                                 IsChecked="{Binding UseFixedPosition}"
+                                                 IsChecked="{Binding RadioStationData.Type, 
+                                                 Converter={StaticResource EnumToBoolConverter}, 
+                                                 ConverterParameter={x:Static models:RadioStationData+RadioStationType.STATIONARY}}"
                                                  GroupName="PositionSource"
                                                  Content="Fixed Position"
                                                  VerticalAlignment="Center" />
                                     <StackPanel Grid.Row="0" Grid.Column="1"
                                                 Orientation="Horizontal"
                                                 Spacing="5"
-                                                IsEnabled="{Binding UseFixedPosition}">
+                                                IsEnabled="{Binding RadioStationData.Type, 
+                                                Converter={StaticResource EnumToBoolConverter}, 
+                                                ConverterParameter={x:Static models:RadioStationData+RadioStationType.STATIONARY}}">
                                         <StackPanel Orientation="Vertical">
                                             <TextBox Text="{Binding LatLonInput}"
                                                      Watermark="Latitude Longitude (e.g., 37.12345 -122.98765)"
@@ -95,12 +105,14 @@
                                         <TextBox Text="{Binding AltitudeInput}"
                                                  Watermark="Altitude ft (AGL)"
                                                  MinWidth="50" />
-                                        
+
                                     </StackPanel>
 
                                     <!-- Aircraft Callsign Option -->
                                     <RadioButton Grid.Row="1" Grid.Column="0"
-                                                 IsChecked="{Binding !UseFixedPosition}"
+                                                 IsChecked="{Binding RadioStationData.Type,
+                                                 Converter={StaticResource EnumToBoolConverter},
+                                                 ConverterParameter={x:Static models:RadioStationData+RadioStationType.ACMI}}"
                                                  GroupName="PositionSource"
                                                  Content="Aircraft"
                                                  VerticalAlignment="Top"
@@ -110,14 +122,16 @@
                                               PlaceholderText="Select aircraft callsign..."
                                               ItemsSource="{Binding TacviewFlightCallsigns}"
                                               SelectedItem="{Binding SelectedTacviewCallsign}"
-                                              IsEnabled="{Binding !UseFixedPosition}"
+                                              IsEnabled="{Binding RadioStationData.Type, 
+                                              Converter={StaticResource EnumToBoolConverter}, 
+                                              ConverterParameter={x:Static models:RadioStationData+RadioStationType.ACMI}}"
                                               MinWidth="200" />
                                 </Grid>
                             </StackPanel>
 
                             <!-- Station Preset Selection -->
                             <ComboBox ItemsSource="{x:Static local:RadioStationPresets.AllPresets}"
-                                      SelectedItem="{Binding GroupPreset}"
+                                      SelectedItem="{Binding RadioStationData.Preset}"
                                       PlaceholderText="Select station preset..."
                                       HorizontalAlignment="Stretch">
                                 <ComboBox.ItemTemplate>
@@ -136,24 +150,24 @@
                             <!-- Preset Parameters (Read-Only, Compact) -->
                             <UniformGrid Columns="10"
                                          ColumnSpacing="1"
-                                         IsVisible="{Binding GroupPreset, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                         IsVisible="{Binding RadioStationData.Preset, Converter={x:Static ObjectConverters.IsNotNull}}">
                                 <Label Content="VHF TX (W)" VerticalAlignment="Center" />
-                                <TextBox Text="{Binding GroupPreset.TxPower_VHF_W, StringFormat='{}{0:F1}'}"
+                                <TextBox Text="{Binding RadioStationData.Preset.TxPower_VHF_W, StringFormat='{}{0:F1}'}"
                                          Watermark="VHF TX"
                                          VerticalAlignment="Center" />
                                 <Label Content="VHF TX (W)" VerticalAlignment="Center" />
-                                <TextBox Text="{Binding GroupPreset.TxPower_UHF_W, StringFormat='{}{0:F1}'}"
+                                <TextBox Text="{Binding RadioStationData.Preset.TxPower_UHF_W, StringFormat='{}{0:F1}'}"
                                          Watermark="UHF TX" VerticalAlignment="Center" />
                                 <Label Content="Antenna (m)" VerticalAlignment="Center" />
-                                <TextBox Text="{Binding GroupPreset.AntennaElevation_m, StringFormat='{}{0:F1}'}"
+                                <TextBox Text="{Binding RadioStationData.Preset.AntennaElevation_m, StringFormat='{}{0:F1}'}"
                                          Watermark="Antenna"
                                          VerticalAlignment="Center" />
                                 <Label Content="VHF RX (dBm)" VerticalAlignment="Center" />
-                                <TextBox Text="{Binding GroupPreset.RxSensitivity_VHF_dBm, StringFormat='{}{0:F1}'}"
+                                <TextBox Text="{Binding RadioStationData.Preset.RxSensitivity_VHF_dBm, StringFormat='{}{0:F1}'}"
                                          Watermark="VHF RX"
                                          VerticalAlignment="Center" />
                                 <Label Content="UHF RX (dBm)" VerticalAlignment="Center" />
-                                <TextBox Text="{Binding GroupPreset.RxSensitivity_UHF_dBm, StringFormat='{}{0:F1}'}"
+                                <TextBox Text="{Binding RadioStationData.Preset.RxSensitivity_UHF_dBm, StringFormat='{}{0:F1}'}"
                                          Watermark="UHF RX"
                                          VerticalAlignment="Center" />
                             </UniformGrid>

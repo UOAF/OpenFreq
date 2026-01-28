@@ -12,7 +12,6 @@ using Material.Styles.Controls;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Common;
 using OpenFreq.Services.Acmi;
-using OpenFreq.Utilities;
 using OpenFreqClient.Models;
 using OpenFreqClient.Services;
 using OpenFreqClient.Services.Interfaces;
@@ -362,7 +361,10 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             // Load channel groups
             foreach (var channelGroupData in config.ChannelGroups)
             {
-                var channelGroup = ChannelList.CreateChannelGroup(channelGroupData, editMode: false, isBmsGroup: false);
+                var channelGroup = ChannelList.CreateChannelGroup(channelGroupData);
+                channelGroup.Latitude = channelGroupData.Latitude;
+                channelGroup.Longitude = channelGroupData.Longitude;
+                channelGroup.AltitudeInput = channelGroupData.AltitudeFt;
                 // Load channels
                 foreach (var channelData in channelGroupData.Channels)
                 {
@@ -398,18 +400,24 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
                 Settings = Settings.GetSettings(),
                 ChannelGroups = ChannelList.ChannelGroups
                     .Where(cg => cg != ChannelList.FalconChannelGroup)
-                    .Select(cg => new ChannelGroupData
+                    .Select(cg =>
                     {
-                        Name = cg.Name,
-                        Position = cg.RadioStationData.Position,
-                        Channels = cg.Channels.Select(c => new ChannelData
+                        return new ChannelGroupData
                         {
-                            Name = c.Name,
-                            FrequencyKhz = c.FrequencyKhz,
-                            Type = c.Type,
-                            HotkeyCode = c.HotKey.ToString(),
-                            Enabled = c.IsEnabled
-                        }).ToList()
+                            Name = cg.Name,
+                            Latitude = cg.Latitude,
+                            Longitude = cg.Longitude,
+                            AltitudeFt = cg.AltitudeInput,
+                            RadioStationData = cg.RadioStationData,
+                            Channels = cg.Channels.Select(c => new ChannelData
+                            {
+                                Name = c.Name,
+                                FrequencyKhz = c.FrequencyKhz,
+                                Type = c.Type,
+                                HotkeyCode = c.HotKey.ToString(),
+                                Enabled = c.IsEnabled
+                            }).ToList()
+                        };
                     }).ToList()
             };
 

@@ -1,6 +1,5 @@
-using System;
 using System.Collections.Generic;
-using OpenFreq.Common;
+using OpenFreq.Client.Models;
 using OpenFreqAudio;
 
 namespace OpenFreqClient.Models;
@@ -8,19 +7,18 @@ namespace OpenFreqClient.Models;
 public class AppConfiguration
 {
     public OpenFreqSettings Settings { get; set; } = new();
-    public List<ChannelGroupData> ChannelGroups { get; set; } = new();
+    public List<ChannelGroupData> ChannelGroups { get; set; } = [];
 }
 
 public class ChannelGroupData
 {
-    public string Name { get; set; } = String.Empty;
-    public double TxPowerDbm { get; set; }
-    public double RxSensitivityDbm { get; set; }
-    public double AntennaElevationM { get; set; }
-    public Position? Position { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public double Latitude {get; set;}
+    public double Longitude {get; set;}
+    public double AltitudeFt {get; set;}
     public string? AcmiTrackingId { get; set; }
-    public List<ChannelData> Channels { get; set; } = new();
-    public RadioStationPreset Preset { get; set; } = RadioStationPresets.AWACS;
+    public List<ChannelData> Channels { get; set; } = [];
+    public RadioStationData RadioStationData { get; set; } = new();
 }
 
 public class ChannelData

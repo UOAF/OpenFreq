@@ -1,9 +1,10 @@
-﻿using OpenFreq.Common;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
+using OpenFreq.Common;
 using OpenFreqAudio;
 
 namespace OpenFreq.Client.Models;
 
-public class RadioStationData
+public partial class RadioStationData : ObservableObject
 {
     public enum RadioStationType
     {
@@ -11,8 +12,10 @@ public class RadioStationData
         ACMI,
         STATIONARY
     }
-    public RadioStationType Type { get; set; }
+
+    [ObservableProperty]
+    public partial RadioStationType Type { get; set; } = RadioStationType.STATIONARY;
     public Position? Position { get; set; }
-    public double Frequency { get; set; }
-    public RadioStationPreset Preset { get; set; } = RadioStationPresets.Fighter;
+    [ObservableProperty]
+    public partial RadioStationPreset Preset { get; set; }
 }

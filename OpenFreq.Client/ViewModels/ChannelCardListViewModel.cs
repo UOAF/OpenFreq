@@ -153,7 +153,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
             {
                 if (FalconChannelGroup == null)
                 {
-                    FalconChannelGroup = CreateChannelGroup(BMS_GROUP_NAME, RadioStationPresets.Fighter, true);
+                    FalconChannelGroup = CreateChannelGroup(BMS_GROUP_NAME, RadioStationPresets.Fighter, RadioStationData.RadioStationType.BMS);
                 }
 
                 else if (clearExisting)
@@ -165,7 +165,8 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                 foreach (var type in Enum.GetValues<RadioType>())
                 {
                     var falconChannel = _falconRadioSharedMemoryService.GetRadioChannel(type);
-                    if (falconChannel != null && FalconChannelGroup.Channels.All(c => c.FrequencyKhz != falconChannel.Frequency))
+                    if (falconChannel != null &&
+                        FalconChannelGroup.Channels.All(c => c.FrequencyKhz != falconChannel.Frequency))
                     {
                         var channel = FalconChannelGroup.CreateChannel(falconChannel.Frequency,
                             "BMS Channel " + type,
@@ -290,7 +291,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Failed to join frequency {frequencyKhz/1000:F3}: {ex.Message}");
+            Console.WriteLine($"Failed to join frequency {frequencyKhz / 1000:F3}: {ex.Message}");
         }
     }
 
@@ -304,7 +305,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Failed to leave frequency {frequencyKhz/1000:F3}: {ex.Message}");
+            Console.WriteLine($"Failed to leave frequency {frequencyKhz / 1000:F3}: {ex.Message}");
         }
     }
 
@@ -324,21 +325,26 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public ChannelCardGroupViewModel CreateChannelGroup(string name, RadioStationPreset preset, bool isBmsGroup = false,
+    public ChannelCardGroupViewModel CreateChannelGroup(string name, RadioStationPreset preset,
+        RadioStationData.RadioStationType radioStationType,
         bool editMode = false)
     {
         var channelGroup = new ChannelCardGroupViewModel(_openFreqService, _hotkeyService, _acmiClientService,
             _settings, name,
-            preset, isBmsGroup, editMode);
+            preset, radioStationType, editMode: editMode);
         ChannelGroups.Add(channelGroup);
         return channelGroup;
     }
 
-    public ChannelCardGroupViewModel CreateChannelGroup(ChannelGroupData channelGroupData, bool isBmsGroup = false,
-        bool editMode = false)
+    public ChannelCardGroupViewModel CreateChannelGroup(ChannelGroupData channelGroupData, bool editMode = false)
     {
-        return CreateChannelGroup(channelGroupData.Name, channelGroupData.Preset, isBmsGroup, editMode);
+        var channelGroup = new ChannelCardGroupViewModel(_openFreqService, _hotkeyService, _acmiClientService,
+            _settings, channelGroupData.Name, channelGroupData.RadioStationData.Preset,
+            channelGroupData.RadioStationData.Type, channelGroupData.Latitude, channelGroupData.Longitude, editMode);
+        ChannelGroups.Add(channelGroup);
+        return channelGroup;
     }
+
 
     public void DeleteChannelGroup(ChannelCardGroupViewModel channelGroup)
     {
