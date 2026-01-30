@@ -5,136 +5,208 @@
              xmlns:controls="clr-namespace:Material.Styles.Controls;assembly=Material.Styles"
              xmlns:viewModels="clr-namespace:OpenFreqClient.ViewModels"
              xmlns:avalonia="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
-             xmlns:views="clr-namespace:OpenFreqClient.Views"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="OpenFreqClient.Views.ChannelCardView"
-             Margin="16"
              x:DataType="viewModels:ChannelCardViewModel"
              xmlns:converters="using:OpenFreqClient.Converters">
 
     <UserControl.Resources>
         <converters:ChannelStatusToColorConverter x:Key="ChannelStatusToColorConverter" />
+        <converters:BoolToGreenGrayConverter x:Key="BoolToGreenGrayConverter" />
+        <converters:HotkeyTooltipConverter x:Key="HotkeyTooltipConverter" />
     </UserControl.Resources>
 
-    <controls:Card MinWidth="200" PointerPressed="OnPttStart" PointerReleased="OnPttStop"
+    <UserControl.Styles>
+        <!-- Active transmission state -->
+        <Style Selector="controls|Card.transmitting">
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColor}" />
+            <Setter Property="BorderThickness" Value="2" />
+        </Style>
+    </UserControl.Styles>
+
+    <!-- Main Card -->
+    <controls:Card Padding="12" 
+                   PointerPressed="OnPttStart" 
+                   PointerReleased="OnPttStop"
                    Background="{Binding Status, Converter={StaticResource ChannelStatusToColorConverter}}">
-        <Grid ColumnDefinitions="Auto, *" RowDefinitions="Auto, Auto">
-            <StackPanel Margin="15" Spacing="10" Grid.Column="0" Grid.Row="0" IsVisible="{Binding !IsEditing}">
-                <TextBlock Text="{Binding Name}" Classes="Body1">Name</TextBlock>
-                <TextBlock Text="{Binding FrequencyMhzString, StringFormat={}{0} MHz}" Classes="Headline6" />
-                <TextBlock Text="{Binding Type}" Classes="Body1">UHF</TextBlock>
-                <TextBlock Text="{Binding Status}" Classes="Body1">RX</TextBlock>
-                <ProgressBar Background="Gray" Value="{Binding SignalStrength}"></ProgressBar>
+        
+        <!-- Wrapper Panel for both view modes -->
+        <Panel>
+            <!-- READ-ONLY VIEW (Default) -->
+            <Grid ColumnDefinitions="*,Auto" 
+                  RowDefinitions="Auto,Auto,Auto,Auto"
+                  IsVisible="{Binding !IsEditing}">
+            
+            <!-- Channel Name & Frequency -->
+            <StackPanel Grid.Row="0" Grid.Column="0" Spacing="2" Margin="4">
+                <TextBlock Text="{Binding Name}" 
+                           Classes="Subtitle2"
+                           FontWeight="SemiBold" />
+                <TextBlock Text="{Binding FrequencyMhzString, StringFormat={}{0} MHz}" 
+                           Classes="Headline6"
+                           FontWeight="Bold" />
             </StackPanel>
 
-            <!-- Editing Mode -->
-            <StackPanel IsVisible="{Binding IsEditing}" Margin="15,15,30,10" Spacing="5" Grid.Column="0" Grid.Row="0"
-                        VerticalAlignment="Top">
-                <TextBox Text="{Binding Name}"
-                         BorderBrush="Transparent"
-                         Background="Transparent"
-                         Watermark="Name"
-                         Padding="0,5" />
-                <TextBox Text="{Binding FrequencyMhzString}"
-                         BorderBrush="Transparent"
-                         Background="Transparent"
-                         Watermark="Frequency (MHz)"
-                         Padding="0,5" />
-                <ComboBox ItemsSource="{Binding ChannelTypes}"
-                          SelectedItem="{Binding Type}"
-                          Padding="0,5">
-                </ComboBox>
+            <!-- Right Side Controls Column -->
+            <StackPanel Grid.Row="0" Grid.Column="1" Grid.RowSpan="4"
+                        Spacing="8"
+                        VerticalAlignment="Top"
+                        HorizontalAlignment="Right"
+                        Margin="4">
+                
+                <!-- Enable/Disable Toggle -->
+                <ToggleButton IsChecked="{Binding IsEnabled}"
+                              Command="{Binding ToggleEnabledCommand}"
+                              Width="40" Height="40"
+                              ToolTip.Tip="Enable/Disable Channel"
+                              Classes="Flat">
+                    <avalonia:MaterialIcon Kind="Circle" 
+                                           Width="24" Height="24" 
+                                           Foreground="{Binding IsEnabled, Converter={StaticResource BoolToGreenGrayConverter}}" />
+                </ToggleButton>
 
-                <StackPanel Orientation="Horizontal" Spacing="10" Margin="5" HorizontalAlignment="Left">
-                    <Button
-                        Theme="{StaticResource MaterialOutlineButton}"
+                <!-- Hotkey Button -->
+                <Button Classes="Flat"
+                        Command="{Binding BeginCaptureHotkeyCommand}"
+                        Width="40" Height="40"
+                        ToolTip.Tip="{Binding HasHotkey, Converter={StaticResource HotkeyTooltipConverter}}"
+                        IsVisible="{Binding !IsCapturingHotkey}">
+                    <Grid>
+                        <avalonia:MaterialIcon Kind="Keyboard" 
+                                               Width="24" Height="24"
+                                               IsVisible="{Binding !HasHotkey}" />
+                        <avalonia:MaterialIcon Kind="KeyboardOutline" 
+                                               Width="24" Height="24"
+                                               Foreground="{DynamicResource SystemAccentColor}"
+                                               IsVisible="{Binding HasHotkey}" />
+                    </Grid>
+                </Button>
+
+                <!-- Capturing Hotkey State -->
+                <Button Classes="Flat"
+                        Width="40" Height="40"
+                        IsEnabled="False"
+                        IsVisible="{Binding IsCapturingHotkey}">
+                    <avalonia:MaterialIcon Kind="Keyboard" 
+                                           Width="24" Height="24" 
+                                           Foreground="{DynamicResource MaterialValidationErrorBrush}" />
+                </Button>
+
+                <!-- Edit Button -->
+                <Button Classes="Flat"
                         Command="{Binding ToggleEditingCommand}"
-                        MinWidth="80">
-                        Save
-                    </Button>
+                        Width="40" Height="40"
+                        ToolTip.Tip="Edit Channel">
+                    <avalonia:MaterialIcon Kind="Edit" Width="20" Height="20" />
+                </Button>
+            </StackPanel>
 
-                    <Button Classes="accent"
-                            Theme="{StaticResource MaterialOutlineButton}"
-                            Command="{Binding DeleteChannelCommand}"
-                            MinWidth="80">
-                        Delete
-                    </Button>
+            <!-- Type & Status -->
+            <StackPanel Grid.Row="1" Grid.Column="0" 
+                        Orientation="Horizontal" 
+                        Spacing="12"
+                        Margin="4,8,4,4">
+                <Border Background="{DynamicResource MaterialPrimaryLightBrush}"
+                        CornerRadius="4"
+                        Padding="8,4">
+                    <TextBlock Text="{Binding Type}" 
+                               Classes="Caption"
+                               FontWeight="SemiBold" />
+                </Border>
+                <TextBlock Text="{Binding Status}" 
+                           Classes="Caption"
+                           VerticalAlignment="Center"
+                           Opacity="0.7" />
+            </StackPanel>
+
+            <!-- Hotkey Display (if set) -->
+            <Border Grid.Row="2" Grid.Column="0"
+                    Background="{DynamicResource MaterialPrimaryLightBrush}"
+                    CornerRadius="4"
+                    Padding="8,4"
+                    Margin="4"
+                    HorizontalAlignment="Left"
+                    IsVisible="{Binding HasHotkey}">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <avalonia:MaterialIcon Kind="Keyboard" Width="14" Height="14" />
+                    <TextBlock Text="{Binding HotkeyDisplay}"
+                               Classes="Caption"
+                               FontWeight="SemiBold" />
                 </StackPanel>
+            </Border>
 
-            </StackPanel>
-
-            <StackPanel IsVisible="{Binding IsEditing}" Margin="15,15,15,10" Spacing="10" Grid.Column="1" Grid.Row="0"
-                        HorizontalAlignment="Left" MaxWidth="150" VerticalAlignment="Top">
-                <HyperlinkButton IsVisited="False"
-                                 Theme="{StaticResource MaterialHyperlinkButton}"
-                                 Content="BMS Lobby 1"
-                                 Command="{Binding BmsLobby1ClickedCommand}" />
-                <HyperlinkButton IsVisited="False"
-                                 Theme="{StaticResource MaterialHyperlinkButton}"
-                                 Content="BMS Lobby 2"
-                                 Command="{Binding BmsLobby2ClickedCommand}" />
-            </StackPanel>
-
-            <!-- Read Only Mode -->
-            <StackPanel Grid.Row="0" Grid.Column="1" Margin="10" Spacing="10" HorizontalAlignment="Right"
-                        IsVisible="{Binding !IsEditing}">
-
-                <Button Classes="Flat" HorizontalAlignment="Right" Width="32" Height="32"
-                        Command="{Binding ToggleEnabledCommand}" IsVisible="{Binding IsEnabled}">
-                    <avalonia:MaterialIcon Kind="Circle" Width="24" Height="24" Foreground="Green" />
-                </Button>
-
-                <Button Classes="Flat" HorizontalAlignment="Right" Width="32" Height="32"
-                        Command="{Binding ToggleEnabledCommand}" IsVisible="{Binding !IsEnabled}">
-                    <avalonia:MaterialIcon Kind="CircleOutline" Width="24" Height="24" Foreground="Green" />
-                </Button>
-
-                <!-- Hotkey Section with Fixed Layout -->
-                <Grid ColumnDefinitions="60,Auto,Auto" Height="32" HorizontalAlignment="Center">
-                    <TextBlock Grid.Column="0"
-                               Text="{Binding HotkeyDisplay}"
-                               FontSize="11"
-                               VerticalAlignment="Center"
-                               TextAlignment="Right"
-                               Margin="0,0,5,0"
-                               IsVisible="{Binding HasHotkey}" />
-
-                    <Button Grid.Column="1"
-                            Classes="Flat"
-                            Command="{Binding ClearHotkeyCommand}"
-                            IsVisible="{Binding HasHotkey}"
-                            ToolTip.Tip="Clear hotkey"
-                            Width="32" Height="32"
-                            Padding="0">
-                        <avalonia:MaterialIcon Kind="Close" Width="16" Height="16" />
-                    </Button>
-
-                    <Button Grid.Column="2"
-                            Classes="Flat"
-                            Command="{Binding BeginCaptureHotkeyCommand}"
-                            IsVisible="{Binding !IsCapturingHotkey}"
-                            ToolTip.Tip="Set hotkey for PTT"
-                            Width="32" Height="32"
-                            Padding="0">
-                        <avalonia:MaterialIcon Kind="Keyboard" Width="24" Height="24" />
-                    </Button>
-
-                    <Button Grid.Column="2"
-                            Classes="Flat"
-                            IsEnabled="False"
-                            IsVisible="{Binding IsCapturingHotkey}"
-                            Width="32" Height="32"
-                            Padding="0">
-                        <avalonia:MaterialIcon Kind="Keyboard" Width="24" Height="24" Foreground="Red" />
-                    </Button>
-                </Grid>
-
-                <Button Classes="Flat" Command="{Binding ToggleEditingCommand}" HorizontalAlignment="Right" Width="32"
-                        Height="32">
-                    <avalonia:MaterialIcon Kind="Edit" Width="24" Height="24" />
-                </Button>
-            </StackPanel>
-
+            <!-- Signal Strength -->
+            <ProgressBar Grid.Row="3" Grid.Column="0"
+                         Value="{Binding SignalStrength}"
+                         Margin="4,8,4,4"
+                         Height="6"
+                         Foreground="{DynamicResource SystemAccentColor}"
+                         Background="{DynamicResource MaterialDividerBrush}" />
         </Grid>
+
+        <!-- ========================================== -->
+        <!-- EDIT MODE (Expanded View) -->
+        <!-- ========================================== -->
+        <Grid ColumnDefinitions="*,Auto" 
+              RowDefinitions="Auto,Auto,Auto,Auto,Auto"
+              IsVisible="{Binding IsEditing}">
+            
+            <!-- Name Input -->
+            <TextBox Grid.Row="0" Grid.Column="0"
+                     Text="{Binding Name}"
+                     Watermark="Channel Name"
+                     Classes="Outline"
+                     Margin="4" />
+
+            <!-- Frequency Input -->
+            <TextBox Grid.Row="1" Grid.Column="0"
+                     Text="{Binding FrequencyMhzString}"
+                     Watermark="Frequency (MHz)"
+                     Classes="Outline"
+                     Margin="4" />
+
+            <!-- Type Selector -->
+            <ComboBox Grid.Row="2" Grid.Column="0"
+                      ItemsSource="{Binding ChannelTypes}"
+                      SelectedItem="{Binding Type}"
+                      Classes="Outline"
+                      Margin="4" />
+
+            <!-- Quick Frequency Presets -->
+            <StackPanel Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2"
+                        Margin="4,8">
+                <TextBlock Text="Quick Presets" 
+                           Classes="Caption" 
+                           Opacity="0.7"
+                           Margin="0,0,0,4" />
+                <UniformGrid Rows="1" Columns="2">
+                    <Button Content="BMS Lobby 1"
+                            Command="{Binding BmsLobby1ClickedCommand}"
+                            Classes="Outline"
+                            Margin="0,0,4,0" />
+                    <Button Content="BMS Lobby 2"
+                            Command="{Binding BmsLobby2ClickedCommand}"
+                            Classes="Outline"
+                            Margin="4,0,0,0" />
+                </UniformGrid>
+            </StackPanel>
+
+            <!-- Action Buttons -->
+            <StackPanel Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2"
+                        Orientation="Horizontal" 
+                        HorizontalAlignment="Right"
+                        Spacing="8"
+                        Margin="4,8,4,4">
+                <Button Content="DELETE"
+                        Command="{Binding DeleteChannelCommand}"
+                        Classes="Flat"
+                        Foreground="{DynamicResource MaterialValidationErrorBrush}" />
+                <Button Content="SAVE"
+                        Command="{Binding ToggleEditingCommand}"
+                        Classes="Flat" />
+            </StackPanel>
+        </Grid>
+        </Panel>
     </controls:Card>
+
 </UserControl>
