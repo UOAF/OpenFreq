@@ -1,7 +1,9 @@
+using System.Collections.Specialized;
 using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using Material.Styles.Controls;
 using OpenFreqAudio;
 using OpenFreqClient.Models;
@@ -22,18 +24,25 @@ public partial class MainWindow : Window
     {
         base.OnLoaded(e);
         _viewModel = DataContext as MainWindowViewModel;
+        _viewModel?.ChannelList.ChannelGroups.CollectionChanged += OnGroupsChanged;
+       
+    }
+    
+    private void OnGroupsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.NewItems != null)
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                ChannelGroupsScrollViewer.ScrollToEnd();
+            });
+        }
     }
 
     private void Button_OnClick(object? sender, RoutedEventArgs e)
     {
-        var channelGroup = _viewModel?.ChannelList.ChannelGroups.FirstOrDefault();
-        if (channelGroup == null)
-        {
-            channelGroup =
-                _viewModel?.ChannelList.CreateChannelGroup(new ChannelGroupData { Name = "Default Group" }, true);
-        }
-
-        channelGroup?.CreateChannel(225000, $"Channel #{channelGroup.Channels.Count + 1}", Channel.ChannelType.UHF);
+        _viewModel?.ChannelList.CreateChannelGroup(
+            new ChannelGroupData { Name = $"Channel Group #{_viewModel.ChannelList.ChannelGroups.Count + 1}" }, true);
     }
 
     private void MenuButton_OnClick(object? sender, RoutedEventArgs e)

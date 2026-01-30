@@ -66,6 +66,9 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
             async (r, m) => await HandleStartTransmissionAsync(m));
         WeakReferenceMessenger.Default.Register<StopTransmissionMessage>(this,
             async (r, m) => await HandleStopTransmissionAsync(m));
+
+        WeakReferenceMessenger.Default.Register<ChannelCardGroupViewModel.ChannelCardGroupDeleteRequestedMessage>(this,
+            (r, m) => DeleteChannelGroup(m.ChannelCardGroupId));
     }
 
     private void OnRadioVolumeChanged(object? sender, RadioVolumeChangedEventArgs e)
@@ -153,7 +156,8 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
             {
                 if (FalconChannelGroup == null)
                 {
-                    FalconChannelGroup = CreateChannelGroup(BMS_GROUP_NAME, RadioStationPresets.Fighter, RadioStationData.RadioStationType.BMS);
+                    FalconChannelGroup = CreateChannelGroup(BMS_GROUP_NAME, RadioStationPresets.Fighter,
+                        RadioStationData.RadioStationType.BMS);
                 }
 
                 else if (clearExisting)
@@ -354,6 +358,14 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
             ChannelGroups.Remove(channelGroup);
             channelGroup.Dispose();
         });
+    }
+
+    public void DeleteChannelGroup(Guid channelGroupId)
+    {
+        if (ChannelGroups.FirstOrDefault(cg => cg.Id == channelGroupId) is { } cg)
+        {
+            DeleteChannelGroup(cg);
+        }
     }
 
     public void Dispose()

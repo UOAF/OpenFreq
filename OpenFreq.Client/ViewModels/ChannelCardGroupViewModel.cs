@@ -23,6 +23,7 @@ namespace OpenFreqClient.ViewModels;
 
 public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
 {
+    public Guid Id { get; } = Guid.NewGuid();
     private SettingsViewModel Settings { get; }
 
     [ObservableProperty] public partial string Name { get; set; }
@@ -281,6 +282,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     public void AddChannel()
     {
+        CreateChannel(225000, $"Channel #{Channels.Count + 1}", Channel.ChannelType.VHF);
     }
 
     [RelayCommand]
@@ -450,5 +452,17 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
             Latitude = result.Value.lat;
             Longitude = result.Value.lon;
         }
+    }
+    
+    public class ChannelCardGroupDeleteRequestedMessage(Guid channelCardGroupId)
+    {
+        public Guid ChannelCardGroupId { get; } = channelCardGroupId;
+    }
+    
+    [RelayCommand]
+    public void DeleteChannelGroup()
+    {
+        WeakReferenceMessenger.Default.Send(
+            new ChannelCardGroupDeleteRequestedMessage(Id));
     }
 }
