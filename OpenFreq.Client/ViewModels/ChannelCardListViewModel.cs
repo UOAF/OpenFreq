@@ -16,6 +16,8 @@ using OpenFreq.Services.Acmi;
 using OpenFreqAudio;
 using OpenFreqClient.Models;
 using OpenFreqClient.Services.Interfaces;
+using OpenFreqClient.Views;
+using OpenFreqClient.Views.Util;
 using SharpHook.Data;
 
 namespace OpenFreqClient.ViewModels;
@@ -66,9 +68,8 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
             async (r, m) => await HandleStartTransmissionAsync(m));
         WeakReferenceMessenger.Default.Register<StopTransmissionMessage>(this,
             async (r, m) => await HandleStopTransmissionAsync(m));
-
         WeakReferenceMessenger.Default.Register<ChannelCardGroupViewModel.ChannelCardGroupDeleteRequestedMessage>(this,
-            (r, m) => DeleteChannelGroup(m.ChannelCardGroupId));
+            async (r, m) => await DeleteChannelGroup(m.ChannelCardGroupId));
     }
 
     private void OnRadioVolumeChanged(object? sender, RadioVolumeChangedEventArgs e)
@@ -92,10 +93,11 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         normalized *= normalized;
 
         var channels = FalconChannelGroup?.Channels.Where(c => c.Type == Channel.ToChannelType(e.RadioType)).ToList();
-        foreach (var channel in channels)
-        {
-            _openFreqService.SetVolume(channel.FrequencyKhz, normalized);
-        }
+        if (channels != null)
+            foreach (var channel in channels)
+            {
+                _openFreqService.SetVolume(channel.FrequencyKhz, normalized);
+            }
     }
 
     private void OnRadioPowerChanged(object? sender, RadioPowerChangedEventArgs e)
@@ -187,9 +189,6 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                                 break;
                             case RadioType.GUARD:
                                 channel.HotKey = KeyCode.VcF3;
-                                break;
-                            default:
-                                // dont care
                                 break;
                         }
                     }
@@ -360,11 +359,18 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         });
     }
 
-    public void DeleteChannelGroup(Guid channelGroupId)
+    public async Task DeleteChannelGroup(Guid channelGroupId)
     {
-        if (ChannelGroups.FirstOrDefault(cg => cg.Id == channelGroupId) is { } cg)
+        if (ChannelGroups.FirstOrDefault(cg => cg.Id == channelGroupId) is not { } channelCardGroupViewModel)
+            return;
+
+        if (await ConfirmationDialogService.ShowAsync(
+                title: "Confirm deletion",
+                message: $"Are you sure you want to delete the Channel Group \"{channelCardGroupViewModel.Name}\"?",
+                cancelText: "Cancel",
+                confirmText: "Delete"))
         {
-            DeleteChannelGroup(cg);
+            DeleteChannelGroup(channelCardGroupViewModel);
         }
     }
 

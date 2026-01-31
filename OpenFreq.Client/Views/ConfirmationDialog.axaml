@@ -1,0 +1,40 @@
+<UserControl
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    x:Class="OpenFreqClient.Views.ConfirmationDialog"
+    xmlns:controls="clr-namespace:Material.Styles.Controls;assembly=Material.Styles"
+    xmlns:viewModels="clr-namespace:OpenFreqClient.ViewModels"
+    x:DataType="viewModels:ConfirmationDialogViewModel">
+
+    <StackPanel Width="360" Spacing="16">
+        <!-- Title -->
+        <TextBlock
+            Text="{Binding Title}"
+            Classes="Headline6" />
+
+        <!-- Message -->
+        <TextBlock
+            Text="{Binding Message}"
+            TextWrapping="Wrap" />
+
+        <!-- Buttons -->
+        <StackPanel
+            Orientation="Horizontal"
+            HorizontalAlignment="Right"
+            Spacing="8">
+
+            <Button
+                Content="{Binding CancelText}"
+                Classes="Flat"
+                IsCancel="True"
+                Command="{Binding CancelCommand}" />
+
+            <Button
+                Content="{Binding ConfirmText}"
+                IsDefault="True"
+                Classes="Flat"
+                Foreground="{DynamicResource MaterialValidationErrorBrush}"
+                Command="{Binding ConfirmCommand}" />
+        </StackPanel>
+    </StackPanel>
+</UserControl>

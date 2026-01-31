@@ -5,6 +5,7 @@
              xmlns:views="clr-namespace:OpenFreqClient.Views"
              xmlns:viewModels="clr-namespace:OpenFreqClient.ViewModels"
              xmlns:avalonia="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             xmlns:dialogHost="clr-namespace:DialogHostAvalonia;assembly=DialogHost.Avalonia"
              xmlns:local="clr-namespace:OpenFreqAudio;assembly=OpenFreqAudio"
              xmlns:controls="clr-namespace:Material.Styles.Controls;assembly=Material.Styles"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
@@ -15,7 +16,17 @@
 
     <UserControl.Resources>
         <converters:EnumToBoolConverter x:Key="EnumToBoolConverter" />
+            <!-- ReSharper disable once Xaml.RedundantResource -->
+            <StackPanel x:Key="Sample2View">
+                <ProgressBar Classes="Circle" IsIndeterminate="True" />
+                <Button Margin="0 16 0 0"
+                        Command="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType=dialogHost:DialogHost}, Path=CloseDialogCommand}">
+                    CLOSE
+                </Button>
+            </StackPanel>
     </UserControl.Resources>
+    
+    
 
     <ItemsControl ItemsSource="{Binding ChannelGroups}">
         <ItemsControl.ItemTemplate>
