@@ -156,7 +156,7 @@ public class AudioStreamServer
                     var validKhz = validFrequencies.Select(f => f.Khz).ToHashSet();
                     var invalidMhz = metadata.Frequencies
                         .Where(f => !validKhz.Contains(f.Khz))
-                        .Select(f => $"{f.Khz/1000:F3} MHz")
+                        .Select(f => $"{f.Khz/1000d:F3} MHz")
                         .ToList();
     
                     if (_logger.IsEnabled(LogLevel.Warning))

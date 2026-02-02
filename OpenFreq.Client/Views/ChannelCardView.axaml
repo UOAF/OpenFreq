@@ -55,15 +55,13 @@
                         Margin="4">
                 
                 <!-- Enable/Disable Toggle -->
-                <ToggleButton IsChecked="{Binding IsEnabled}"
-                              Command="{Binding ToggleEnabledCommand}"
+                <CheckBox IsChecked="{Binding IsEnabled}"
                               Width="40" Height="40"
                               ToolTip.Tip="Enable/Disable Channel"
-                              Classes="Flat">
+                              Classes="Flat"><!-- Command="{Binding ToggleEnabledCommand}"-->
                     <avalonia:MaterialIcon Kind="Circle" 
-                                           Width="24" Height="24" 
-                                           Foreground="{Binding IsEnabled, Converter={StaticResource BoolToGreenGrayConverter}}" />
-                </ToggleButton>
+                                           Width="24" Height="24" /><!--Foreground="{Binding IsEnabled, Converter={StaticResource BoolToGreenGrayConverter}}"-->
+                </CheckBox>
 
                 <!-- Hotkey Button -->
                 <Button Classes="Flat"

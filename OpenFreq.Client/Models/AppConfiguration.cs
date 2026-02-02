@@ -18,7 +18,10 @@ public class ChannelGroupData
     public double AltitudeFt {get; set;}
     public string? AcmiTrackingId { get; set; }
     public List<ChannelData> Channels { get; set; } = [];
-    public RadioStationData RadioStationData { get; set; } = new();
+    public RadioStationData RadioStationData { get; set; } = new()
+    {
+        Preset = RadioStationPresets.AWACS,
+    };
 }
 
 public class ChannelData

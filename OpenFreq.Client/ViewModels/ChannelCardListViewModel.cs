@@ -111,14 +111,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         var channels = FalconChannelGroup.Channels.Where(c => c.Type == Channel.ToChannelType(e.RadioType)).ToList();
         foreach (var channel in channels)
         {
-            if (e.NewPower)
-            {
-                JoinFrequencyAsync(channel.FrequencyKhz, FalconChannelGroup.RadioStationData).Wait(100);
-            }
-            else
-            {
-                LeaveFrequencyAsync(channel.FrequencyKhz).Wait(100);
-            }
+            channel.IsEnabled = e.NewPower;
         }
     }
 
@@ -215,7 +208,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         switch (e)
         {
             case { OldPtt: false, NewPtt: true }:
-                _openFreqService.StartTransmissionAsync(channel.FrequencyKhz, FalconChannelGroup.RadioStationData)
+                _openFreqService.StartTransmissionAsync(channel.FrequencyKhz)
                     .Wait();
                 break;
             case { OldPtt: true, NewPtt: false }:
@@ -262,7 +255,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
 
         try
         {
-            await _openFreqService.StartTransmissionAsync(msg.FrequencyKhz, msg.RadioStationData);
+            await _openFreqService.StartTransmissionAsync(msg.FrequencyKhz);
         }
         catch (Exception ex)
         {

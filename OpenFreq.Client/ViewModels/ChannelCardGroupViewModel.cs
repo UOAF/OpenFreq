@@ -56,7 +56,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
     [ObservableProperty] public partial string? CoordinateError { get; set; }
     [ObservableProperty] public partial bool HasCoordinateError { get; set; }
 
-    private bool _isUpdatingFromInput = false;
+    private bool _isUpdatingFromInput;
 
 
     public ChannelCardGroupViewModel(IOpenFreqService openFreqService, IHotkeyService hotkeyService,
@@ -154,17 +154,15 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
 
     private void OnChannelEnabledDisabled(object recipient, ChannelEnabledDisabledMessage message)
     {
-        if (_openFreqService.IsAuthenticated && message.Enabled)
+        switch (message.Enabled)
         {
-            _openFreqService.JoinFrequencyAsync(message.FrequencyKhz, RadioStationData)
-                .Wait(TimeSpan.FromMilliseconds(100));
+            case true:
+                _openFreqService.EnableFrequency(message.FrequencyKhz);
+                break;
+            case false:
+                _openFreqService.DisableFrequency(message.FrequencyKhz);
+                break;
         }
-        else if (_openFreqService.IsAuthenticated && !message.Enabled)
-        {
-            _openFreqService.LeaveFrequencyAsync(message.FrequencyKhz).Wait(TimeSpan.FromMilliseconds(100));
-        }
-
-        // dont care for the rest
     }
 
     private void OnChannelDeleteRequested(object recipient, ChannelDeleteRequestedMessage message)
@@ -195,7 +193,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
                 var channel = Channels.FirstOrDefault(c => c.Id == channelId);
                 if (channel != null && channel.Status != Channel.ChannelStatus.Disconnected && !channel.IsEditing)
                 {
-                    await _openFreqService.StartTransmissionAsync(channel.FrequencyKhz, RadioStationData);
+                    await _openFreqService.StartTransmissionAsync(channel.FrequencyKhz);
                 }
             }
         }

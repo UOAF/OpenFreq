@@ -16,6 +16,6 @@ public partial class RadioStationData : ObservableObject
     [ObservableProperty]
     public partial RadioStationType Type { get; set; } = RadioStationType.STATIONARY;
     public Position? Position { get; set; }
-    [ObservableProperty]
-    public partial RadioStationPreset Preset { get; set; }
+    [ObservableProperty] public required partial RadioStationPreset Preset { get; set; }
+    public bool IsEnabled { get; set; } = true;
 }

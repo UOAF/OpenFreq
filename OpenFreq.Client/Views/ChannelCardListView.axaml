@@ -38,7 +38,7 @@
                         <!-- GROUP HEADER (Always Visible) -->
                         <!-- ========================================== -->
                         <Grid ColumnDefinitions="*,Auto"
-                              Background="{DynamicResource MaterialPrimaryLightBrush}">
+                              Background="{DynamicResource MaterialPrimaryDarkBrush}">
 
                             <!-- Group Info -->
                             <StackPanel Grid.Column="0" Spacing="4" Margin="16,12">
@@ -65,11 +65,21 @@
                                 </Button>
                                 <Button
                                     Classes="Flat"
+                                    IsVisible="{Binding EditMode}"
                                     Command="{Binding ToggleEditingCommand}"
                                     Width="40" Height="40"
                                     ToolTip.Tip="Configure Group"
                                     Padding="8">
                                     <avalonia:MaterialIcon Kind="Cog" Width="24" Height="24" />
+                                </Button>
+                                <Button
+                                    Classes="Flat"
+                                    IsVisible="{Binding !EditMode}"
+                                    Command="{Binding ToggleEditingCommand}"
+                                    Width="40" Height="40"
+                                    ToolTip.Tip="Configure Group"
+                                    Padding="8">
+                                    <avalonia:MaterialIcon Kind="CogOutline" Width="24" Height="24" />
                                 </Button>
                             </StackPanel>
                         </Grid>
@@ -220,15 +230,6 @@
                                                    Classes="Body2" />
                                     </Grid>
                                 </Expander>
-
-                                <!-- Action Buttons -->
-                                <StackPanel Orientation="Horizontal"
-                                            HorizontalAlignment="Right"
-                                            Spacing="8">
-                                    <Button Content="DONE"
-                                            Command="{Binding ToggleEditingCommand}"
-                                            Classes="Flat" />
-                                </StackPanel>
                             </StackPanel>
                         </Border>
 

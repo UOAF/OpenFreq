@@ -26,7 +26,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     /// </summary>
     public string FrequencyMhzString
     {
-        get => (FrequencyKhz/1000).ToString("F3");
+        get => (FrequencyKhz/1000d).ToString("F3");
         set
         {
             if (double.TryParse(value, out var mhz))
@@ -39,7 +39,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private string? _name;
     [ObservableProperty] private float _rxDb;
     [ObservableProperty] private Channel.ChannelType _type;
-    [ObservableProperty] private bool _isEnabled = true;
+    [ObservableProperty] public partial bool IsEnabled { get; set; } = true;
     [ObservableProperty] public partial float SignalStrength { get; set; }
 
     public Channel.ChannelType[] ChannelTypes =>
@@ -117,13 +117,10 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         _status = channel.Status;
     }
 
-
-    [RelayCommand]
-    public void ToggleEnabled()
+    partial void OnIsEnabledChanged(bool value)
     {
-        IsEnabled = !IsEnabled;
         WeakReferenceMessenger.Default.Send(
-            new ChannelEnabledDisabledMessage(channelId: Id, frequencyKhz: FrequencyKhz, enabled: IsEnabled));
+            new ChannelEnabledDisabledMessage(channelId: Id, frequencyKhz: FrequencyKhz, enabled: value));
     }
 
     [RelayCommand]
@@ -138,6 +135,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         }
         else
         {
+            
             // Exiting edit mode - send update if changed
             var message = new ChannelUpdatedMessage(
                 Id,

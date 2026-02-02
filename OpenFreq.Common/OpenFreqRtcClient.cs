@@ -243,7 +243,7 @@ public class OpenFreqRtcClient : IDisposable
             frequencyTransmissions: [new FrequencyTransmission(frequencyKhz, 0, new Position(), false, true)]
         );
         
-        _logger.LogInformation("Sent end marker for frequency {Frequency/1000:F3}", frequencyKhz);
+        _logger.LogInformation("Sent end marker for frequency {Frequency/1000d:F3}", frequencyKhz);
 
         _frequencyTransmissionState[frequencyKhz] = false;
         _frequencyFirstPacketSent.Remove(frequencyKhz); // Clean up tracking state
@@ -253,7 +253,7 @@ public class OpenFreqRtcClient : IDisposable
     }
 
 
-    public void SendAudio(byte[] pcmData, List<(int frequencyKhz, double txPowerWatts, Position position)> frequencies)
+    public void SendAudio(byte[] pcmData, List<(int frequencyKhz, double txPowerWatts, Position? position)> frequencies)
     {
         var frequencyTransmissions = new List<FrequencyTransmission>();
         foreach (var freq in frequencies)
@@ -549,7 +549,7 @@ public class FrequencyJoinedEventArgs(int frequencyKhz, List<string> peers) : Ev
 public class FrequencyLeftEventArgs : EventArgs
 {
     public int FrequencyKhz { get; }
-    public FrequencyLeftEventArgs(int frequencyKhz) => FrequencyKhz = FrequencyKhz;
+    public FrequencyLeftEventArgs(int frequencyKhz) => FrequencyKhz = frequencyKhz;
 }
 
 public class PeerEventArgs : EventArgs

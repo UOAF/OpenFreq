@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -10,6 +11,7 @@ using FalconBmsDataService.Models;
 using FalconBmsDataService.Services;
 using FalconRadioService.Models;
 using ManagedBass;
+using Mapsui.Utilities;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Client.Models;
 using OpenFreq.Common;
@@ -30,8 +32,8 @@ public class OpenFreqService : IOpenFreqService
 
     private OpenFreqRtcClient? _client;
     private int _recordHandle;
-    private readonly Dictionary<int, RadioStationData> _activeTransmissions = new();
-    private readonly Dictionary<int, RadioStationData> _tunedFrequencies = new();
+    private readonly ConcurrentHashSet<int> _activeTransmissions = [];
+    private readonly ConcurrentDictionary<int, RadioStationData> _tunedFrequencies = new();
 
     private RadioPlayback? _playbackService;
     private DEMReader? _demReader;
@@ -63,15 +65,16 @@ public class OpenFreqService : IOpenFreqService
         _logger = logger;
         _loggerFactory = loggerFactory;
         _acmiClientService = acmiClientService;
-        
+
         // Initialize signal strength tracker with callback
         _signalStrengthTracker = new SignalStrengthTracker(
             onSignalStrengthChanged: (frequencyKhz, strength) =>
             {
-                WeakReferenceMessenger.Default.Send(new SignalStrengthTracker.SignalStrengthUpdateMessage(frequencyKhz, strength));
+                WeakReferenceMessenger.Default.Send(
+                    new SignalStrengthTracker.SignalStrengthUpdateMessage(frequencyKhz, strength));
             },
-            updateIntervalMs: 100,    // UI update rate
-            signalTimeoutMs: 500      // How long until "no signal"
+            updateIntervalMs: 100, // UI update rate
+            signalTimeoutMs: 500 // How long until "no signal"
         );
     }
 
@@ -125,7 +128,7 @@ public class OpenFreqService : IOpenFreqService
         if (_isInitialized)
         {
             Console.WriteLine($"[SERVICE] Calling Shutdown from Initialize");
-            Shutdown();
+            Shutdown().Wait(100);
         }
 
         // Create client with server settings
@@ -196,7 +199,7 @@ public class OpenFreqService : IOpenFreqService
         }
     }
 
-    public async void Shutdown()
+    public async Task Shutdown()
     {
         Console.WriteLine($"[SERVICE] Shutdown called - IsInitialized: {_isInitialized}");
         if (!_isInitialized) return;
@@ -261,14 +264,21 @@ public class OpenFreqService : IOpenFreqService
         if (_client == null) return;
 
         // Stop all transmissions
-        foreach (var frequencyKhz in _activeTransmissions.Keys)
+        foreach (var frequencyKhz in _activeTransmissions)
         {
             await StopTransmissionAsync(frequencyKhz);
         }
 
+        _activeTransmissions.Clear();
+        _tunedFrequencies.Clear();
         await _client.DisconnectAsync();
         OnStatusMessage("Disconnected from OpenFreq server");
         Status = IOpenFreqService.OpenFreqStatus.Disconnected;
+    }
+
+    public bool FrequencyJoined(int frequencyKhz)
+    {
+        return _tunedFrequencies.ContainsKey(frequencyKhz);
     }
 
     /// <summary>
@@ -291,8 +301,12 @@ public class OpenFreqService : IOpenFreqService
         await _client.JoinFrequencyAsync(frequencyKhz);
         OnStatusMessage($"Joined frequency {frequencyKhz / 1000.0:F3} MHz");
 
-        _tunedFrequencies.Add(frequencyKhz, radioStationData);
-        _playbackService.TuneFrequency(frequencyKhz);
+        _tunedFrequencies.TryAdd(frequencyKhz, radioStationData);
+
+        if (radioStationData.IsEnabled)
+        {
+            _playbackService?.TuneFrequency(frequencyKhz);
+        }
 
         // TODO
         //_playbackService.SetSquelchLevel(frequencyKhz, 0.1f);
@@ -310,12 +324,9 @@ public class OpenFreqService : IOpenFreqService
         }
 
         // Stop transmission if active
-        if (_activeTransmissions.ContainsKey(frequencyKhz))
-        {
-            await StopTransmissionAsync(frequencyKhz);
-        }
+        await StopTransmissionAsync(frequencyKhz);
 
-        _tunedFrequencies.Remove(frequencyKhz);
+        _tunedFrequencies.Remove(frequencyKhz, out _);
 
         await _client.LeaveFrequencyAsync(frequencyKhz);
         OnStatusMessage($"Left frequency {frequencyKhz / 1000.0:F3} MHz");
@@ -324,15 +335,22 @@ public class OpenFreqService : IOpenFreqService
     /// <summary>
     /// Start transmitting on a frequency
     /// </summary>
-    public async Task StartTransmissionAsync(int frequencyKhz, RadioStationData radioStationData)
+    public async Task StartTransmissionAsync(int frequencyKhz)
     {
         if (_client == null || _playbackService == null)
         {
             throw new InvalidOperationException("Service not initialized");
         }
 
+        _tunedFrequencies.TryGetValue(frequencyKhz, out var radioStationData);
+        if (!radioStationData?.IsEnabled ?? false)
+        {
+            _logger.LogWarning("Trying to start transmission on disabled frequency {FrequencyKhz}", frequencyKhz);
+            return;
+        }
+
         // Add to active transmissions
-        _activeTransmissions.Add(frequencyKhz, radioStationData);
+        _activeTransmissions.Add(frequencyKhz);
         // Mute the noise
         //_playbackService.SetSquelchLevel(frequency, 1.0f);
 
@@ -374,7 +392,7 @@ public class OpenFreqService : IOpenFreqService
         if (_client == null) return;
 
         // Remove from active transmissions
-        _activeTransmissions.Remove(frequencyKhz);
+        _activeTransmissions.TryRemove(frequencyKhz);
 
         // If NO more transmissions, stop recording
         if (_activeTransmissions.Count == 0 && _recordHandle != 0)
@@ -400,12 +418,19 @@ public class OpenFreqService : IOpenFreqService
 
     public void EnableFrequency(int frequencyKhz)
     {
-        throw new NotImplementedException();
+        _tunedFrequencies.TryGetValue(frequencyKhz, out var radioStationData);
+        radioStationData?.IsEnabled = true;
+        _playbackService?.TuneFrequency(frequencyKhz);
+        OnStatusMessage($"{frequencyKhz / 1000d:F3} enabled");
     }
 
     public void DisableFrequency(int frequencyKhz)
     {
-        throw new NotImplementedException();
+        _tunedFrequencies.TryGetValue(frequencyKhz, out var radioStationData);
+        radioStationData?.IsEnabled = false;
+        StopTransmissionAsync(frequencyKhz).Wait(50);
+        _playbackService?.UntuneFrequency(frequencyKhz);
+        OnStatusMessage($"{frequencyKhz / 1000d:F3} disabled");
     }
 
     public void SetOwnPositionMode(IOpenFreqService.Mode newMode)
@@ -440,7 +465,7 @@ public class OpenFreqService : IOpenFreqService
     /// </summary>
     public bool IsTransmitting(int frequency)
     {
-        return _activeTransmissions.ContainsKey(frequency);
+        return _activeTransmissions.Contains(frequency);
     }
 
     /// <summary>
@@ -490,35 +515,58 @@ public class OpenFreqService : IOpenFreqService
             Marshal.Copy(buffer, audioData, 0, length);
 
             // Send to ALL active frequencies
-
             var frequenciesData = new List<(int frequencyKhz, double txPowerWatts, Position? position)>();
+
+            // List of frequencies that got disabled in the meantime
+            var disabledFrequencies = new List<int>();
             foreach (var transmission in _activeTransmissions)
             {
-                var frequency = transmission.Key;
-
-                var position = GetOwnPosition(frequency) ?? new Position(0, 0, 0);
-                _logger.LogDebug($"[Recording] {frequency} Position: {position}");
-
-                if (RadioStationPreset.IsVHF(frequency))
+                var frequencyKhz = transmission;
+                _tunedFrequencies.TryGetValue(frequencyKhz, out var radioStationData);
+                if (radioStationData == null)
                 {
-                    frequenciesData.Add((frequency,
-                        _tunedFrequencies.TryGetValue(frequency, out var tunedFrequency)
+                    _logger.LogError($"Frequency {frequencyKhz} has no RadioStationData");
+                    continue;
+                }
+
+                if (!radioStationData.IsEnabled)
+                {
+                    _logger.LogWarning($"Recording on frequency {frequencyKhz} which is not active");
+                    disabledFrequencies.Add(frequencyKhz);
+                    continue;
+                }
+
+
+                var position = GetOwnPosition(frequencyKhz) ?? new Position(0, 0, 0);
+                _logger.LogDebug($"[Recording] {frequencyKhz} Position: {position}");
+
+                if (RadioStationPreset.IsVHF(frequencyKhz))
+                {
+                    frequenciesData.Add((frequencyKhz,
+                        _tunedFrequencies.TryGetValue(frequencyKhz, out var tunedFrequency)
                             ? tunedFrequency.Preset.TxPower_VHF_W
                             : 0, position));
                 }
                 else
                 {
-                    frequenciesData.Add((frequency,
-                        _tunedFrequencies.TryGetValue(frequency, out var tunedFrequency)
+                    frequenciesData.Add((frequencyKhz,
+                        _tunedFrequencies.TryGetValue(frequencyKhz, out var tunedFrequency)
                             ? tunedFrequency.Preset.TxPower_UHF_W
                             : 0, position));
                 }
             }
 
             _client?.SendAudio(audioData, frequenciesData);
+
+            // Clean up any frequencies which might have been disabled in the meantime
+            foreach (var disabledFrequency in disabledFrequencies)
+            {
+                _activeTransmissions.TryRemove(disabledFrequency);
+            }
         }
         catch (Exception ex)
         {
+            _logger.LogError("Error sending audio: {ExMessage}", ex.Message);
             OnStatusMessage($"Error sending audio: {ex.Message}");
         }
 
@@ -603,7 +651,7 @@ public class OpenFreqService : IOpenFreqService
         // Start with default params (will update when we get position data)
         var audioParams = FastPathAudioSim.GetDefaultAudioParams(frequencyKhz);
 
-        _playbackService.StartPushStream(
+        _playbackService?.StartPushStream(
             streamId,
             OpenFreqRtcClient.SAMPLE_RATE,
             OpenFreqRtcClient.CHANNELS,
@@ -628,7 +676,7 @@ public class OpenFreqService : IOpenFreqService
         {
             if (freqs.TryGetValue(e.FrequencyKhz, out var streamId))
             {
-                _playbackService.StopStream(streamId);
+                _playbackService?.StopStream(streamId);
                 freqs.Remove(e.FrequencyKhz);
             }
         }
@@ -647,17 +695,8 @@ public class OpenFreqService : IOpenFreqService
         var state = e.IsTransmitting ? "transmitting" : "stopped";
         OnPeerActivity($"Peer {e.PeerId} {state} on {e.FrequencyKhz}");
 
-        var streamId = GetStreamId(e.PeerId, e.FrequencyKhz);
-        if (e.IsTransmitting)
-        {
-            //_playbackService?.OnWebSocketPTTPress(streamId);
-            OnFrequencyStatusChanged(e.FrequencyKhz, Channel.ChannelStatus.Receiving);
-        }
-        else
-        {
-            //_playbackService?.OnWebSocketPTTRelease(streamId);
-            OnFrequencyStatusChanged(e.FrequencyKhz, Channel.ChannelStatus.Connected);
-        }
+        OnFrequencyStatusChanged(e.FrequencyKhz,
+            e.IsTransmitting ? Channel.ChannelStatus.Receiving : Channel.ChannelStatus.Connected);
     }
 
     /// <summary>
@@ -665,7 +704,7 @@ public class OpenFreqService : IOpenFreqService
     /// </summary>
     private void OnClientAudioDataReceived(object? sender, AudioDataEventArgs e)
     {
-        if (e.AudioData == null || e.AudioData.Length == 0)
+        if (e.AudioData.Length == 0)
         {
             _logger.LogWarning($"Audio data received with 0 size");
             return;
@@ -693,11 +732,11 @@ public class OpenFreqService : IOpenFreqService
                 if (receiverData == null)
                 {
                     _logger.LogWarning(
-                        "Received audio data for non-tuned frequency {FrequencyTransmissionMhz/1000:F3}, skipping",
+                        "Received audio data for non-tuned frequency {FrequencyTransmissionMhz/1000d:F3}, skipping",
                         frequencyTransmission.Khz);
                     return;
                 }
-                
+
                 _logger.LogDebug("TX POS: {txPos} | RX POS: {rxPos}", frequencyTransmission.Position, ownPosition);
 
                 var receiverSensitivityDb = RadioStationPreset.IsVHF(frequencyTransmission.Khz)
@@ -738,18 +777,18 @@ public class OpenFreqService : IOpenFreqService
                     _logger.LogInformation(
                         $"Calculated Audio params for stream {streamId}: Gain={audioParams.Gain}, SNR={audioParams.SNR_dB}");
                 }
-                
+
                 _signalStrengthTracker.UpdateSignalStrength(audioParams.RadioFrequencyKHz, audioParams);
             }
 
             // Check if stream exists
-            bool streamExists = _playbackService.IsStreamActive(streamId);
+            var streamExists = _playbackService?.IsStreamActive(streamId) ?? false;
 
             if (!streamExists)
             {
                 _logger.LogDebug(
                     $"Creating new stream: {streamId}, SR={OpenFreqRtcClient.SAMPLE_RATE}, CH={OpenFreqRtcClient.CHANNELS}");
-                _playbackService.StartPushStream(
+                _playbackService?.StartPushStream(
                     streamId,
                     OpenFreqRtcClient.SAMPLE_RATE,
                     OpenFreqRtcClient.CHANNELS,
@@ -759,8 +798,8 @@ public class OpenFreqService : IOpenFreqService
             {
                 _playbackService?.UpdateStreamParams(streamId, audioParams);
             }
-            
-            _playbackService.PushAudioData(streamId, e.AudioData, frequencyTransmission.BeginMarker,
+
+            _playbackService?.PushAudioData(streamId, e.AudioData, frequencyTransmission.BeginMarker,
                 frequencyTransmission.EndMarker);
         }
     }
@@ -861,19 +900,14 @@ public class FrequencyStatusEventArgs : EventArgs
     }
 }
 
-public class PeerActivityEventArgs : EventArgs
+public class PeerActivityEventArgs(string message) : EventArgs
 {
-    public string Message { get; }
-
-    public PeerActivityEventArgs(string message)
-    {
-        Message = message;
-    }
+    public string Message { get; } = message;
 }
 
 // AudioParams Cache
-class AudioParamsCacheEntry
+internal class AudioParamsCacheEntry
 {
-    public AudioParams Params { get; set; }
+    public required AudioParams Params { get; set; }
     public DateTime LastCalculated { get; set; }
 }

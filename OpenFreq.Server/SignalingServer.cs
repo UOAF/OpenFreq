@@ -48,19 +48,19 @@ public class SignalingServer
         LoggerMessage.Define<string, double>(
             LogLevel.Information,
             new EventId(4, nameof(HandleJoinChannel)),
-            "Client {ClientId} joined frequency {Frequency}");
+            "Client {ClientId} joined frequency {Frequency:F3}");
 
     private static readonly Action<ILogger, string, double, Exception?> _logClientLeftFrequency =
         LoggerMessage.Define<string, double>(
             LogLevel.Information,
             new EventId(5, nameof(LeaveCurrentChannel)),
-            "Client {ClientId} left frequency {Frequency}");
+            "Client {ClientId} left frequency {Frequency:F3}");
 
     private static readonly Action<ILogger, string, bool, double, int, Exception?> _logTransmissionState =
         LoggerMessage.Define<string, bool, double, int>(
             LogLevel.Information,
             new EventId(6, nameof(HandleTransmission)),
-            "Client {ClientId} transmission state: {IsTransmitting} on frequency {Frequency}, broadcasting to {PeerCount} peer(s)");
+            "Client {ClientId} transmission state: {IsTransmitting} on frequency {Frequency:F3}, broadcasting to {PeerCount} peer(s)");
 
     private static readonly Action<ILogger, string, Exception?> _logClientCleanedUp =
         LoggerMessage.Define<string>(
@@ -350,7 +350,7 @@ public class SignalingServer
             session.Id,
             SignalingMessageFactory.CreatePeerJoined(session.Id, joinMsg.FrequencyKhz));
 
-        _logClientJoinedFrequency(_logger, session.Id, joinMsg.FrequencyKhz, null);
+        _logClientJoinedFrequency(_logger, session.Id, joinMsg.FrequencyKhz/1000d, null);
     }
 
     private async Task HandleLeaveChannel(ClientSession session, SignalingMessage message)
@@ -374,7 +374,7 @@ public class SignalingServer
             SignalingMessageFactory.CreatePeerLeft(session.Id, frequencyKhz));
 
         session.CurrentFrequencies.TryRemove(frequencyKhz, out var frequencyClientStatus);
-        _logClientLeftFrequency(_logger, session.Id, frequencyKhz, null);
+        _logClientLeftFrequency(_logger, session.Id, frequencyKhz/1000d, null);
     }
 
     private async Task LeaveAllChannels(ClientSession session)
@@ -391,7 +391,7 @@ public class SignalingServer
                 SignalingMessageFactory.CreatePeerLeft(session.Id, frequency));
 
             session.CurrentFrequencies.TryRemove(frequency, out var frequencyClientStatus);
-            _logClientLeftFrequency(_logger, session.Id, frequency, null);
+            _logClientLeftFrequency(_logger, session.Id, frequency/1000d, null);
         }
     }
 
@@ -420,7 +420,7 @@ public class SignalingServer
             .ToArray();
 
         _logTransmissionState(_logger, session.Id, transmissionMsg.Transmitting, 
-            transmissionMsg.FrequencyKhz, peersInChannel.Length, null);
+            transmissionMsg.FrequencyKhz/1000d, peersInChannel.Length, null);
 
         BroadcastToChannel(
             transmissionMsg.FrequencyKhz,
@@ -446,12 +446,12 @@ public class SignalingServer
                     {
                         if (!t.IsFaulted || t.Exception == null) return;
                         var ex = t.Exception.GetBaseException();
-                        _logger.LogError(ex, "Error broadcasting to client {ClientId} in channel {Frequency/1000:F3}", 
+                        _logger.LogError(ex, "Error broadcasting to client {ClientId} in channel {Frequency/1000d:F3}", 
                             clientId, frequencyKhz);
                     }, TaskScheduler.Default);
 
                 if (_logger.IsEnabled(LogLevel.Debug))
-                    _logger.LogDebug("Broadcasting {MessageType} to client {ClientId} in channel {Frequency/1000:F3}", 
+                    _logger.LogDebug("Broadcasting {MessageType} to client {ClientId} in channel {Frequency/1000d:F3}", 
                         message.Type, clientId, frequencyKhz);
             }
         }

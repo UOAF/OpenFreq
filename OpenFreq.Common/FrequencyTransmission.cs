@@ -34,7 +34,7 @@ public class FrequencyTransmission
     {
     }
 
-    public FrequencyTransmission(int khz, double txPowerWatts, Position position, bool beginMarker = false,
+    public FrequencyTransmission(int khz, double txPowerWatts, Position? position, bool beginMarker = false,
         bool endMarker = false)
     {
         Khz = khz;
@@ -49,6 +49,6 @@ public class FrequencyTransmission
         var markers = "";
         if (BeginMarker) markers += "BEGIN ";
         if (EndMarker) markers += "END ";
-        return $"{Khz/1000:F3} MHz {(markers.Length > 0 ? $"[{markers.Trim()}]" : "")}";
+        return $"{Khz/1000d:F3} MHz {(markers.Length > 0 ? $"[{markers.Trim()}]" : "")}";
     }
 }
