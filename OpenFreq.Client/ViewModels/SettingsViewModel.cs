@@ -2,6 +2,7 @@ using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
+using FalconBmsDataService.Models;
 using FalconBmsDataService.Services;
 using FalconRadioService.Services;
 using OpenFreq.Services.Acmi;
@@ -49,6 +50,7 @@ public partial class SettingsViewModel : ViewModelBase
     private readonly IFalconRadioSharedMemoryService _falconRadioSharedMemoryService;
     private readonly IFalconSharedMemoryService _falconSharedMemoryService;
     private readonly IAcmiClientService _acmiClientService;
+    private readonly IOpenFreqService _openFreqService;
 
     public bool IsReadyToConnect => OpenFreqServerAddress != string.Empty &&
                                     (
@@ -79,12 +81,13 @@ public partial class SettingsViewModel : ViewModelBase
         }
     }
 
-    public SettingsViewModel(IAudioService audioService, IFalconRadioSharedMemoryService falconRadioSharedMemoryService, IFalconSharedMemoryService falconSharedMemoryService, IAcmiClientService acmiClientService)
+    public SettingsViewModel(IAudioService audioService, IFalconRadioSharedMemoryService falconRadioSharedMemoryService, IFalconSharedMemoryService falconSharedMemoryService, IAcmiClientService acmiClientService, IOpenFreqService openFreqService)
     {
         _audioService = audioService;
         _falconSharedMemoryService = falconSharedMemoryService;
         _falconRadioSharedMemoryService = falconRadioSharedMemoryService;
         _acmiClientService = acmiClientService;
+        _openFreqService = openFreqService;
         InitializeAudioDevices();
     }
 
@@ -114,6 +117,30 @@ public partial class SettingsViewModel : ViewModelBase
         if (value >= 0 && value < PlaybackDeviceNames.Count)
         {
             _outputDeviceName = PlaybackDeviceNames[value];
+        }
+    }
+
+    partial void OnBmsUhfAudioChannelChanged(RadioPlayback.AudioChannel value)
+    {
+        var uhfChannel = _falconRadioSharedMemoryService.GetRadioChannel(RadioType.UHF);
+        var guardChannel = _falconRadioSharedMemoryService.GetRadioChannel(RadioType.GUARD);
+        if (uhfChannel != null)
+        {
+            _openFreqService.SetAudioChannel(uhfChannel.Frequency, value);
+        }
+
+        if (guardChannel != null)
+        {
+            _openFreqService.SetAudioChannel(guardChannel.Frequency, value);
+        }
+    }
+
+    partial void OnBmsVhfAudioChannelChanged(RadioPlayback.AudioChannel value)
+    {
+        var vhfChannel = _falconRadioSharedMemoryService.GetRadioChannel(RadioType.UHF);
+        if (vhfChannel != null)
+        {
+            _openFreqService.SetAudioChannel(vhfChannel.Frequency, value);
         }
     }
 

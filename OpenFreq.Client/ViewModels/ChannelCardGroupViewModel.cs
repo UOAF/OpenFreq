@@ -101,7 +101,16 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         channel.Type = channelType;
         channel.FrequencyKhz = frequencyKhz;
         channel.IsEditing = isInEditMode;
-        Dispatcher.UIThread.Post(() => { Channels.Add(channel); });
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            // Already on UI thread - add directly
+            Channels.Add(channel);
+        }
+        else
+        {
+            // Not on UI thread - marshal to UI thread
+            Dispatcher.UIThread.Post(() => { Channels.Add(channel); });
+        }
 
         return channel;
     }

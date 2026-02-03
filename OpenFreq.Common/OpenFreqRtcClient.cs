@@ -93,9 +93,6 @@ public class OpenFreqRtcClient : IDisposable
             _webSocket = new ClientWebSocket();
             await _webSocket.ConnectAsync(new Uri($"ws://{ipPort.ipAddress}:{ipPort.port}"), _cts.Token);
 
-            _isConnected = true;
-            OnConnectionStateChanged(ConnectionState.Connected);
-
             // Start message receiver
             _ = Task.Run(ReceiveMessagesAsync, _cts.Token);
 
@@ -133,6 +130,8 @@ public class OpenFreqRtcClient : IDisposable
             _rtpReceiver.AudioReceived += OnRtpAudioReceived;
             _rtpReceiver.ErrorOccurred += (sender, error) => { _logger.LogError("RTP Error: {Error}", error); };
 
+            _isConnected = true;
+            OnConnectionStateChanged(ConnectionState.Connected);
           
         }
         catch (Exception ex)

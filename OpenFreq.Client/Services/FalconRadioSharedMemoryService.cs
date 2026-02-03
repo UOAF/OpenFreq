@@ -1,4 +1,5 @@
 ﻿// ReSharper disable RedundantUsingDirective
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
@@ -65,6 +66,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
     {
         _logger = logger;
     }
+
     public ServiceState State
     {
         get
@@ -194,7 +196,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
         var rcsInterval = TimeSpan.FromSeconds(1.0);
         _rcsTimer = new PeriodicTimer(rcsInterval);
         _rcsPollingTask = Task.Run(() => RcsUpdateLoop(_cts.Token));
-        
+
         _logger.LogInformation("Started");
     }
 
@@ -219,6 +221,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
         {
             ChangeState(ServiceState.Stopped);
         }
+
         _logger.LogInformation("Stopped");
     }
 
@@ -279,53 +282,54 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
         }
     }
 
-    private async Task RccPollingLoop(CancellationToken cancellationToken)
+    private async Task RccPollingLoop(CancellationToken ct)
     {
-        while (!cancellationToken.IsCancellationRequested && _rccTimer != null)
+        while (!ct.IsCancellationRequested)
         {
             try
             {
-                await _rccTimer.WaitForNextTickAsync(cancellationToken);
+                await _rccTimer!.WaitForNextTickAsync(ct);
 
-                var currentState = State;
-
-                if (currentState == ServiceState.RcsCreated ||
-                    currentState == ServiceState.WaitingForBms)
+                // If not yet connected to RCC shared memory, try to open it
+                if (_lpRccBaseAddress == IntPtr.Zero)
                 {
-                    // Check if BMS is running
-                    if (IsFalconBmsRunning())
-                    {
-                        if (currentState == ServiceState.RcsCreated)
-                        {
-                            lock (_dataLock)
-                            {
-                                ChangeState(ServiceState.WaitingForBms);
-                            }
-                        }
+                    if (!TryOpenRccSharedMemory())
+                        continue;
 
-                        // Try to open RCC
-                        if (TryOpenRccSharedMemory())
-                        {
-                            lock (_dataLock)
-                            {
-                                ChangeState(ServiceState.Connected);
-                                _initialReadDone = false; // Reset for first read
-                            }
-                        }
-                    }
-                }
-                else if (currentState == ServiceState.Connected)
-                {
-                    // Read radio data and detect changes
+                    // Read initial data BEFORE changing state to Connected
+                    // This ensures data is available when StateChanged event fires
+                    Console.WriteLine("[DEBUG] RCC opened, reading initial data...");
                     if (!TryReadRadioData())
                     {
-                        // Connection lost
+                        Console.WriteLine("[ERROR] Failed to read initial RCC data, closing and retrying");
                         CloseRccSharedMemory();
-                        lock (_dataLock)
-                        {
-                            _initialReadDone = false;
-                            ChangeState(ServiceState.WaitingForBms);
-                        }
+                        continue;
+                    }
+
+                    Console.WriteLine("[DEBUG] Initial RCC data read successfully");
+
+                    // Now that we have data, change state to Connected
+                    lock (_dataLock)
+                    {
+                        ChangeState(ServiceState.Connected);
+                    }
+
+                    // Continue to next iteration to start regular polling
+                    continue;
+                }
+
+                // Regular polling: read RCC data
+                if (!TryReadRadioData())
+                {
+                    Console.WriteLine("[ERROR] Failed to read RCC data");
+
+                    // If read fails, RCC might have been closed by BMS
+                    // Close our handle and try to reopen on next iteration
+                    CloseRccSharedMemory();
+
+                    lock (_dataLock)
+                    {
+                        ChangeState(ServiceState.RcsCreated);
                     }
                 }
             }
@@ -333,8 +337,9 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
             {
                 break;
             }
-            catch
+            catch (Exception ex)
             {
+                Console.WriteLine($"[ERROR] RCC polling error: {ex.Message}");
             }
         }
     }
@@ -435,7 +440,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
 
             // Read connection parameters
             var connParams = RadioControlParser.ParseConnectionParameters(_lpRccBaseAddress);
-            
+
             // Read all radio channels
             var channels = new Dictionary<RadioType, RadioChannel>();
             foreach (RadioType radioType in Enum.GetValues<RadioType>())
@@ -475,7 +480,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
                 {
                     _radioDevices[kvp.Key] = kvp.Value;
                 }
-                
+
                 // Detect connection parameter changes
                 if (_connectionParameters != null && _initialReadDone)
                 {
@@ -618,7 +623,6 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
 }
 
 #else
-
 [SuppressMessage("ReSharper", "UnassignedGetOnlyAutoProperty")]
 [SuppressMessage("ReSharper", "ReturnTypeCanBeNotNullable")]
 

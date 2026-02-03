@@ -12,6 +12,7 @@ using FalconRadioService.Models;
 using FalconRadioService.Services;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Client.Models;
+using OpenFreq.Common;
 using OpenFreq.Services.Acmi;
 using OpenFreqAudio;
 using OpenFreqClient.Models;
@@ -59,8 +60,9 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         _falconRadioSharedMemoryService.PttChanged += OnPttChanged;
         _falconRadioSharedMemoryService.PowerChanged += OnRadioPowerChanged;
         _falconRadioSharedMemoryService.VolumeChanged += OnRadioVolumeChanged;
-
         _falconSharedMemoryService.FlyingStateChanged += OnFlyingStateChanged;
+
+        _openFreqService.ConnectionStateChanged += OnOpenFreqConnectionStateChanged;
 
         // Subscribe to transmission messages
         WeakReferenceMessenger.Default.Register<StartTransmissionMessage>(this,
@@ -71,6 +73,28 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
             async (r, m) => await DeleteChannelGroup(m.ChannelCardGroupId));
         WeakReferenceMessenger.Default.Register<ChannelAudioChannelUpdateMessage>(this,
             (r, m) => _openFreqService.SetAudioChannel(m.FrequencyKhz, m.AudioChannel));
+    }
+
+    private void OnOpenFreqConnectionStateChanged(object? sender, ConnectionState e)
+    {
+        if (e == ConnectionState.Authenticated && !_settings.ModeIsGci)
+        {
+            _logger.LogDebug("OpenFreq authenticated, importing and joining BMS channels");
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await ImportBmsRadioChannels();
+                    _logger.LogDebug("BMS channels imported, joining...");
+                    await JoinAllChannelsAsync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to import/join BMS channels");
+                }
+            });
+        }
     }
 
     private void OnRadioVolumeChanged(object? sender, RadioVolumeChangedEventArgs e)
@@ -125,10 +149,6 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
             DeleteChannelGroup(FalconChannelGroup);
             FalconChannelGroup = null;
         }
-        else if (e.NewParameters.ReadyToTransmit)
-        {
-            ImportBmsRadioChannels();
-        }
     }
 
     private void OnFlyingStateChanged(object? sender, FlyingStateChangedEventArgs e)
@@ -144,9 +164,9 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         }
     }
 
-    private void ImportBmsRadioChannels(bool clearExisting = true)
+    private async Task ImportBmsRadioChannels(bool clearExisting = true)
     {
-        Dispatcher.UIThread.Post(() =>
+        await Dispatcher.UIThread.InvokeAsync(() =>
         {
             lock (_channelImportLock)
             {
@@ -155,7 +175,6 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                     FalconChannelGroup = CreateChannelGroup(BMS_GROUP_NAME, RadioStationPresets.Fighter,
                         RadioStationData.RadioStationType.BMS);
                 }
-
                 else if (clearExisting)
                 {
                     FalconChannelGroup.LeaveAllChannelsAsync().Wait(300);
@@ -185,20 +204,15 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                                 break;
                             case RadioType.GUARD:
                                 channel.HotKey = KeyCode.VcF3;
-                                // Guard is on the UHF radio set
                                 channel.AudioChannel = _settings.BmsUhfAudioChannel;
                                 break;
                         }
                     }
                 }
-
-                if (_openFreqService.IsAuthenticated)
-                {
-                    JoinAllChannelsAsync().Wait(TimeSpan.FromSeconds(2));
-                }
             }
         });
     }
+
 
     private void OnPttChanged(object? sender, RadioPttChangedEventArgs e)
     {
@@ -256,7 +270,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                 case RadioType.UHF:
                     newChannel.AudioChannel = _settings.BmsUhfAudioChannel;
                     break;
-                case  RadioType.VHF:
+                case RadioType.VHF:
                     newChannel.AudioChannel = _settings.BmsVhfAudioChannel;
                     break;
                 case RadioType.GUARD:
