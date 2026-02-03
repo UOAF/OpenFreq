@@ -124,8 +124,10 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
             }
 
             // Always join the new frequency
-            _openFreqService.JoinFrequencyAsync(message.NewFrequencyKhz, RadioStationData)
+            _openFreqService.JoinFrequencyAsync(message.NewFrequencyKhz, RadioStationData, message.IsEnabled)
                 .Wait(TimeSpan.FromMilliseconds(100));
+            
+            _openFreqService.SetAudioChannel(message.NewFrequencyKhz, message.CurrentAudioChannel);
         }
     }
 
@@ -232,7 +234,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         OnChannelUpdated(this,
             new ChannelUpdatedMessage(oldChannel.Id, oldFreqKhz, newFreqKhz,
                 oldChannel.Type, newChannelType, oldChannel.Status, oldChannel.HotKey,
-                oldChannel.HotKey));
+                oldChannel.HotKey, oldChannel.IsEnabled, oldChannel.AudioChannel));
 
         return true;
     }
@@ -241,7 +243,8 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
     {
         foreach (var channel in Channels)
         {
-            await _openFreqService.JoinFrequencyAsync(channel.FrequencyKhz, RadioStationData);
+            await _openFreqService.JoinFrequencyAsync(channel.FrequencyKhz, RadioStationData, channel.IsEnabled);
+            _openFreqService.SetAudioChannel(channel.FrequencyKhz, channel.AudioChannel);
         }
     }
 

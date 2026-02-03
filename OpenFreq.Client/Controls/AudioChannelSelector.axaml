@@ -1,0 +1,65 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:avalonia="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             xmlns:models="clr-namespace:OpenFreqAudio;assembly=OpenFreqAudio"
+             xmlns:converters="clr-namespace:Avalonia.Controls.Converters;assembly=Avalonia.Controls"
+             x:Class="OpenFreq.Client.Controls.AudioChannelSelector"
+             x:Name="Root">
+    
+    <UserControl.Resources>
+        <converters:EnumToBoolConverter x:Key="EnumToBoolConverter" />
+    </UserControl.Resources>
+    
+    <Border BorderBrush="{DynamicResource MaterialDividerBrush}"
+            BorderThickness="1"
+            CornerRadius="4"
+            Height="32"
+            Width="120"
+            HorizontalAlignment="Left">
+        <Grid ColumnDefinitions="*,*,*">
+            <Grid.Styles>
+                <Style Selector="RadioButton">
+                    <Setter Property="Theme" Value="{StaticResource MaterialButtonlikeRadioButton}" />
+                    <Setter Property="HorizontalAlignment" Value="Stretch" />
+                    <Setter Property="HorizontalContentAlignment" Value="Center" />
+                    <Setter Property="Height" Value="30" />
+                    <Setter Property="CornerRadius" Value="0" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="MinWidth" Value="0" />
+                    <Setter Property="Foreground" Value="{DynamicResource MaterialBodyBrush}"/>
+                    <Setter Property="FontWeight" Value="Bold"></Setter>
+                </Style>
+                <Style Selector="RadioButton:checked">
+                    <Setter Property="Foreground" Value="{DynamicResource PrimaryHueMidBrush}" />
+                </Style>
+                <Style Selector="RadioButton:nth-child(1)">
+                    <Setter Property="CornerRadius" Value="3,0,0,3" />
+                </Style>
+                <Style Selector="RadioButton:nth-child(3)">
+                    <Setter Property="CornerRadius" Value="0,3,3,0" />
+                </Style>
+            </Grid.Styles>
+
+            <RadioButton Grid.Column="0"
+                         ToolTip.Tip="Left Channel"
+                         IsChecked="{Binding #Root.SelectedChannel, 
+                                     Converter={StaticResource EnumToBoolConverter}, 
+                                     ConverterParameter={x:Static models:RadioPlayback+AudioChannel.Left}}"
+                         Content="{avalonia:MaterialIconExt Kind=AlphaLCircleOutline, Size=20}" />
+            <RadioButton Grid.Column="1"
+                         ToolTip.Tip="Both Channels (Stereo)"
+                         IsChecked="{Binding #Root.SelectedChannel, 
+                                     Converter={StaticResource EnumToBoolConverter}, 
+                                     ConverterParameter={x:Static models:RadioPlayback+AudioChannel.Both}}"
+                         Content="BOTH"
+                         FontSize="11"
+                         FontWeight="Medium" />
+            <RadioButton Grid.Column="2"
+                         ToolTip.Tip="Right Channel"
+                         IsChecked="{Binding #Root.SelectedChannel, 
+                                     Converter={StaticResource EnumToBoolConverter}, 
+                                     ConverterParameter={x:Static models:RadioPlayback+AudioChannel.Right}}"
+                         Content="{avalonia:MaterialIconExt Kind=AlphaRCircleOutline, Size=20}" />
+        </Grid>
+    </Border>
+</UserControl>

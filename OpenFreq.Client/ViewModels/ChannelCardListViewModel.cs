@@ -16,7 +16,6 @@ using OpenFreq.Services.Acmi;
 using OpenFreqAudio;
 using OpenFreqClient.Models;
 using OpenFreqClient.Services.Interfaces;
-using OpenFreqClient.Views;
 using OpenFreqClient.Views.Util;
 using SharpHook.Data;
 
@@ -70,6 +69,8 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
             async (r, m) => await HandleStopTransmissionAsync(m));
         WeakReferenceMessenger.Default.Register<ChannelCardGroupViewModel.ChannelCardGroupDeleteRequestedMessage>(this,
             async (r, m) => await DeleteChannelGroup(m.ChannelCardGroupId));
+        WeakReferenceMessenger.Default.Register<ChannelAudioChannelUpdateMessage>(this,
+            (r, m) => _openFreqService.SetAudioChannel(m.FrequencyKhz, m.AudioChannel));
     }
 
     private void OnRadioVolumeChanged(object? sender, RadioVolumeChangedEventArgs e)
@@ -176,12 +177,16 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                         {
                             case RadioType.VHF:
                                 channel.HotKey = KeyCode.VcF1;
+                                channel.AudioChannel = _settings.BmsVhfAudioChannel;
                                 break;
                             case RadioType.UHF:
                                 channel.HotKey = KeyCode.VcF2;
+                                channel.AudioChannel = _settings.BmsUhfAudioChannel;
                                 break;
                             case RadioType.GUARD:
                                 channel.HotKey = KeyCode.VcF3;
+                                // Guard is on the UHF radio set
+                                channel.AudioChannel = _settings.BmsUhfAudioChannel;
                                 break;
                         }
                     }
@@ -243,8 +248,21 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                     false);
                 return channel;
             }).GetAwaiter().GetResult();
-            JoinFrequencyAsync(newChannel.FrequencyKhz, FalconChannelGroup.RadioStationData)
+            JoinFrequencyAsync(newChannel.FrequencyKhz, FalconChannelGroup.RadioStationData, newChannel.IsEnabled)
                 .Wait(TimeSpan.FromMilliseconds(500));
+
+            switch (e.RadioType)
+            {
+                case RadioType.UHF:
+                    newChannel.AudioChannel = _settings.BmsUhfAudioChannel;
+                    break;
+                case  RadioType.VHF:
+                    newChannel.AudioChannel = _settings.BmsVhfAudioChannel;
+                    break;
+                case RadioType.GUARD:
+                    newChannel.AudioChannel = _settings.BmsUhfAudioChannel;
+                    break;
+            }
         }
     }
 
@@ -277,17 +295,17 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public async Task JoinFrequencyAsync(int frequencyKhz, RadioStationData radioStationData)
+    public async Task JoinFrequencyAsync(int frequencyKhz, RadioStationData radioStationData, bool isEnabled)
     {
         if (!_openFreqService.IsAuthenticated) return;
 
         try
         {
-            await _openFreqService.JoinFrequencyAsync(frequencyKhz, radioStationData);
+            await _openFreqService.JoinFrequencyAsync(frequencyKhz, radioStationData, isEnabled);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Failed to join frequency {frequencyKhz / 1000:F3}: {ex.Message}");
+            Console.WriteLine($"Failed to join frequency {frequencyKhz / 1000d:F3}: {ex.Message}");
         }
     }
 
@@ -301,7 +319,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Failed to leave frequency {frequencyKhz / 1000:F3}: {ex.Message}");
+            Console.WriteLine($"Failed to leave frequency {frequencyKhz / 1000d:F3}: {ex.Message}");
         }
     }
 

@@ -33,7 +33,7 @@ public interface IOpenFreqService : IDisposable
     Task ConnectAsync();
     Task DisconnectAsync();
     bool FrequencyJoined(int frequencyKhz);
-    Task JoinFrequencyAsync(int frequencyKhz, RadioStationData radioStationData);
+    Task JoinFrequencyAsync(int frequencyKhz, RadioStationData radioStationData, bool isEnabled);
     Task LeaveFrequencyAsync(int frequencyKhz);
     Task StartTransmissionAsync(int frequencyKhz);
     Task StopTransmissionAsync(int frequencyKhz);

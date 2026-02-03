@@ -34,7 +34,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     // TODO remove when done
 #if DEBUG
-    [ObservableProperty] private bool _debugMode = true;
+    [ObservableProperty] private bool _debugMode = false;
 #else
     [ObservableProperty] private bool _debugMode = false;
 #endif
@@ -372,7 +372,6 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
                 {
                     var channel =
                         channelGroup.CreateChannel(channelData.FrequencyKhz, channelData.Name ?? "", channelData.Type);
-                    channel.IsEnabled = channelData.Enabled;
                     channel.IsEditing = false;
 
                     // Parse and set hotkey
@@ -434,7 +433,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     partial void OnIs3dModeChanged(bool value)
     {
-        _openFreqService?.Apply3dAudioEffects = value;
+        _openFreqService.Apply3dAudioEffects = value;
     }
 
     [RelayCommand]
