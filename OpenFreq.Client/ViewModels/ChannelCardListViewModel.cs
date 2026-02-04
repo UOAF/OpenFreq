@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -36,9 +38,17 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
     public ChannelCardGroupViewModel? FalconChannelGroup { get; private set; }
 
     private readonly Lock _channelImportLock = new();
-
+    
+    // This actually holds all of our ChannelGroups
     [ObservableProperty]
-    public partial ObservableCollection<ChannelCardGroupViewModel> ChannelGroups { get; set; } = [];
+    public partial ObservableCollection<ChannelCardGroupViewModel> AllChannelGroups { get; private set; } = [];
+
+    // Collection used to display filtered channel groups (BMS or GCI mode)
+    public IEnumerable<ChannelCardGroupViewModel> ChannelGroups =>
+        _settings.ConnectionMode == IOpenFreqService.Mode.BMS
+            ? AllChannelGroups.Where(g => g.RadioStationData.Type == RadioStationData.RadioStationType.BMS)
+            : AllChannelGroups.Where(g => g.RadioStationData.Type != RadioStationData.RadioStationType.BMS);
+
 
     public ChannelCardListViewModel(IOpenFreqService openFreqService, IHotkeyService hotkeyService,
         IAcmiClientService acmiClientService, ILogger<ChannelCardListViewModel> logger,
@@ -52,6 +62,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         _falconRadioSharedMemoryService = falconRadioSharedMemoryService;
         _falconSharedMemoryService = falconSharedMemoryService;
         _settings = settingsViewModel;
+        _settings.PropertyChanged += OnSettingsChanged;
 
         // Subscribe to BMS Frequency update messages
         _falconRadioSharedMemoryService.ConnectionParametersChanged +=
@@ -63,6 +74,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         _falconSharedMemoryService.FlyingStateChanged += OnFlyingStateChanged;
 
         _openFreqService.ConnectionStateChanged += OnOpenFreqConnectionStateChanged;
+        AllChannelGroups?.CollectionChanged += (s, e) => OnPropertyChanged(nameof(ChannelGroups));
 
         // Subscribe to transmission messages
         WeakReferenceMessenger.Default.Register<StartTransmissionMessage>(this,
@@ -74,6 +86,15 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         WeakReferenceMessenger.Default.Register<ChannelAudioChannelUpdateMessage>(this,
             (r, m) => _openFreqService.SetAudioChannel(m.FrequencyKhz, m.AudioChannel));
     }
+
+    private void OnSettingsChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(SettingsViewModel.ConnectionMode))
+        {
+            OnPropertyChanged(nameof(ChannelGroups));
+        }
+    }
+
 
     private void OnOpenFreqConnectionStateChanged(object? sender, ConnectionState e)
     {
@@ -87,13 +108,26 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                 {
                     await ImportBmsRadioChannels();
                     _logger.LogDebug("BMS channels imported, joining...");
-                    await JoinAllChannelsAsync();
+                    if (FalconChannelGroup != null)
+                    {
+                        await FalconChannelGroup.JoinAllChannelsAsync();
+                    }
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Failed to import/join BMS channels");
                 }
             });
+        }
+        else if (e == ConnectionState.Authenticated && _settings.ModeIsGci)
+        {
+            foreach (var channelGroup in AllChannelGroups)
+            {
+                if (channelGroup.RadioStationData.Type != RadioStationData.RadioStationType.BMS)
+                {
+                    channelGroup.JoinAllChannelsAsync().Wait(100);
+                }
+            }
         }
     }
 
@@ -164,7 +198,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         }
     }
 
-    private async Task ImportBmsRadioChannels(bool clearExisting = true)
+    private async Task ImportBmsRadioChannels()
     {
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
@@ -175,7 +209,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                     FalconChannelGroup = CreateChannelGroup(BMS_GROUP_NAME, RadioStationPresets.Fighter,
                         RadioStationData.RadioStationType.BMS);
                 }
-                else if (clearExisting)
+                else
                 {
                     FalconChannelGroup.LeaveAllChannelsAsync().Wait(300);
                     FalconChannelGroup.Channels.Clear();
@@ -212,7 +246,6 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
             }
         });
     }
-
 
     private void OnPttChanged(object? sender, RadioPttChangedEventArgs e)
     {
@@ -337,14 +370,6 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public async Task JoinAllChannelsAsync()
-    {
-        foreach (var channelGroup in ChannelGroups)
-        {
-            await channelGroup.JoinAllChannelsAsync();
-        }
-    }
-
     public async Task LeaveAllChannelsAsync()
     {
         foreach (var channelGroup in ChannelGroups)
@@ -360,7 +385,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         var channelGroup = new ChannelCardGroupViewModel(_openFreqService, _hotkeyService, _acmiClientService,
             _settings, name,
             preset, radioStationType, editMode: editMode);
-        ChannelGroups.Add(channelGroup);
+        AllChannelGroups.Add(channelGroup);
         return channelGroup;
     }
 
@@ -369,7 +394,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         var channelGroup = new ChannelCardGroupViewModel(_openFreqService, _hotkeyService, _acmiClientService,
             _settings, channelGroupData.Name, channelGroupData.RadioStationData.Preset,
             channelGroupData.RadioStationData.Type, channelGroupData.Latitude, channelGroupData.Longitude, editMode);
-        ChannelGroups.Add(channelGroup);
+        AllChannelGroups.Add(channelGroup);
         return channelGroup;
     }
 
@@ -379,7 +404,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         channelGroup.LeaveAllChannelsAsync().Wait(100);
         Dispatcher.UIThread.InvokeAsync(() =>
         {
-            ChannelGroups.Remove(channelGroup);
+            AllChannelGroups.Remove(channelGroup);
             channelGroup.Dispose();
         });
     }
@@ -405,5 +430,6 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         _falconRadioSharedMemoryService.FrequencyChanged -= OnFrequencyChanged;
         _falconRadioSharedMemoryService.PttChanged -= OnPttChanged;
         _falconSharedMemoryService.FlyingStateChanged -= OnFlyingStateChanged;
+        _settings.PropertyChanged -= OnSettingsChanged;
     }
 }

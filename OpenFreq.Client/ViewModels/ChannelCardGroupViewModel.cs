@@ -24,7 +24,7 @@ namespace OpenFreqClient.ViewModels;
 public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
 {
     public Guid Id { get; } = Guid.NewGuid();
-    private SettingsViewModel Settings { get; }
+    [ObservableProperty] public partial SettingsViewModel Settings { get; set; }
 
     [ObservableProperty] public partial string Name { get; set; }
 
@@ -142,12 +142,8 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
 
     private void OnConnectionStateChanged(object? sender, ConnectionState state)
     {
-        if (state == ConnectionState.Authenticated)
-        {
-            // Auto-join all channels when authenticated
-            JoinAllChannelsAsync().Wait(TimeSpan.FromMilliseconds(500));
-        }
-        else if (state == ConnectionState.Disconnected)
+        // Auto connect is triggered from the ChannelCardListViewModel
+        if (state == ConnectionState.Disconnected)
         {
             // Reset all channel status on disconnect
             foreach (var channel in Channels)

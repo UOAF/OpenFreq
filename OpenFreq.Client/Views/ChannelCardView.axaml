@@ -10,12 +10,14 @@
              x:DataType="viewModels:ChannelCardViewModel"
              xmlns:converters="using:OpenFreqClient.Converters"
              xmlns:converters1="clr-namespace:Avalonia.Controls.Converters;assembly=Avalonia.Controls"
-             xmlns:controls1="clr-namespace:OpenFreq.Client.Controls">
+             xmlns:controls1="clr-namespace:OpenFreq.Client.Controls"
+             xmlns:models="clr-namespace:OpenFreq.Client.Models"
+             xmlns:converters2="clr-namespace:OpenFreq.Client.Converters">
     <UserControl.Resources>
         <converters:ChannelStatusToColorConverter x:Key="ChannelStatusToColorConverter" />
         <converters:BoolToGreenGrayConverter x:Key="BoolToGreenGrayConverter" />
         <converters:HotkeyTooltipConverter x:Key="HotkeyTooltipConverter" />
-        <converters1:EnumToBoolConverter x:Key="EnumToBoolConverter" />
+        <converters2:InvertedEnumToBoolConverter x:Key="InvertedEnumToBoolConverter" />
     </UserControl.Resources>
 
     <UserControl.Styles>
@@ -65,7 +67,10 @@
                             Spacing="8"
                             VerticalAlignment="Top"
                             HorizontalAlignment="Right"
-                            Margin="4">
+                            Margin="4"
+                            IsEnabled="{Binding RadioStationData.Type, 
+                     Converter={StaticResource InvertedEnumToBoolConverter}, 
+                     ConverterParameter={x:Static models:RadioStationData+RadioStationType.BMS}}">
 
                     <!-- Enable/Disable Toggle -->
                     <ToggleButton IsChecked="{Binding IsEnabled}"

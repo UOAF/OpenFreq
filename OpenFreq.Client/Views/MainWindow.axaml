@@ -372,6 +372,7 @@
 
                     <!-- Floating Action Button -->
                     <controls:FloatingButton Click="Button_OnClick"
+                                             IsVisible="{Binding Settings.ModeIsGci}"
                                              HorizontalAlignment="Right"
                                              VerticalAlignment="Bottom"
                                              Margin="24">

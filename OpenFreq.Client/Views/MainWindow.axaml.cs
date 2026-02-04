@@ -24,7 +24,7 @@ public partial class MainWindow : Window
     {
         base.OnLoaded(e);
         _viewModel = DataContext as MainWindowViewModel;
-        _viewModel?.ChannelList.ChannelGroups.CollectionChanged += OnGroupsChanged;
+        _viewModel?.ChannelList.AllChannelGroups.CollectionChanged += OnGroupsChanged;
        
     }
     
@@ -42,7 +42,7 @@ public partial class MainWindow : Window
     private void Button_OnClick(object? sender, RoutedEventArgs e)
     {
         _viewModel?.ChannelList.CreateChannelGroup(
-            new ChannelGroupData { Name = $"Channel Group #{_viewModel.ChannelList.ChannelGroups.Count + 1}" }, true);
+            new ChannelGroupData { Name = $"Channel Group #{_viewModel.ChannelList.AllChannelGroups.Count + 1}" }, true);
     }
 
     private void MenuButton_OnClick(object? sender, RoutedEventArgs e)

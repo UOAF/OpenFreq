@@ -52,7 +52,7 @@
                             </StackPanel>
 
                             <!-- Config Button -->
-                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" IsVisible="{Binding Settings.ModeIsGci}">
                                 <Button
                                     IsVisible="{Binding EditMode}"
                                     Classes="Flat"
@@ -248,7 +248,8 @@
                         <!-- ========================================== -->
                         <!-- ADD CHANNEL BUTTON (Bottom of each group) -->
                         <!-- ========================================== -->
-                        <Button Command="{Binding AddChannelCommand}"
+                        <Button Command="{Binding AddChannelCommand}" 
+                                IsVisible="{Binding Settings.ModeIsGci}"
                                 Classes="Flat"
                                 HorizontalAlignment="Stretch"
                                 Margin="12,4,12,12"
