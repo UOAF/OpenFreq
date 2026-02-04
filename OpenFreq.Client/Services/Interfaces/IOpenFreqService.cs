@@ -29,7 +29,7 @@ public interface IOpenFreqService : IDisposable
     event EventHandler<PeerActivityEventArgs>? PeerActivityReceived;
 
     // Methods
-    void Initialize(OpenFreqClient.Models.OpenFreqSettings settings, int recordingDeviceIndex, int playbackDeviceIndex);
+    Task Initialize(OpenFreqClient.Models.OpenFreqSettings settings, int recordingDeviceIndex, int playbackDeviceIndex);
     Task ConnectAsync();
     Task DisconnectAsync();
     bool FrequencyJoined(int frequencyKhz);

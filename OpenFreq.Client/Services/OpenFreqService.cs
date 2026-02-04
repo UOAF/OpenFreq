@@ -129,13 +129,13 @@ public class OpenFreqService : IOpenFreqService
     /// <summary>
     /// Initialize the service with server settings and audio devices
     /// </summary>
-    public void Initialize(OpenFreqSettings settings, int recordingDeviceIndex, int playbackDeviceIndex)
+    public async Task Initialize(OpenFreqSettings settings, int recordingDeviceIndex, int playbackDeviceIndex)
     {
         Console.WriteLine($"[SERVICE] Initialize called - IsInitialized: {_isInitialized}");
         if (_isInitialized)
         {
             Console.WriteLine($"[SERVICE] Calling Shutdown from Initialize");
-            Shutdown().Wait(100);
+            await Shutdown();
         }
 
         // Create client with server settings
@@ -159,8 +159,14 @@ public class OpenFreqService : IOpenFreqService
         RecordingDeviceIndex = recordingDeviceIndex;
         _playbackDeviceIndex = playbackDeviceIndex;
 
-        _playbackService = new RadioPlayback(true);
-        _playbackService.Initialize(playbackDeviceIndex);
+        if (_playbackService != null)
+        {
+            await _playbackService.StopAll();
+            _playbackService = null;
+        }
+        
+        _playbackService = new RadioPlayback(playbackDeviceIndex);
+        _playbackService.Initialize();
         _playbackService.Apply3dEffects = Apply3dAudioEffects;
 
         _isInitialized = true;
@@ -212,7 +218,11 @@ public class OpenFreqService : IOpenFreqService
 
         try
         {
-            _playbackService?.StopAll().Wait(500);
+            if (_playbackService != null)
+            {
+                await _playbackService.StopAll();
+                _playbackService = null;
+            }
 
             if (_client != null)
             {

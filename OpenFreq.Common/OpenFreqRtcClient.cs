@@ -46,7 +46,7 @@ public class OpenFreqRtcClient : IDisposable
     private int _audioPort;
     private bool _isConnected;
     private bool _isAuthenticated;
-    private readonly CancellationTokenSource _cts = new();
+    private CancellationTokenSource? _cts = new();
     private string clientId = Guid.NewGuid().ToString();
 
     // Transmission state
@@ -77,6 +77,9 @@ public class OpenFreqRtcClient : IDisposable
     {
         try
         {
+            _cts?.Dispose();
+            _cts = new CancellationTokenSource();
+            
             // Connect WebSocket
             var ipPort = Util.ResolveAddress(_serverIp, DEFAULT_PORT);
 
@@ -279,8 +282,8 @@ public class OpenFreqRtcClient : IDisposable
     public async Task DisconnectAsync()
     {
         CleanupRTP();
-        _cts.Cancel();
-
+        _cts?.Cancel();
+        
         if (_webSocket?.State == WebSocketState.Open)
         {
             await _webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Client disconnecting",
@@ -497,7 +500,8 @@ public class OpenFreqRtcClient : IDisposable
     public void Dispose()
     {
         Console.WriteLine($"[CLIENT] Dispose called - Instance: {GetHashCode()}");
-        _cts.Cancel();
+        _cts?.Cancel();
+        _cts?.Dispose();
 
         _audioClient?.Close();
         _audioClient?.Dispose();
@@ -508,7 +512,6 @@ public class OpenFreqRtcClient : IDisposable
         }
 
         _webSocket?.Dispose();
-        _cts.Dispose();
     }
 }
 

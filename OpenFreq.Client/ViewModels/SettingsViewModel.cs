@@ -22,7 +22,7 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] private ObservableCollection<string> _playbackDeviceNames = new();
     [ObservableProperty] private ObservableCollection<string> _recordingDeviceNames = new();
     [ObservableProperty] private int _recordingDeviceIndex;
-    [ObservableProperty] private int _playbackDeviceIndex;
+    [ObservableProperty] public partial int PlaybackDeviceIndex { get; set; }
     [ObservableProperty] public partial string SelectedTheater { get; set; } = "Korea KTO";
     
 
@@ -117,7 +117,10 @@ public partial class SettingsViewModel : ViewModelBase
         if (value >= 0 && value < PlaybackDeviceNames.Count)
         {
             _outputDeviceName = PlaybackDeviceNames[value];
+            _openFreqService.PlaybackDeviceIndex = value;
         }
+
+        
     }
 
     partial void OnBmsUhfAudioChannelChanged(RadioPlayback.AudioChannel value)

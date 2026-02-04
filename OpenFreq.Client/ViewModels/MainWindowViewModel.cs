@@ -175,7 +175,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             }
 
             // Initialize service with settings
-            _openFreqService.Initialize(Settings.GetSettings(), Settings.RecordingDeviceIndex,
+            await _openFreqService.Initialize(Settings.GetSettings(), Settings.RecordingDeviceIndex,
                 Settings.PlaybackDeviceIndex);
 
             // Connect to server (channels will auto-join when authenticated)
