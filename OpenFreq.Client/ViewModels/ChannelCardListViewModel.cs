@@ -38,7 +38,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
     public ChannelCardGroupViewModel? FalconChannelGroup { get; private set; }
 
     private readonly Lock _channelImportLock = new();
-    
+
     // This actually holds all of our ChannelGroups
     [ObservableProperty]
     public partial ObservableCollection<ChannelCardGroupViewModel> AllChannelGroups { get; private set; } = [];
@@ -140,16 +140,24 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         }
 
         _logger.LogDebug($"VOLUME {e.OldVolume} -> {e.NewVolume}");
-        const int minBms = 1000;
-        const int maxBms = 10000;
+        
+        // BMS dB scale
+        const float dbMin = -6.0f; // +6dB boost at DX=0
+        const float dbMax = 40.0f; // -40dB attenuation at DX=10000
+        const float dxMin = 0.0f; // BMS formula uses full 0-10000 internally
+        const float dxMax = 10000.0f;
 
-        // Invert and normalize to 0-1
-        float normalized = (maxBms - e.NewVolume) / (float)(maxBms - minBms);
-        // Clamp to valid range
-        normalized = Math.Clamp(normalized, 0f, 1f);
+        // Convert DX value to dB (matching BMS RADIOVOLUMERESCALE_DX_TO_DB)
+        var dB = ((e.NewVolume - dxMin) * (dbMax - dbMin) / (dxMax - dxMin)) + dbMin;
 
-        // Apply logarithmic curve (dB-like behavior)
-        normalized *= normalized;
+        // Negate for attenuation (matching BMS sprintf line: -vol)
+        var attenuationDb = -dB;
+
+        // Convert dB to linear amplitude: amplitude = 10^(dB/20)
+        var amplitude = MathF.Pow(10.0f, attenuationDb / 20.0f);
+
+        // Allow boost up to +6dB like BMS does
+        var normalized = Math.Clamp(amplitude, 0f, 2f);
 
         var channels = FalconChannelGroup?.Channels.Where(c => c.Type == Channel.ToChannelType(e.RadioType)).ToList();
         if (channels != null)
