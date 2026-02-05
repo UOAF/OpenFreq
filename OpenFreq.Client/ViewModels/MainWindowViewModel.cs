@@ -371,7 +371,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
                 foreach (var channelData in channelGroupData.Channels)
                 {
                     var channel =
-                        channelGroup.CreateChannel(channelData.FrequencyKhz, channelData.Name ?? "", channelData.Type);
+                        channelGroup.CreateChannel(channelData.FrequencyKhz, channelData.Name ?? "");
                     channel.IsEditing = false;
 
                     // Parse and set hotkey
@@ -414,7 +414,6 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
                             {
                                 Name = c.Name,
                                 FrequencyKhz = c.FrequencyKhz,
-                                Type = c.Type,
                                 HotkeyCode = c.HotKey.ToString(),
                                 Enabled = c.IsEnabled
                             }).ToList()

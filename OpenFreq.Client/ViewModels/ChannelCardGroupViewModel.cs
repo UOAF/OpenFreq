@@ -93,12 +93,10 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         WeakReferenceMessenger.Default.Register<ChannelDeleteRequestedMessage>(this, OnChannelDeleteRequested);
     }
 
-    public ChannelCardViewModel CreateChannel(int frequencyKhz, string name, Channel.ChannelType channelType,
-        bool isInEditMode = true)
+    public ChannelCardViewModel CreateChannel(int frequencyKhz, string name, bool isInEditMode = true)
     {
         var channel = new ChannelCardViewModel(_hotkeyService, RadioStationData);
         channel.Name = name;
-        channel.Type = channelType;
         channel.FrequencyKhz = frequencyKhz;
         channel.IsEditing = isInEditMode;
         if (Dispatcher.UIThread.CheckAccess())
@@ -229,7 +227,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public bool ChangeChannelFrequency(int oldFreqKhz, int newFreqKhz, Channel.ChannelType newChannelType)
+    public bool ChangeChannelFrequency(int oldFreqKhz, int newFreqKhz)
     {
         var oldChannel =
             Channels.FirstOrDefault(c => Math.Abs(c.FrequencyKhz - oldFreqKhz) < 0.01);
@@ -237,8 +235,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
 
         oldChannel.FrequencyKhz = newFreqKhz;
         OnChannelUpdated(this,
-            new ChannelUpdatedMessage(oldChannel.Id, oldFreqKhz, newFreqKhz,
-                oldChannel.Type, newChannelType, oldChannel.Status, oldChannel.HotKey,
+            new ChannelUpdatedMessage(oldChannel.Id, oldFreqKhz, newFreqKhz, oldChannel.Status, oldChannel.HotKey,
                 oldChannel.HotKey, oldChannel.IsEnabled, oldChannel.AudioChannel));
 
         return true;
@@ -288,7 +285,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     public void AddChannel()
     {
-        CreateChannel(225000, $"Channel #{Channels.Count + 1}", Channel.ChannelType.VHF);
+        CreateChannel(225000, $"Channel #{Channels.Count + 1}");
     }
 
     [RelayCommand]

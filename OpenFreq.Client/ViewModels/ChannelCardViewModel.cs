@@ -1,6 +1,4 @@
 using System;
-using System.ComponentModel;
-using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -20,8 +18,10 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
 
     public Guid Id { get; } = Guid.NewGuid();
 
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(FrequencyMhzString))]
-    private int _frequencyKhz;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FrequencyMhzString))]
+    [NotifyPropertyChangedFor(nameof(Type))]
+    public partial int FrequencyKhz { get; set; }
 
     /// <summary>
     /// Frequency display string in MHz
@@ -38,18 +38,33 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         }
     }
 
-    [ObservableProperty] private string? _name;
-    [ObservableProperty] private float _rxDb;
-    [ObservableProperty] private Channel.ChannelType _type;
+    [ObservableProperty]
+    public partial string? Name { get; set; }
+
+    [ObservableProperty]
+    public partial float RxDb { get; set; }
+
+    public Channel.ChannelType Type
+    {
+        get
+        {
+            return (FrequencyKhz /1000d) switch
+            {
+                < 200 and > 30 => Channel.ChannelType.VHF,
+                > 200 => Channel.ChannelType.UHF,
+                _ => Channel.ChannelType.Custom
+            };
+        }
+    }
+
     [ObservableProperty] public partial float SignalStrength { get; set; }
 
-    public Channel.ChannelType[] ChannelTypes =>
-        Enum.GetValues(typeof(Channel.ChannelType)).Cast<Channel.ChannelType>().ToArray();
+    [ObservableProperty]
+    public partial Channel.ChannelStatus Status { get; set; } = Channel.ChannelStatus.Disconnected;
+    [ObservableProperty]
+    public partial bool IsEditing { get; set; } = true;
 
-    [ObservableProperty] private Channel.ChannelStatus _status = Channel.ChannelStatus.Disconnected;
-    [ObservableProperty] private bool _isEditing = true; // new channels are in edit mode by default
-
-    [ObservableProperty] private bool _channelWasChanged = false;
+    [ObservableProperty] private bool _channelWasChanged;
 
     // Hotkey binding
     [ObservableProperty]
@@ -59,22 +74,20 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     public bool HasHotkey => HotKey != KeyCode.VcUndefined;
 
 
-    [ObservableProperty] private bool _isCapturingHotkey =
-        false;
+    [ObservableProperty] private bool _isCapturingHotkey;
 
     public string HotkeyDisplay => GetKeyDisplayName(HotKey);
 
     // Reference to the data of the RadioStationGroup
     [ObservableProperty] public partial RadioStationData RadioStationData { get; set; }
 
-    [ObservableProperty] public partial bool IsEnabled { get; set; } = true;
+    [ObservableProperty] public partial bool IsEnabled { get; set; }
 
     [ObservableProperty]
     public partial RadioPlayback.AudioChannel AudioChannel { get; set; } = RadioPlayback.AudioChannel.Both;
 
 // Store original values when entering edit mode
     private int _originalFrequencyKhz;
-    private Channel.ChannelType _originalType;
     private KeyCode _originalBinding;
 
     partial void OnIsEnabledChanged(bool oldValue, bool newValue)
@@ -89,7 +102,6 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         Name = "BMS Lobby 1";
         FrequencyKhz = 307300;
         HotKey = KeyCode.VcF1;
-        Type = Channel.ChannelType.Custom;
         ToggleEditing();
     }
 
@@ -99,7 +111,6 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         Name = "BMS Lobby 2";
         FrequencyKhz = 1234;
         HotKey = KeyCode.VcF2;
-        Type = Channel.ChannelType.Custom;
         ToggleEditing();
     }
 
@@ -125,11 +136,10 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         _hotkeyService = hotkeyService;
         IsEnabled = channel.Enabled;
         RadioStationData = radioStationData;
-        _frequencyKhz = channel.FrequencyKhz;
-        _name = channel.Name;
-        _rxDb = channel.RxDb;
-        _type = channel.Type;
-        _status = channel.Status;
+        FrequencyKhz = channel.FrequencyKhz;
+        Name = channel.Name;
+        RxDb = channel.RxDb;
+        Status = channel.Status;
     }
 
     [RelayCommand]
@@ -139,7 +149,6 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         {
             // Entering edit mode - store current values
             _originalFrequencyKhz = FrequencyKhz;
-            _originalType = Type;
             _originalBinding = HotKey;
         }
         else
@@ -149,8 +158,6 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
                 Id,
                 _originalFrequencyKhz,
                 FrequencyKhz,
-                _originalType,
-                Type,
                 Status,
                 _originalBinding,
                 HotKey,
@@ -215,25 +222,12 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     {
         return key == KeyCode.VcUndefined ? "None" : key.ToString().Replace("Vc", "");
     }
-
-    partial void OnTypeChanged(Channel.ChannelType value)
-    {
-        // Revalidate frequency when type changes
-        _channelWasChanged = true;
-    }
-
+    
     partial void OnFrequencyKhzChanged(int value)
     {
         _channelWasChanged = true;
     }
-
-    public Channel GetChannel()
-    {
-        return new Channel()
-        {
-            Name = this.Name, FrequencyKhz = this.FrequencyKhz, RxDb = this.RxDb, Type = this.Type
-        };
-    }
+    
 
     [RelayCommand]
     public void DeleteChannel()
@@ -275,8 +269,6 @@ public class ChannelUpdatedMessage(
     Guid channelId,
     int oldFrequencyKhz,
     int newFrequencyKhz,
-    Channel.ChannelType oldType,
-    Channel.ChannelType newType,
     Channel.ChannelStatus oldStatus,
     KeyCode oldBinding,
     KeyCode newBinding,
@@ -286,8 +278,6 @@ public class ChannelUpdatedMessage(
     public Guid ChannelId { get; } = channelId;
     public int OldFrequencyKhz { get; } = oldFrequencyKhz;
     public int NewFrequencyKhz { get; } = newFrequencyKhz;
-    public Channel.ChannelType OldType { get; } = oldType;
-    public Channel.ChannelType NewType { get; } = newType;
     public Channel.ChannelStatus OldStatus { get; } = oldStatus;
 
     public KeyCode OldBinding { get; } = oldBinding;
@@ -297,7 +287,7 @@ public class ChannelUpdatedMessage(
 
     public RadioPlayback.AudioChannel CurrentAudioChannel { get; } = currentAudioChannel;
 
-    public bool NeedsReconnect => OldFrequencyKhz != NewFrequencyKhz || OldType != NewType;
+    public bool NeedsReconnect => OldFrequencyKhz != NewFrequencyKhz;
     public bool BindingChanged => OldBinding != NewBinding;
 }
 

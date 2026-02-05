@@ -223,7 +223,6 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                     {
                         var channel = FalconChannelGroup.CreateChannel(falconChannel.Frequency,
                             "BMS Channel " + type,
-                            Channel.ToChannelType(type),
                             false);
 
                         switch (type)
@@ -281,8 +280,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         _logger.LogDebug(
             $"FalconRadioSharedMemoryServiceOnFrequencyChanged: {e.OldFrequencyKhz} -> {e.NewFrequencyKhz}");
 
-        if (FalconChannelGroup.ChangeChannelFrequency(e.OldFrequencyKhz, e.NewFrequencyKhz,
-                Channel.ToChannelType(e.RadioType))) return;
+        if (FalconChannelGroup.ChangeChannelFrequency(e.OldFrequencyKhz, e.NewFrequencyKhz)) return;
 
         lock (_channelImportLock)
         {
@@ -291,7 +289,6 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                 var channel = FalconChannelGroup.CreateChannel(
                     e.NewFrequencyKhz,
                     BMS_GROUP_NAME,
-                    Channel.ToChannelType(e.RadioType),
                     false);
                 return channel;
             }).GetAwaiter().GetResult();

@@ -182,13 +182,6 @@
                          Classes="Outline"
                          Margin="4" />
 
-                <!-- Type Selector -->
-                <ComboBox Grid.Row="2" Grid.Column="0"
-                          ItemsSource="{Binding ChannelTypes}"
-                          SelectedItem="{Binding Type}"
-                          Classes="Outline"
-                          Margin="4" />
-
                 <!-- Audio Channel Selector -->
                 <StackPanel Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2"
                             Margin="4,8">

@@ -11,7 +11,7 @@ public class Channel
     
     public string? Name  { get; set; }
     public float RxDb {get; set;}
-    public ChannelType Type  { get; set; }
+    
     public ChannelStatus Status { get; set; } = ChannelStatus.Disconnected;
 
     public bool Enabled { get; set; } = true;
