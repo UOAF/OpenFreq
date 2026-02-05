@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using FalconBmsDataService.Models;
 using FalconBmsDataService.Services;
@@ -14,17 +15,21 @@ namespace OpenFreqClient.ViewModels;
 
 public partial class SettingsViewModel : ViewModelBase
 {
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsReadyToConnect))]
-    private string _openFreqServerAddress = string.Empty;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsReadyToConnect))]
+    public partial string OpenFreqServerAddress { get; set; } = string.Empty;
+    [ObservableProperty]
+    public partial string OpenFreqPassword { get; set; } = string.Empty;
+    [ObservableProperty]
+    public partial ObservableCollection<string> PlaybackDeviceNames { get; set; } = [];
 
-    [ObservableProperty] private string _openFreqPassword = string.Empty;
+    [ObservableProperty]
+    public partial ObservableCollection<string> RecordingDeviceNames { get; set; } = [];
 
-    [ObservableProperty] private ObservableCollection<string> _playbackDeviceNames = new();
-    [ObservableProperty] private ObservableCollection<string> _recordingDeviceNames = new();
-    [ObservableProperty] private int _recordingDeviceIndex;
+    [ObservableProperty]
+    public partial int RecordingDeviceIndex { get; set; }
     [ObservableProperty] public partial int PlaybackDeviceIndex { get; set; }
     [ObservableProperty] public partial string SelectedTheater { get; set; } = "Korea KTO";
-    
 
 
     [ObservableProperty]
@@ -35,17 +40,25 @@ public partial class SettingsViewModel : ViewModelBase
     public bool ModeIsGci
     {
         get => ConnectionMode == IOpenFreqService.Mode.GCI;
-        set { ConnectionMode = value ? IOpenFreqService.Mode.GCI : IOpenFreqService.Mode.BMS; }
+        set => ConnectionMode = value ? IOpenFreqService.Mode.GCI : IOpenFreqService.Mode.BMS;
     }
 
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsReadyToConnect))]
-    private string _tacviewServerAddress = string.Empty;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsReadyToConnect))]
+    public partial string TacviewServerAddress { get; set; } = string.Empty;
 
-    [ObservableProperty] private string _tacviewServerPassword = string.Empty;
-    [ObservableProperty] private string _heightmapPath = string.Empty;
+    [ObservableProperty]
+    public partial string TacviewServerPassword { get; set; } = string.Empty;
 
-    [ObservableProperty] private string _inputDeviceName = string.Empty;
-    [ObservableProperty] private string _outputDeviceName = string.Empty;
+    [ObservableProperty]
+    public partial string HeightmapPath { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string InputDeviceName { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string OutputDeviceName { get; set; } = string.Empty;
+
     private readonly IAudioService _audioService;
     private readonly IFalconRadioSharedMemoryService _falconRadioSharedMemoryService;
     private readonly IFalconSharedMemoryService _falconSharedMemoryService;
@@ -59,11 +72,14 @@ public partial class SettingsViewModel : ViewModelBase
                                         || !ModeIsGci
                                     );
 
-    [ObservableProperty] public partial RadioPlayback.AudioChannel BmsUhfAudioChannel { get; set; } = RadioPlayback.AudioChannel.Both;
-    [ObservableProperty] public partial RadioPlayback.AudioChannel BmsVhfAudioChannel { get; set; } = RadioPlayback.AudioChannel.Both;
+    [ObservableProperty]
+    public partial RadioPlayback.AudioChannel BmsUhfAudioChannel { get; set; } = RadioPlayback.AudioChannel.Both;
+
+    [ObservableProperty]
+    public partial RadioPlayback.AudioChannel BmsVhfAudioChannel { get; set; } = RadioPlayback.AudioChannel.Both;
 
     partial void OnConnectionModeChanged(IOpenFreqService.Mode value)
-    { 
+    {
         switch (value)
         {
             case IOpenFreqService.Mode.BMS:
@@ -81,7 +97,9 @@ public partial class SettingsViewModel : ViewModelBase
         }
     }
 
-    public SettingsViewModel(IAudioService audioService, IFalconRadioSharedMemoryService falconRadioSharedMemoryService, IFalconSharedMemoryService falconSharedMemoryService, IAcmiClientService acmiClientService, IOpenFreqService openFreqService)
+    public SettingsViewModel(IAudioService audioService, IFalconRadioSharedMemoryService falconRadioSharedMemoryService,
+        IFalconSharedMemoryService falconSharedMemoryService, IAcmiClientService acmiClientService,
+        IOpenFreqService openFreqService)
     {
         _audioService = audioService;
         _falconSharedMemoryService = falconSharedMemoryService;
@@ -102,13 +120,66 @@ public partial class SettingsViewModel : ViewModelBase
         var recordingDevices = _audioService.GetRecordingDevices();
         RecordingDeviceNames = new ObservableCollection<string>(recordingDevices);
         RecordingDeviceIndex = _audioService.DefaultRecordingDevice;
+
+        _audioService.PlaybackDevicesChanged += OnPlaybackDevicesChanged;
+        _audioService.RecordingDevicesChanged += OnRecordingDevicesChanged;
+    }
+
+    private void OnRecordingDevicesChanged(object? sender, DeviceChangedEventArgs e)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            Console.WriteLine(
+                $"[ViewModel] Recording devices changed. Old={e.OldDeviceIndex}, New={e.NewDeviceIndex}, Removed={e.DeviceWasRemoved}");
+
+            // Update the device list
+            RecordingDeviceNames.Clear();
+            foreach (var device in e.Devices)
+            {
+                RecordingDeviceNames.Add(device);
+            }
+
+            // Update selection
+            RecordingDeviceIndex = e.NewDeviceIndex;
+
+            // If device was removed and we're transmitting, switch the active device
+            if (e.DeviceWasRemoved && e.NewDeviceIndex != e.OldDeviceIndex)
+            {
+                Console.WriteLine($"[ViewModel] Recording device was removed, switching to device {e.NewDeviceIndex}");
+            }
+        });
+    }
+
+    private void OnPlaybackDevicesChanged(object? sender, DeviceChangedEventArgs e)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            Console.WriteLine(
+                $"[ViewModel] Playback devices changed. Old={e.OldDeviceIndex}, New={e.NewDeviceIndex}, Removed={e.DeviceWasRemoved}");
+
+            // Update the device list
+            PlaybackDeviceNames.Clear();
+            foreach (var device in e.Devices)
+            {
+                PlaybackDeviceNames.Add(device);
+            }
+
+            // Update selection
+            PlaybackDeviceIndex = e.NewDeviceIndex;
+
+            // If device was removed and we're connected, switch the active device
+            if (e.DeviceWasRemoved && e.NewDeviceIndex != e.OldDeviceIndex)
+            {
+                Console.WriteLine($"[ViewModel] Playback device was removed, switching to device {e.NewDeviceIndex}");
+            }
+        });
     }
 
     partial void OnRecordingDeviceIndexChanged(int value)
     {
         if (value >= 0 && value < RecordingDeviceNames.Count)
         {
-            _inputDeviceName = RecordingDeviceNames[value];
+            InputDeviceName = RecordingDeviceNames[value];
             _openFreqService.RecordingDeviceIndex = value;
         }
     }
@@ -117,11 +188,9 @@ public partial class SettingsViewModel : ViewModelBase
     {
         if (value >= 0 && value < PlaybackDeviceNames.Count)
         {
-            _outputDeviceName = PlaybackDeviceNames[value];
+            OutputDeviceName = PlaybackDeviceNames[value];
             _openFreqService.PlaybackDeviceIndex = value;
         }
-
-        
     }
 
     partial void OnBmsUhfAudioChannelChanged(RadioPlayback.AudioChannel value)
@@ -188,7 +257,7 @@ public partial class SettingsViewModel : ViewModelBase
             InputDeviceName = InputDeviceName,
             OutputDeviceName = OutputDeviceName,
             HeightmapPath = HeightmapPath,
-            SelectedTheater =  SelectedTheater
+            SelectedTheater = SelectedTheater
         };
     }
 }

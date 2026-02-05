@@ -8,7 +8,10 @@ public interface IAudioService: IDisposable
     public List<string> GetPlaybackDevices();
     public List<string> GetRecordingDevices();
 
+    public event EventHandler<DeviceChangedEventArgs>? PlaybackDevicesChanged;
+    public event EventHandler<DeviceChangedEventArgs>? RecordingDevicesChanged;
+    
     public void Init();
-    public int DefaultPlaybackDevice { get; set; }
-    public int DefaultRecordingDevice { get; set; }
+    public int DefaultPlaybackDevice { get; }
+    public int DefaultRecordingDevice { get; }
 }

@@ -338,6 +338,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
         _falconSharedMemoryService.Dispose();
         _falconRadioSharedMemoryService.Dispose();
+        _audioService.Dispose();
     }
 
 
