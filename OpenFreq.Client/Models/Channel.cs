@@ -21,15 +21,6 @@ public class Channel
         UHF, VHF, Custom
     }
 
-    public static ChannelType ToChannelType(RadioType radioType)
-    {
-        if  (radioType == RadioType.UHF)
-            return ChannelType.UHF;
-        if (radioType == RadioType.VHF)
-            return ChannelType.VHF;
-        return ChannelType.Custom;
-    }
-
     public enum ChannelStatus
     {
         Connected,

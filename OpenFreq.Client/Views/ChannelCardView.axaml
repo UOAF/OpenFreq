@@ -17,6 +17,7 @@
         <converters:ChannelStatusToColorConverter x:Key="ChannelStatusToColorConverter" />
         <converters:BoolToGreenGrayConverter x:Key="BoolToGreenGrayConverter" />
         <converters:HotkeyTooltipConverter x:Key="HotkeyTooltipConverter" />
+        <converters1:EnumToBoolConverter x:Key="EnumToBoolConverter" />
         <converters2:InvertedEnumToBoolConverter x:Key="InvertedEnumToBoolConverter" />
     </UserControl.Resources>
 
@@ -126,9 +127,25 @@
                     <Border Background="{DynamicResource MaterialPrimaryLightBrush}"
                             CornerRadius="4"
                             Padding="8,4">
-                        <TextBlock Text="{Binding Type}"
-                                   Classes="Caption"
-                                   FontWeight="SemiBold" />
+
+                        <StackPanel>
+                            <!-- Calculated Type - Only in GCI Mode -->
+                            <TextBlock Text="{Binding Type}"
+                                       IsVisible="{Binding RadioStationData.Type, 
+                                   Converter={StaticResource InvertedEnumToBoolConverter}, 
+                                   ConverterParameter={x:Static models:RadioStationData+RadioStationType.BMS}}"
+                                       Classes="Caption"
+                                       FontWeight="SemiBold" />
+
+                            <!-- BMS Radio Type - Only in BMS Mode -->
+                            <TextBlock Text="{Binding BmsRadioType}"
+                                       IsVisible="{Binding RadioStationData.Type, 
+                                   Converter={StaticResource EnumToBoolConverter}, 
+                                   ConverterParameter={x:Static models:RadioStationData+RadioStationType.BMS}}"
+                                       Classes="Caption"
+                                       FontWeight="SemiBold" />
+                        </StackPanel>
+
                     </Border>
                     <TextBlock Text="{Binding Status}"
                                Classes="Caption"

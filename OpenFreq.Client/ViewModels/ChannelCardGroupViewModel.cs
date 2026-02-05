@@ -9,6 +9,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
+using FalconBmsDataService.Models;
 using OpenFreq.Client.Models;
 using OpenFreq.Common;
 using OpenFreq.Services.Acmi;
@@ -93,12 +94,13 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         WeakReferenceMessenger.Default.Register<ChannelDeleteRequestedMessage>(this, OnChannelDeleteRequested);
     }
 
-    public ChannelCardViewModel CreateChannel(int frequencyKhz, string name, bool isInEditMode = true)
+    public ChannelCardViewModel CreateChannel(int frequencyKhz, string name, bool isInEditMode = true, RadioType? bmsRadioType = null)
     {
         var channel = new ChannelCardViewModel(_hotkeyService, RadioStationData);
         channel.Name = name;
         channel.FrequencyKhz = frequencyKhz;
         channel.IsEditing = isInEditMode;
+        channel.BmsRadioType = bmsRadioType;
         if (Dispatcher.UIThread.CheckAccess())
         {
             // Already on UI thread - add directly
@@ -111,13 +113,6 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         }
 
         return channel;
-    }
-
-    public ChannelCardViewModel CreateChannel(Channel channel)
-    {
-        var vm = new ChannelCardViewModel(_hotkeyService, channel, RadioStationData);
-        Dispatcher.UIThread.Post(() => { Channels.Add(vm); });
-        return vm;
     }
 
     private void OnChannelUpdated(object recipient, ChannelUpdatedMessage message)
@@ -227,7 +222,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public bool ChangeChannelFrequency(int oldFreqKhz, int newFreqKhz)
+    public bool ChangeChannelFrequency(int oldFreqKhz, int newFreqKhz, bool setEnabled)
     {
         var oldChannel =
             Channels.FirstOrDefault(c => Math.Abs(c.FrequencyKhz - oldFreqKhz) < 0.01);
@@ -236,7 +231,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         oldChannel.FrequencyKhz = newFreqKhz;
         OnChannelUpdated(this,
             new ChannelUpdatedMessage(oldChannel.Id, oldFreqKhz, newFreqKhz, oldChannel.Status, oldChannel.HotKey,
-                oldChannel.HotKey, oldChannel.IsEnabled, oldChannel.AudioChannel));
+                oldChannel.HotKey, setEnabled, oldChannel.AudioChannel));
 
         return true;
     }

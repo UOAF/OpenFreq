@@ -329,6 +329,15 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     public void Dispose()
     {
         _ = SaveConfigurationAsync();
+        
+        _openFreqService.ConnectionStateChanged -= OnConnectionStateChanged;
+        _openFreqService.StatusMessageReceived -= OnStatusMessageReceived;
+        _openFreqService.PeerActivityReceived -= OnPeerActivityReceived;
+
+        // Falcon Radio Shared Memory
+        _falconRadioSharedMemoryService.ConnectionParametersChanged -=
+            FalconRadioSharedMemoryServiceOnConnectionParametersChanged;
+        _falconSharedMemoryService.FlyingStateChanged -= OnFlyingStateChanged;
 
         ChannelList.Dispose();
         _openFreqService.Dispose();

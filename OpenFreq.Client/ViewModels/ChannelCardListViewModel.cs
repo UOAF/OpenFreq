@@ -159,7 +159,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         // Allow boost up to +6dB like BMS does
         var normalized = Math.Clamp(amplitude, 0f, 2f);
 
-        var channels = FalconChannelGroup?.Channels.Where(c => c.Type == Channel.ToChannelType(e.RadioType)).ToList();
+        var channels = FalconChannelGroup?.Channels.Where(c => c.BmsRadioType == e.RadioType).ToList();
         if (channels != null)
             foreach (var channel in channels)
             {
@@ -175,7 +175,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        var channels = FalconChannelGroup.Channels.Where(c => c.Type == Channel.ToChannelType(e.RadioType)).ToList();
+        var channels = FalconChannelGroup.Channels.Where(c => c.BmsRadioType == e.RadioType).ToList();
         foreach (var channel in channels)
         {
             channel.IsEnabled = e.NewPower;
@@ -231,8 +231,12 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                     {
                         var channel = FalconChannelGroup.CreateChannel(falconChannel.Frequency,
                             "BMS Channel " + type,
-                            false);
+                            false, type);
+                        var channelIsPowerOn = _falconRadioSharedMemoryService.GetRadioChannel(type)?.IsOn ?? false;
+                        channel.IsEnabled = channelIsPowerOn;
 
+
+                        // set hotkeys and AudioChannel from Settings
                         switch (type)
                         {
                             case RadioType.VHF:
@@ -244,7 +248,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                                 channel.AudioChannel = _settings.BmsUhfAudioChannel;
                                 break;
                             case RadioType.GUARD:
-                                channel.HotKey = KeyCode.VcF3;
+                                channel.HotKey = KeyCode.VcF2;
                                 channel.AudioChannel = _settings.BmsUhfAudioChannel;
                                 break;
                         }
@@ -262,7 +266,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        var channel = FalconChannelGroup.Channels.FirstOrDefault(c => c.Type == Channel.ToChannelType(e.RadioType));
+        var channel = FalconChannelGroup.Channels.FirstOrDefault(c => c.BmsRadioType == e.RadioType);
         if (channel == null || channel.Status == Channel.ChannelStatus.Disconnected) return;
         switch (e)
         {
@@ -281,14 +285,22 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         if (FalconChannelGroup == null)
         {
             _logger.LogWarning("Unclean state: _falconChannelGroup is null, reimporting");
-            ImportBmsRadioChannels();
+            ImportBmsRadioChannels().Wait(100);
             return;
         }
 
         _logger.LogDebug(
             $"FalconRadioSharedMemoryServiceOnFrequencyChanged: {e.OldFrequencyKhz} -> {e.NewFrequencyKhz}");
 
-        if (FalconChannelGroup.ChangeChannelFrequency(e.OldFrequencyKhz, e.NewFrequencyKhz)) return;
+
+        // make sure we set the power correctly
+        var channelIsPowerOn = _falconRadioSharedMemoryService.GetRadioChannel(e.RadioType)?.IsOn ?? false;
+        if (FalconChannelGroup.ChangeChannelFrequency(e.OldFrequencyKhz, e.NewFrequencyKhz, channelIsPowerOn))
+        {
+            // we still need to join all other channels in case we can resolve a previous double-join (e.g. with switching to GRD)
+            FalconChannelGroup.JoinAllChannelsAsync().Wait(100);
+            return;
+        }
 
         lock (_channelImportLock)
         {
@@ -298,6 +310,8 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                     e.NewFrequencyKhz,
                     BMS_GROUP_NAME,
                     false);
+                
+                channel.IsEnabled = channelIsPowerOn; 
                 return channel;
             }).GetAwaiter().GetResult();
             JoinFrequencyAsync(newChannel.FrequencyKhz, FalconChannelGroup.RadioStationData, newChannel.IsEnabled)

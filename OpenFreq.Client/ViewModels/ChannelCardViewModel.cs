@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
+using FalconBmsDataService.Models;
 using OpenFreq.Client.Models;
 using OpenFreqAudio;
 using OpenFreqClient.Models;
@@ -44,6 +45,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial float RxDb { get; set; }
 
+    // this is just to display it in the UI
     public Channel.ChannelType Type
     {
         get
@@ -56,6 +58,10 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
             };
         }
     }
+    
+    // Direct mapping to BMS RadioType or null in GCI mode.
+    // We cant use a sane frequency->type mapping because BMS likes to set lobby frequencies, e.g. 1.234 MHz
+    public RadioType? BmsRadioType { get; set; } 
 
     [ObservableProperty] public partial float SignalStrength { get; set; }
 
@@ -100,7 +106,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     public void BmsLobby1Clicked()
     {
         Name = "BMS Lobby 1";
-        FrequencyKhz = 307300;
+        FrequencyKhz = 1234;
         HotKey = KeyCode.VcF1;
         ToggleEditing();
     }
@@ -109,17 +115,18 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     public void BmsLobby2Clicked()
     {
         Name = "BMS Lobby 2";
-        FrequencyKhz = 1234;
+        FrequencyKhz = 339750;
         HotKey = KeyCode.VcF2;
         ToggleEditing();
     }
 
 
-    public ChannelCardViewModel(IHotkeyService hotkeyService, RadioStationData radioStationData, bool isEnabled = true)
+    public ChannelCardViewModel(IHotkeyService hotkeyService, RadioStationData radioStationData, bool isEnabled = true, RadioType? bmsRadioType = null)
     {
         _hotkeyService = hotkeyService;
         RadioStationData = radioStationData;
         IsEnabled = isEnabled;
+        BmsRadioType = bmsRadioType;
 
         WeakReferenceMessenger.Default.Register<SignalStrengthTracker.SignalStrengthUpdateMessage>(this,
             (r, m) =>
@@ -131,10 +138,11 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
             });
     }
 
-    public ChannelCardViewModel(IHotkeyService hotkeyService, Channel channel, RadioStationData radioStationData)
+    public ChannelCardViewModel(IHotkeyService hotkeyService, Channel channel, RadioStationData radioStationData, RadioType? bmsRadioType = null)
     {
         _hotkeyService = hotkeyService;
         IsEnabled = channel.Enabled;
+        BmsRadioType = bmsRadioType;
         RadioStationData = radioStationData;
         FrequencyKhz = channel.FrequencyKhz;
         Name = channel.Name;
