@@ -109,6 +109,7 @@ public partial class SettingsViewModel : ViewModelBase
         if (value >= 0 && value < RecordingDeviceNames.Count)
         {
             _inputDeviceName = RecordingDeviceNames[value];
+            _openFreqService.RecordingDeviceIndex = value;
         }
     }
 
