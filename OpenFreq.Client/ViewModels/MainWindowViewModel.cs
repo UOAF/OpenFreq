@@ -28,7 +28,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
     private readonly IFalconSharedMemoryService _falconSharedMemoryService;
     private readonly IAcmiClientService _acmiClientService;
     private readonly IConfigurationService _configurationService;
-
+    private readonly IIvcMonitorService _ivcMonitorService;
     private readonly ILogger<MainWindowViewModel> _logger;
 
     // TODO remove when done
@@ -71,7 +71,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         ILogger<MainWindowViewModel> logger,
         ChannelCardListViewModel channelList,
         SettingsViewModel settings, IFalconRadioSharedMemoryService falconRadioSharedMemoryService,
-        IFalconSharedMemoryService falconSharedMemoryService)
+        IFalconSharedMemoryService falconSharedMemoryService, IIvcMonitorService ivcMonitorService)
     {
         _openFreqService = openFreqService;
         _hotkeyService = hotkeyService;
@@ -83,6 +83,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         _settings = settings;
         _falconRadioSharedMemoryService = falconRadioSharedMemoryService;
         _falconSharedMemoryService = falconSharedMemoryService;
+        _ivcMonitorService = ivcMonitorService;
 
         // Subscribe to service events
         _openFreqService.ConnectionStateChanged += OnConnectionStateChanged;
@@ -450,5 +451,6 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         _falconSharedMemoryService.Dispose();
         _falconRadioSharedMemoryService.Dispose();
         await _audioService.DisposeAsync();
+        await _ivcMonitorService.DisposeAsync();
     }
 }
