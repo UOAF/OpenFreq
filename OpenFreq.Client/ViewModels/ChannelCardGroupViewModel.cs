@@ -84,6 +84,9 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         // Subscribe to frequency status changes
         _openFreqService.FrequencyStatusChanged += OnFrequencyStatusChanged;
 
+        _acmiClientService.ConnectionStatusChanged += OnAcmiConnectionStatusChanged;
+        
+
         // Subscribe to hotkey events
         _hotkeyService.HotkeyPressed += OnHotkeyPressed;
         _hotkeyService.HotkeyReleased += OnHotkeyReleased;
@@ -92,6 +95,14 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         WeakReferenceMessenger.Default.Register<ChannelUpdatedMessage>(this, OnChannelUpdated);
         WeakReferenceMessenger.Default.Register<ChannelEnabledDisabledMessage>(this, OnChannelEnabledDisabled);
         WeakReferenceMessenger.Default.Register<ChannelDeleteRequestedMessage>(this, OnChannelDeleteRequested);
+    }
+
+    private async void OnAcmiConnectionStatusChanged(object? sender, AcmiConnectionEventArgs e)
+    {
+        if (e.Status == AcmiConnectionStatus.Connected)
+        {
+           await UpdateTacviewCallsigns(new CancellationTokenSource().Token);
+        }
     }
 
     public ChannelCardViewModel CreateChannel(int frequencyKhz, string name, bool isInEditMode = true, RadioType? bmsRadioType = null)
@@ -273,8 +284,9 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
 
     partial void OnSelectedTacviewCallsignChanged(TacviewAircraftItem? oldValue, TacviewAircraftItem? newValue)
     {
-        _acmiClientService.RemoveTrackingForAircraft(oldValue.ObjectId);
-        _acmiClientService.AddTrackingForAircraft(newValue.ObjectId);
+        _acmiClientService.RemoveTrackingForAircraft(oldValue?.ObjectId);
+        _acmiClientService.AddTrackingForAircraft(newValue?.ObjectId);
+        RadioStationData.AcmiAircraftId = newValue?.ObjectId ?? null;
     }
 
     [RelayCommand]

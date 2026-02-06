@@ -34,8 +34,8 @@ public interface IAcmiClientService : IDisposable, ILifecycleService
     /// Only this aircraft will trigger the TrackedAircraftTransformUpdated event.
     /// Pass null to stop tracking.
     /// </summary>
-    void AddTrackingForAircraft(string objectId);
-    void RemoveTrackingForAircraft(string objectId);
+    void AddTrackingForAircraft(string? objectId);
+    void RemoveTrackingForAircraft(string? objectId);
     
     
     public AcmiConnectionStatus Status { get; }

@@ -4,13 +4,11 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using OpenFreq.Common;
 using OpenFreqClient;
 using OpenFreqClient.Models;
 
@@ -42,6 +40,11 @@ public class AcmiClientService : IAcmiClientService
     private readonly object _statusLock = new();
     private AcmiConnectionStatus _status = AcmiConnectionStatus.Disconnected;
     
+    // Track all encountered callsigns (objectId -> callsign)
+    private readonly ConcurrentDictionary<string, string> _allEncounteredCallsigns = new();
+    // Currently selected aircraft for tracking
+    private string? _selectedAircraftId;
+    
     /// <summary>Fired when connection status changes</summary>
     public event EventHandler<AcmiConnectionEventArgs>? ConnectionStatusChanged;
     
@@ -51,9 +54,26 @@ public class AcmiClientService : IAcmiClientService
     /// <summary>Fired when connection is lost</summary>
     public event EventHandler<AcmiConnectionEventArgs>? ConnectionLost;
     
+    /// <summary>Fired when a new aircraft is discovered</summary>
+    public event EventHandler<AcmiAircraftDiscoveredEventArgs>? AircraftDiscovered;
+    
+    /// <summary>Removes an aircraft from tracking</summary>
     public void RemoveTrackingForAircraft(string? objectId)
     {
-        throw new NotImplementedException();
+        if (string.IsNullOrEmpty(objectId))
+            return;
+            
+        if (_trackedAircraft.TryRemove(objectId, out var aircraft))
+        {
+            _logger.LogInformation("Removed tracking for aircraft: {ObjectId} ({CallSign})", 
+                objectId, aircraft.CallSign ?? "Unknown");
+                
+            // If this was the selected aircraft, clear selection
+            if (_selectedAircraftId == objectId)
+            {
+                _selectedAircraftId = null;
+            }
+        }
     }
 
     /// <summary>Current connection status</summary>
@@ -138,8 +158,9 @@ public class AcmiClientService : IAcmiClientService
     /// <summary>Gets all aircraft currently tracked</summary>
     public IEnumerable<AcmiAircraft> GetAllAircraft() => _trackedAircraft.Values.ToList();
 
-    public void AddTrackingForAircraft(string objectId)
+    public void AddTrackingForAircraft(string? objectId)
     {
+        if (string.IsNullOrEmpty(objectId)) return;
         _trackedAircraft.TryAdd(objectId, new AcmiAircraft{ObjectId = objectId});
     }
 
@@ -147,8 +168,60 @@ public class AcmiClientService : IAcmiClientService
     public void ClearAircraft()
     {
         _trackedAircraft.Clear();
+        _allEncounteredCallsigns.Clear();
+        _selectedAircraftId = null;
         _logger.LogInformation("Cleared all tracked aircraft");
     }
+
+    /// <summary>Gets all encountered callsigns as a dictionary of objectId -> callsign</summary>
+    public IReadOnlyDictionary<string, string> GetAllEncounteredCallsigns() => 
+        _allEncounteredCallsigns;
+
+    /// <summary>Gets a list of all unique callsigns encountered</summary>
+    public IEnumerable<string> GetCallsignsList() => 
+        _allEncounteredCallsigns.Values.Distinct().OrderBy(c => c);
+
+    /// <summary>Selects an aircraft to track by its object ID</summary>
+    public bool SelectAircraftById(string objectId)
+    {
+        if (_trackedAircraft.ContainsKey(objectId))
+        {
+            _selectedAircraftId = objectId;
+            _logger.LogInformation("Selected aircraft: {ObjectId}", objectId);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>Selects an aircraft to track by its callsign</summary>
+    public bool SelectAircraftByCallsign(string callsign)
+    {
+        var objectId = _allEncounteredCallsigns
+            .FirstOrDefault(kvp => kvp.Value.Equals(callsign, StringComparison.OrdinalIgnoreCase))
+            .Key;
+            
+        if (!string.IsNullOrEmpty(objectId))
+        {
+            _selectedAircraftId = objectId;
+            _logger.LogInformation("Selected aircraft by callsign: {CallSign} (ID: {ObjectId})", callsign, objectId);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>Gets the currently selected aircraft</summary>
+    public AcmiAircraft? GetSelectedAircraft() => 
+        _selectedAircraftId != null ? GetAircraft(_selectedAircraftId) : null;
+
+    /// <summary>Clears the aircraft selection</summary>
+    public void ClearSelection()
+    {
+        _selectedAircraftId = null;
+        _logger.LogInformation("Cleared aircraft selection");
+    }
+
+    /// <summary>Gets the object ID of the currently selected aircraft</summary>
+    public string? SelectedAircraftId => _selectedAircraftId;
 
     private async Task ConnectionLoopAsync(CancellationToken cancellationToken)
     {
@@ -422,19 +495,41 @@ public class AcmiClientService : IAcmiClientService
         }
 
         // Update or create aircraft
+        bool isNewAircraft = false;
+        AcmiAircraft aircraftData;
+        
         if (_trackedAircraft.ContainsKey(objectId))
         {
-            AcmiAircraft? aircraftData;
-            _trackedAircraft.TryGetValue(objectId, out aircraftData);
+            _trackedAircraft.TryGetValue(objectId, out aircraftData!);
             
             // this should never happen but let's be sure
             if (aircraftData == null)
             {
                 aircraftData = new AcmiAircraft { ObjectId = objectId };
                 _trackedAircraft[objectId] = aircraftData;
+                isNewAircraft = true;
             }
-            
-            ParseAircraftProperties(aircraftData, span.Slice(firstComma + 1));
+        }
+        else
+        {
+            // New aircraft discovered
+            aircraftData = new AcmiAircraft { ObjectId = objectId };
+            _trackedAircraft[objectId] = aircraftData;
+            isNewAircraft = true;
+        }
+        
+        ParseAircraftProperties(aircraftData, span.Slice(firstComma + 1));
+        
+        // Track callsign and fire discovery event for new aircraft
+        if (isNewAircraft && !string.IsNullOrEmpty(aircraftData.CallSign))
+        {
+            _allEncounteredCallsigns.TryAdd(objectId, aircraftData.CallSign);
+            RaiseAircraftDiscovered(aircraftData);
+        }
+        else if (!string.IsNullOrEmpty(aircraftData.CallSign))
+        {
+            // Update callsign if changed
+            _allEncounteredCallsigns.AddOrUpdate(objectId, aircraftData.CallSign, (_, _) => aircraftData.CallSign);
         }
 
         return true;
@@ -701,6 +796,18 @@ public class AcmiClientService : IAcmiClientService
         });
     }
 
+    private void RaiseAircraftDiscovered(AcmiAircraft aircraft)
+    {
+        AircraftDiscovered?.Invoke(this, new AcmiAircraftDiscoveredEventArgs
+        {
+            Aircraft = aircraft,
+            Timestamp = DateTime.UtcNow
+        });
+        
+        _logger.LogInformation("New aircraft discovered: {ObjectId} - {CallSign} ({Name})",
+            aircraft.ObjectId, aircraft.CallSign ?? "Unknown", aircraft.Name ?? "Unknown");
+    }
+
     public void Dispose()
     {
         DisconnectAsync().Wait(500);
@@ -718,4 +825,13 @@ public class AcmiClientService : IAcmiClientService
         DisconnectAsync().Wait(500);
         Status = AcmiConnectionStatus.Disconnected;
     }
+}
+
+/// <summary>
+/// Event args for when a new aircraft is discovered
+/// </summary>
+public class AcmiAircraftDiscoveredEventArgs : EventArgs
+{
+    public required AcmiAircraft Aircraft { get; init; }
+    public DateTime Timestamp { get; init; }
 }

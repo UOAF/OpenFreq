@@ -606,9 +606,13 @@ public class OpenFreqService : IOpenFreqService
             case RadioStationData.RadioStationType.STATIONARY:
                 return _tunedFrequencies[frequencyKhz].RadioStation.Position;
             case RadioStationData.RadioStationType.ACMI:
-                //TODO
-                // return _acmiClientService.TrackedAircraft[tunedFrequency.]
-                break;
+                var acmiAircraftId = tunedFrequencyData.RadioStation.AcmiAircraftId;
+                if (acmiAircraftId == null) return null;
+                
+                var aircraft = _acmiClientService.GetAircraft(acmiAircraftId);
+                if (aircraft == null) return null;
+                return new Position(aircraft.Transform.U, aircraft.Transform.V, aircraft.Transform.V)
+                    .ToHeightmapPosition();
             default:
                 return null;
         }
