@@ -1,11 +1,9 @@
 using System.Collections.Specialized;
-using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Material.Styles.Controls;
-using OpenFreqAudio;
 using OpenFreqClient.Models;
 using OpenFreqClient.ViewModels;
 
@@ -72,5 +70,10 @@ public partial class MainWindow : Window
         {
             _viewModel.Settings.HeightmapPath = file[0].Path.LocalPath;
         }
+    }
+    
+    protected override void OnClosing(WindowClosingEventArgs e)
+    {
+        _viewModel.Settings.UpdateWindowSettings();
     }
 }

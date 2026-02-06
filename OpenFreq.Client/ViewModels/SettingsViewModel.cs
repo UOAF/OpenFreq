@@ -1,6 +1,10 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Platform;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using FalconBmsDataService.Models;
@@ -15,19 +19,19 @@ namespace OpenFreqClient.ViewModels;
 
 public partial class SettingsViewModel : ViewModelBase
 {
+    private Window MainWindow => ((IClassicDesktopStyleApplicationLifetime)Application.Current!.ApplicationLifetime!)
+        .MainWindow!;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsReadyToConnect))]
     public partial string OpenFreqServerAddress { get; set; } = string.Empty;
-    [ObservableProperty]
-    public partial string OpenFreqPassword { get; set; } = string.Empty;
-    [ObservableProperty]
-    public partial ObservableCollection<string> PlaybackDeviceNames { get; set; } = [];
 
-    [ObservableProperty]
-    public partial ObservableCollection<string> RecordingDeviceNames { get; set; } = [];
+    [ObservableProperty] public partial string OpenFreqPassword { get; set; } = string.Empty;
+    [ObservableProperty] public partial ObservableCollection<string> PlaybackDeviceNames { get; set; } = [];
 
-    [ObservableProperty]
-    public partial int RecordingDeviceIndex { get; set; }
+    [ObservableProperty] public partial ObservableCollection<string> RecordingDeviceNames { get; set; } = [];
+
+    [ObservableProperty] public partial int RecordingDeviceIndex { get; set; }
     [ObservableProperty] public partial int PlaybackDeviceIndex { get; set; }
     [ObservableProperty] public partial string SelectedTheater { get; set; } = "Korea KTO";
 
@@ -47,23 +51,23 @@ public partial class SettingsViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsReadyToConnect))]
     public partial string TacviewServerAddress { get; set; } = string.Empty;
 
-    [ObservableProperty]
-    public partial string TacviewServerPassword { get; set; } = string.Empty;
+    [ObservableProperty] public partial string TacviewServerPassword { get; set; } = string.Empty;
 
-    [ObservableProperty]
-    public partial string HeightmapPath { get; set; } = string.Empty;
+    [ObservableProperty] public partial string HeightmapPath { get; set; } = string.Empty;
 
-    [ObservableProperty]
-    public partial string InputDeviceName { get; set; } = string.Empty;
+    [ObservableProperty] public partial string InputDeviceName { get; set; } = string.Empty;
 
-    [ObservableProperty]
-    public partial string OutputDeviceName { get; set; } = string.Empty;
+    [ObservableProperty] public partial string OutputDeviceName { get; set; } = string.Empty;
 
     private readonly IAudioService _audioService;
     private readonly IFalconRadioSharedMemoryService _falconRadioSharedMemoryService;
     private readonly IFalconSharedMemoryService _falconSharedMemoryService;
     private readonly IAcmiClientService _acmiClientService;
     private readonly IOpenFreqService _openFreqService;
+
+    // Window size & position
+    private int _left, _top, _width, _height, _windowState;
+    private int _maximizedScreenX, _maximizedScreenY, _maximizedScreenWidth, _maximizedScreenHeight;
 
     public bool IsReadyToConnect => OpenFreqServerAddress != string.Empty &&
                                     (
@@ -243,6 +247,92 @@ public partial class SettingsViewModel : ViewModelBase
             if (PlaybackDeviceIndex < 0)
                 PlaybackDeviceIndex = _audioService.DefaultPlaybackDevice;
         }
+
+        RestoreWindowPosition(settings);
+    }
+
+    private void RestoreWindowPosition(OpenFreqSettings settings)
+    {
+        // Window settings
+        if (settings.Left == null || settings.Top == null || settings.Height == null || settings.Width == null ||
+            settings.WindowState == null)
+        {
+            // There are no settings to restore.
+            // So leave the windows size and position at their defaults.
+            return;
+        }
+        
+        if (settings.WindowState == (int)WindowState.Maximized)
+        {
+            // Try to find the screen it was maximized on
+            var screenToMaximeOn = FindScreenByBounds(
+                settings.MaximizedScreenX, 
+                settings.MaximizedScreenY, 
+                settings.MaximizedScreenWidth, 
+                settings.MaximizedScreenHeight);
+        
+            if (screenToMaximeOn != null)
+            {
+                // Position window on that screen before maximizing
+                MainWindow.Position = new PixelPoint(
+                    screenToMaximeOn.WorkingArea.X + 100, 
+                    screenToMaximeOn.WorkingArea.Y + 100);
+            }
+        
+            MainWindow.WindowState = WindowState.Maximized;
+            return;
+        }
+        
+        // Never restore to minimized
+        if (settings.WindowState.Value == (int)WindowState.Minimized)
+        {
+            settings.WindowState = (int)WindowState.Normal;
+        }
+
+        var savedPosition = new PixelPoint(settings.Left.Value, settings.Top.Value);
+        var screen = FindScreenContainingPositionInWorkingArea(savedPosition);
+        if (screen == null)
+        {
+            // The saved window position (its top left corner) is not in the working area of an active screen.
+            // So leave the windows size and position at their defaults.
+            return;
+        }
+
+        const int min = 50;
+        if (settings.Left.Value > screen.WorkingArea.X + screen.WorkingArea.Width - min
+            || settings.Top.Value > screen.WorkingArea.Y + screen.WorkingArea.Height - min)
+        {
+            // The saved top left corner (position) is so close to the right or bottom edge of the screen's working area as to make the window difficult to access.
+            // So leave the windows size and position at their defaults.
+            return;
+        }
+
+        MainWindow.Position = savedPosition;
+
+        MainWindow.Width = settings.Width.Value;
+        MainWindow.Height = settings.Height.Value;
+    }
+
+    private Screen? FindScreenContainingPositionInWorkingArea(PixelPoint position)
+    {
+        return (
+            // All active screens, not just any screens overlapping the window! 
+            from screen in ((IClassicDesktopStyleApplicationLifetime)Application.Current!.ApplicationLifetime!)
+                .MainWindow!.Screens.All
+            where screen.WorkingArea.Contains(position)
+            select screen).FirstOrDefault();
+    }
+    
+    private Screen? FindScreenByBounds(int? x, int? y, int? width, int? height)
+    {
+        if (!x.HasValue || !y.HasValue || !width.HasValue || !height.HasValue)
+            return null;
+    
+        return MainWindow.Screens.All.FirstOrDefault(s => 
+            s.Bounds.X == x.Value && 
+            s.Bounds.Y == y.Value &&
+            s.Bounds.Width == width.Value && 
+            s.Bounds.Height == height.Value);
     }
 
     public OpenFreqSettings GetSettings()
@@ -257,7 +347,47 @@ public partial class SettingsViewModel : ViewModelBase
             InputDeviceName = InputDeviceName,
             OutputDeviceName = OutputDeviceName,
             HeightmapPath = HeightmapPath,
-            SelectedTheater = SelectedTheater
+            SelectedTheater = SelectedTheater,
+            Left = _left,
+            Top = _top,
+            Width = _width,
+            Height = _height,
+            WindowState = _windowState,
+            MaximizedScreenHeight = _maximizedScreenHeight,
+            MaximizedScreenWidth = _maximizedScreenWidth,
+            MaximizedScreenX = _maximizedScreenX,
+            MaximizedScreenY = _maximizedScreenY
         };
+    }
+
+    public void UpdateWindowSettings()
+    {
+        // Always save the current state
+        _windowState = (int)MainWindow.WindowState;
+    
+        switch (MainWindow.WindowState)
+        {
+            case WindowState.Minimized:
+                return;
+            
+            case WindowState.Normal:
+                _left = MainWindow.Position.X;
+                _top = MainWindow.Position.Y;
+                _width = (int)MainWindow.Width;
+                _height = (int)MainWindow.Height;
+                break;
+            
+            case WindowState.Maximized:
+                var screen = MainWindow.Screens.ScreenFromWindow(MainWindow);
+                if (screen != null)
+                {
+                    _maximizedScreenX = screen.Bounds.X;
+                    _maximizedScreenY = screen.Bounds.Y;
+                    _maximizedScreenWidth = screen.Bounds.Width;
+                    _maximizedScreenHeight = screen.Bounds.Height;
+                }
+                // Don't update _left, _top, _width, _height - keep the last normal values
+                break;
+        }
     }
 }

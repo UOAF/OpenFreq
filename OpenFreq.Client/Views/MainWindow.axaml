@@ -10,11 +10,12 @@
         xmlns:local="clr-namespace:OpenFreq.Utilities"
         xmlns:dialogHostAvalonia="clr-namespace:DialogHostAvalonia;assembly=DialogHost.Avalonia"
         xmlns:controls1="clr-namespace:OpenFreq.Client.Controls"
-        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="300"
         x:Class="OpenFreqClient.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Icon="/Assets/openfreq_client.ico"
-        Title="OpenFreq Client">
+        Title="OpenFreq Client"
+        Width="800" Height="500">
 
     <Design.DataContext>
         <vm:MainWindowViewModel />
@@ -45,10 +46,6 @@
             <Setter Property="Width" Value="8"/>
             <Setter Property="Height" Value="8"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
-        </Style>
-        
-        <Style Selector="RadioButton">
-            <Setter Property="Theme" Value="{StaticResource MaterialButtonlikeRadioButton}" />
         </Style>
     </Window.Styles>
 

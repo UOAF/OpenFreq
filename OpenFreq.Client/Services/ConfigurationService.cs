@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Text.Json;
 using System.Threading.Tasks;
 using OpenFreqClient.Models;
 
@@ -12,7 +11,7 @@ public class ConfigurationService : IConfigurationService
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OpenFreq");
     
     private static readonly string ConfigFilePath = 
-        Path.Combine(ConfigDirectory, "config.json");
+        Path.Combine(ConfigDirectory, "OpenFreq.Server.json");
 
     public async Task<AppConfiguration> LoadConfigurationAsync()
     {

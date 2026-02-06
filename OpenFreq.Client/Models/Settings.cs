@@ -16,4 +16,15 @@ public class OpenFreqSettings
     public string InputDeviceName { get; set; } = "";
     public string OutputDeviceName { get; set; } = "";
     public string SelectedTheater { get; set; } = "Korea KTO";
+    
+    // Window Position & Size
+    public int? Left { get; set; }
+    public int? Top { get; set; }
+    public int? Width { get; set; }
+    public int? Height { get; set; }
+    public int? WindowState { get; set; }
+    public int? MaximizedScreenX { get; set; }
+    public int? MaximizedScreenY { get; set; }
+    public int? MaximizedScreenWidth { get; set; }
+    public int? MaximizedScreenHeight { get; set; }
 }
