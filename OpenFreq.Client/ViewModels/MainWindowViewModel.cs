@@ -130,7 +130,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         {
             await Dispatcher.UIThread.InvokeAsync(async () =>
             {
-                IvcWarning = !Settings.ModeIsGci && ivcStatusChangedEventArgs.IsRunning;
+                IvcWarning = ivcStatusChangedEventArgs.IsRunning;
 
                 if (!IvcWarning) return;
             
