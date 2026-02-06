@@ -27,47 +27,53 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            
+        
             // Get services from DI
             var serviceProvider = Program.ServiceProvider;
-            
-            #if WINDOWS
-            _services = new List<ILifecycleService>
-            {
-                serviceProvider.GetRequiredService<IFalconRadioSharedMemoryService>(),
-                serviceProvider.GetRequiredService<IFalconSharedMemoryService>(),
-                serviceProvider.GetRequiredService<IAcmiClientService>(),                
-                serviceProvider.GetRequiredService<IHotkeyService>(),
-            };
-            #else
+        
+#if WINDOWS
+        _services = new List<ILifecycleService>
+        {
+            serviceProvider.GetRequiredService<IFalconRadioSharedMemoryService>(),
+            serviceProvider.GetRequiredService<IFalconSharedMemoryService>(),
+            serviceProvider.GetRequiredService<IAcmiClientService>(),                
+            serviceProvider.GetRequiredService<IHotkeyService>(),
+        };
+#else
             _services = new List<ILifecycleService>
             {
                 serviceProvider.GetRequiredService<IAcmiClientService>(),
                 serviceProvider.GetRequiredService<IHotkeyService>(),
             };
-            #endif
-            
+#endif
+        
             // Start services
             foreach (var service in _services)
             {
                 service.Start();
             }
-            
+        
             var mainViewModel = Program.ServiceProvider?.GetService<MainWindowViewModel>()
                                 ?? throw new InvalidOperationException("Service provider not initialized");
             desktop.MainWindow = new MainWindow
             {
                 DataContext = mainViewModel,
             };
-            
-            desktop.Exit += (s, e) =>
+        
+            desktop.ShutdownRequested += async (s, e) =>
             {
+                // Defer shutdown until we're done cleaning up
+                e.Cancel = true;
+            
                 foreach (var service in _services)
                 {
                     service.Stop();
                 }
-                
-                mainViewModel.Dispose();
+            
+                await mainViewModel.DisposeAsync();
+            
+                // Now actually shutdown
+                desktop.Shutdown();
             };
         }
 

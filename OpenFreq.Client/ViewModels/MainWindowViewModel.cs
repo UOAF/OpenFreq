@@ -19,7 +19,7 @@ using SharpHook.Data;
 
 namespace OpenFreqClient.ViewModels;
 
-public partial class MainWindowViewModel : ViewModelBase, IDisposable
+public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
 {
     private readonly IOpenFreqService _openFreqService;
     private readonly IHotkeyService _hotkeyService;
@@ -325,31 +325,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         // Could be used for a log or notifications panel
         StatusMessage = e.Message;
     }
-
-    public void Dispose()
-    {
-        _ = SaveConfigurationAsync();
-        
-        _openFreqService.ConnectionStateChanged -= OnConnectionStateChanged;
-        _openFreqService.StatusMessageReceived -= OnStatusMessageReceived;
-        _openFreqService.PeerActivityReceived -= OnPeerActivityReceived;
-
-        // Falcon Radio Shared Memory
-        _falconRadioSharedMemoryService.ConnectionParametersChanged -=
-            FalconRadioSharedMemoryServiceOnConnectionParametersChanged;
-        _falconSharedMemoryService.FlyingStateChanged -= OnFlyingStateChanged;
-
-        ChannelList.Dispose();
-        _openFreqService.Dispose();
-        _hotkeyService.Dispose();
-        _acmiClientService.Dispose();
-        _configurationService.Dispose();
-
-        _falconSharedMemoryService.Dispose();
-        _falconRadioSharedMemoryService.Dispose();
-        _audioService.Dispose();
-    }
-
+    
 
     private async Task LoadConfigurationAsync()
     {
@@ -451,5 +427,28 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         Settings.OpenFreqServerAddress = "127.0.0.1";
         await ConnectAsync();
         */
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await SaveConfigurationAsync();
+
+        _openFreqService.ConnectionStateChanged -= OnConnectionStateChanged;
+        _openFreqService.StatusMessageReceived -= OnStatusMessageReceived;
+        _openFreqService.PeerActivityReceived -= OnPeerActivityReceived;
+        
+        _falconRadioSharedMemoryService.ConnectionParametersChanged -=
+            FalconRadioSharedMemoryServiceOnConnectionParametersChanged;
+        _falconSharedMemoryService.FlyingStateChanged -= OnFlyingStateChanged;
+
+        ChannelList.Dispose();
+        _openFreqService.Dispose();
+        _hotkeyService.Dispose();
+        _acmiClientService.Dispose();
+        _configurationService.Dispose();
+
+        _falconSharedMemoryService.Dispose();
+        _falconRadioSharedMemoryService.Dispose();
+        await _audioService.DisposeAsync();
     }
 }

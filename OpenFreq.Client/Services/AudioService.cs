@@ -12,7 +12,7 @@ public class AudioService : IAudioService
 {
     public int DefaultPlaybackDevice { get; private set; } = -1;
     public int DefaultRecordingDevice { get; private set; } = -1;
-    
+
     // Track currently selected devices
     private int _selectedPlaybackDeviceIndex = -1;
     private int _selectedRecordingDeviceIndex = -1;
@@ -47,21 +47,20 @@ public class AudioService : IAudioService
     private void StartDeviceMonitoring()
     {
         _monitoringCts = new CancellationTokenSource();
-        
         _monitoringTask = Task.Run(async () =>
         {
             Console.WriteLine("[AudioService] Device monitoring started");
-            
+
             while (!_monitoringCts.Token.IsCancellationRequested)
             {
                 try
                 {
-                    await Task.Delay(1000, _monitoringCts.Token); // Check every second
-                    
+                    await Task.Delay(1000, _monitoringCts.Token);
                     CheckForDeviceChanges();
                 }
                 catch (OperationCanceledException)
                 {
+                    // expected
                     break;
                 }
                 catch (Exception ex)
@@ -69,9 +68,9 @@ public class AudioService : IAudioService
                     Console.WriteLine($"[AudioService] Error monitoring devices: {ex.Message}");
                 }
             }
-            
+
             Console.WriteLine("[AudioService] Device monitoring stopped");
-        }, _monitoringCts.Token);
+        });
     }
 
     private void CheckForDeviceChanges()
@@ -100,28 +99,29 @@ public class AudioService : IAudioService
         var devices = GetPlaybackDevices();
         var oldIndex = _selectedPlaybackDeviceIndex;
         var newIndex = _selectedPlaybackDeviceIndex;
-        
+
         // Try to find the previously selected device by name
         if (!string.IsNullOrEmpty(_selectedPlaybackDeviceName))
         {
             newIndex = FindDeviceIndexByName(_selectedPlaybackDeviceName, isRecording: false);
         }
-        
+
         // If device was removed or not found, fall back to default
         if (newIndex == -1)
         {
-            Console.WriteLine($"[AudioService] Playback device '{_selectedPlaybackDeviceName}' not found, falling back to default device {DefaultPlaybackDevice}");
+            Console.WriteLine(
+                $"[AudioService] Playback device '{_selectedPlaybackDeviceName}' not found, falling back to default device {DefaultPlaybackDevice}");
             newIndex = DefaultPlaybackDevice;
-            
+
             if (newIndex != -1)
             {
                 var deviceInfo = Bass.GetDeviceInfo(newIndex);
                 _selectedPlaybackDeviceName = deviceInfo.Name;
             }
         }
-        
+
         _selectedPlaybackDeviceIndex = newIndex;
-        
+
         PlaybackDevicesChanged?.Invoke(this, new DeviceChangedEventArgs
         {
             Devices = devices,
@@ -137,28 +137,29 @@ public class AudioService : IAudioService
         var devices = GetRecordingDevices();
         var oldIndex = _selectedRecordingDeviceIndex;
         var newIndex = _selectedRecordingDeviceIndex;
-        
+
         // Try to find the previously selected device by name
         if (!string.IsNullOrEmpty(_selectedRecordingDeviceName))
         {
             newIndex = FindDeviceIndexByName(_selectedRecordingDeviceName, isRecording: true);
         }
-        
+
         // If device was removed or not found, fall back to default
         if (newIndex == -1)
         {
-            Console.WriteLine($"[AudioService] Recording device '{_selectedRecordingDeviceName}' not found, falling back to default device {DefaultRecordingDevice}");
+            Console.WriteLine(
+                $"[AudioService] Recording device '{_selectedRecordingDeviceName}' not found, falling back to default device {DefaultRecordingDevice}");
             newIndex = DefaultRecordingDevice;
-            
+
             if (newIndex != -1)
             {
                 var deviceInfo = Bass.RecordGetDeviceInfo(newIndex);
                 _selectedRecordingDeviceName = deviceInfo.Name;
             }
         }
-        
+
         _selectedRecordingDeviceIndex = newIndex;
-        
+
         RecordingDevicesChanged?.Invoke(this, new DeviceChangedEventArgs
         {
             Devices = devices,
@@ -193,7 +194,7 @@ public class AudioService : IAudioService
                 }
             }
         }
-        
+
         return -1;
     }
 
@@ -232,7 +233,7 @@ public class AudioService : IAudioService
     {
         List<string> deviceList = [];
         DefaultPlaybackDevice = -1;
-        
+
         for (var i = 0; i < Bass.DeviceCount; i++)
         {
             var deviceInfo = Bass.GetDeviceInfo(i);
@@ -249,7 +250,7 @@ public class AudioService : IAudioService
     {
         List<string> deviceList = [];
         DefaultRecordingDevice = -1;
-        
+
         for (var i = 0; i < Bass.RecordingDeviceCount; i++)
         {
             var deviceInfo = Bass.RecordGetDeviceInfo(i);
@@ -262,13 +263,17 @@ public class AudioService : IAudioService
         return deviceList;
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         // Stop device monitoring
         _monitoringCts?.Cancel();
-        _monitoringTask?.Wait(2000);
-        _monitoringCts?.Dispose();
 
+        if (_monitoringTask != null)
+        {
+            await _monitoringTask;
+        }
+
+        _monitoringCts?.Dispose();
         Bass.Free();
     }
 }
