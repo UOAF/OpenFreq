@@ -2,6 +2,7 @@
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FalconBmsDataService.Models;
@@ -15,6 +16,7 @@ using OpenFreq.Services.Acmi;
 using OpenFreqClient.Models;
 using OpenFreqClient.Services;
 using OpenFreqClient.Services.Interfaces;
+using OpenFreqClient.Views.Util;
 using SharpHook.Data;
 
 namespace OpenFreqClient.ViewModels;
@@ -33,30 +35,44 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
 
     // TODO remove when done
 #if DEBUG
-    [ObservableProperty] private bool _debugMode = false;
+    [ObservableProperty] public partial bool DebugMode { get; set; } = false;
 #else
-    [ObservableProperty] private bool _debugMode = false;
+    [ObservableProperty] public partial bool DebugMode { get; set; } = false;
 #endif
     /*********/
+    
+    [ObservableProperty]
+    public partial ChannelCardListViewModel ChannelList { get; set; }
 
+    [ObservableProperty]
+    public partial SettingsViewModel Settings { get; set; }
 
-    [ObservableProperty] private ChannelCardListViewModel _channelList;
-    [ObservableProperty] private SettingsViewModel _settings;
+    [ObservableProperty]
+    public partial bool OpenFreqConnected { get; set; }
 
-    [ObservableProperty] private bool _openFreqConnected;
-    [ObservableProperty] private bool _tacviewConnected;
+    [ObservableProperty]
+    public partial bool TacviewConnected { get; set; }
 
-    [ObservableProperty] private string _statusMessage = "Disconnected";
-    [ObservableProperty] private string _peerId = String.Empty;
+    [ObservableProperty]
+    public partial string StatusMessage { get; set; } = "Disconnected";
 
-    [ObservableProperty] private string _connectionStatusString = String.Empty;
+    [ObservableProperty]
+    public partial string PeerId { get; set; } = String.Empty;
+
+    [ObservableProperty]
+    public partial string ConnectionStatusString { get; set; } = String.Empty;
 
 
     // Error handling properties
-    [ObservableProperty] private bool _hasError;
-    [ObservableProperty] private string _errorMessage = "";
-    [ObservableProperty] private ObservableCollection<string> _errorLog = new();
+    [ObservableProperty]
+    public partial bool HasError { get; set; }
+
+    [ObservableProperty]
+    public partial string ErrorMessage { get; set; } = "";
+
+    [ObservableProperty] private partial ObservableCollection<string> ErrorLog { get; set; } = [];
     [ObservableProperty] public partial bool Is3dMode { get; set; }
+    [ObservableProperty] public partial bool IvcWarning { get; set; }
 
     public ColorZoneMode AppBarColorZone =>
         (OpenFreqConnected && TacviewConnected) ? ColorZoneMode.PrimaryMid : ColorZoneMode.Accent;
@@ -79,8 +95,8 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         _acmiClientService = acmiClientService;
         _configurationService = configurationService;
         _logger = logger;
-        _channelList = channelList;
-        _settings = settings;
+        ChannelList = channelList;
+        Settings = settings;
         _falconRadioSharedMemoryService = falconRadioSharedMemoryService;
         _falconSharedMemoryService = falconSharedMemoryService;
         _ivcMonitorService = ivcMonitorService;
@@ -95,12 +111,52 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
             FalconRadioSharedMemoryServiceOnConnectionParametersChanged;
         _falconSharedMemoryService.FlyingStateChanged += OnFlyingStateChanged;
 
+        // IVC Monitor
+        _ivcMonitorService.IvcStatusChanged += OnIvcStatusChanged;
+        // manually start it so we can be sure to get a notification if its already running
+        _ivcMonitorService.Start();
+        
         // Load config
         _ = LoadConfigurationAsync();
 
         UpdateConnectionStatusString();
 
         _openFreqService.SetOwnPositionMode(Settings.ConnectionMode);
+    }
+
+    private async void OnIvcStatusChanged(object? sender, IvcStatusChangedEventArgs ivcStatusChangedEventArgs)
+    {
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(async () =>
+            {
+                IvcWarning = !Settings.ModeIsGci && ivcStatusChangedEventArgs.IsRunning;
+
+                if (!IvcWarning) return;
+            
+                if (!await ConfirmationDialogService.ShowAsync(
+                        title: "IVC Client detected",
+                        message: "The BMS IVC Client seems to be running.\n" +
+                                 "OpenFreq will not work in BMS mode.\n" +
+                                 "\n" +
+                                 "Kill the IVC process?",
+                        cancelText: "Cancel",
+                        confirmText: "Kill IVC")) return;
+            
+                try
+                {
+                    _ivcMonitorService.KillIvc();
+                }
+                catch (Exception exception)
+                {
+                    _logger.LogError("Failed to kill IVC: {Exception}", exception.ToString());
+                }
+            });
+        }
+        catch (Exception e)
+        {
+            _logger.LogError("{ToString}", e.ToString());
+        }
     }
 
     private void OnFlyingStateChanged(object? sender, FlyingStateChangedEventArgs e)
@@ -422,8 +478,9 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
     }
 
     [RelayCommand]
-    private async Task Debug()
+    private Task Debug()
     {
+        return Task.CompletedTask;
         /*
         Settings.OpenFreqServerAddress = "127.0.0.1";
         await ConnectAsync();

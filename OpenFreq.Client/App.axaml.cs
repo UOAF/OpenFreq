@@ -38,7 +38,6 @@ public partial class App : Application
             serviceProvider.GetRequiredService<IFalconSharedMemoryService>(),
             serviceProvider.GetRequiredService<IAcmiClientService>(),                
             serviceProvider.GetRequiredService<IHotkeyService>(),
-            serviceProvider.GetRequiredService<IIvcMonitorService>(),
         };
 #else
             _services = new List<ILifecycleService>

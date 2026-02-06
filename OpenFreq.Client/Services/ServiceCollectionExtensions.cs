@@ -34,12 +34,12 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IAcmiClientService, AcmiClientService>();
         services.AddSingleton<IFalconSharedMemoryService, FalconSharedMemoryService>();
         services.AddSingleton<IFalconRadioSharedMemoryService, FalconRadioSharedMemoryService>();
+        services.AddSingleton<IIvcMonitorService, IvcMonitorService>();
 
         // Register ViewModels
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<ChannelCardListViewModel>();
         services.AddSingleton<MainWindowViewModel>();
-        services.AddSingleton<SettingsViewModel>();
         
         return services;
     }
