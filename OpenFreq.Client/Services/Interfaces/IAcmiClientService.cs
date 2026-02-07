@@ -18,7 +18,9 @@ public interface IAcmiClientService : IDisposable, ILifecycleService
     event EventHandler<AcmiConnectionEventArgs>? ConnectionLost;
 
     /// <summary>Connects to the ACMI server</summary>
-    Task<bool> ConnectAsync(string connectionString, string password = "", int maxRetries = 99);
+    Task<bool> ConnectAsync(string connectionString, string password = "", int maxRetries = -1);
+
+    void CancelConnectionAttempts();
 
     /// <summary>Disconnects from the ACMI server</summary>
     Task DisconnectAsync();

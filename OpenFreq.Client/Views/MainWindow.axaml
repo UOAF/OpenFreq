@@ -73,6 +73,12 @@
                                     CornerRadius="8"
                                     Padding="4">
                                 <Grid ColumnDefinitions="*,*">
+                                    <Grid.Styles>
+                                        <Style Selector="RadioButton">
+                                            <Setter Property="Theme"
+                                                    Value="{StaticResource MaterialButtonlikeRadioButton}" />
+                                        </Style>
+                                    </Grid.Styles>
                                     <RadioButton Grid.Column="0"
                                                  GroupName="OwnPositionMode"
                                                  IsChecked="{Binding !Settings.ModeIsGci}"
@@ -363,10 +369,11 @@
                 <StackPanel DockPanel.Dock="Top" Orientation="Horizontal"
                             Background="{DynamicResource MaterialValidationErrorBrush}"
                             IsVisible="{Binding IvcWarning}">
-                    
+
                     <avalonia:MaterialIcon Kind="Warning" Width="24" Height="24" Margin="5" />
-                    <TextBlock Margin="5" Classes="Subtitle1" Text="Falcon BMS IVC detected. IVC must be closed to use OpenFreq in BMS mode."
-                               VerticalAlignment="Center"/>
+                    <TextBlock Margin="5" Classes="Subtitle1"
+                               Text="Falcon BMS IVC detected. IVC must be closed to use OpenFreq in BMS mode."
+                               VerticalAlignment="Center" />
                 </StackPanel>
 
                 <!-- Status at bottom -->

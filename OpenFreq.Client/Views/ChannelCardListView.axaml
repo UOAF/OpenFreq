@@ -12,10 +12,12 @@
              x:Class="OpenFreqClient.Views.ChannelCardListView"
              x:DataType="viewModels:ChannelCardListViewModel"
              xmlns:converters="clr-namespace:Avalonia.Controls.Converters;assembly=Avalonia.Controls"
-             xmlns:models="clr-namespace:OpenFreq.Client.Models">
+             xmlns:models="clr-namespace:OpenFreq.Client.Models"
+             xmlns:converters1="clr-namespace:OpenFreqClient.Converters">
 
     <UserControl.Resources>
         <converters:EnumToBoolConverter x:Key="EnumToBoolConverter" />
+        <converters1:NullableDoubleConverter x:Key="NullableDoubleConverter" />
         <!-- ReSharper disable once Xaml.RedundantResource -->
         <StackPanel x:Key="Sample2View">
             <ProgressBar Classes="Circle" IsIndeterminate="True" />
@@ -113,7 +115,7 @@
                                         GroupName="PositionSource"
                                         Content="Fixed Position" />
 
-                                    <Grid ColumnDefinitions="*,Auto,Auto"
+                                    <Grid ColumnDefinitions="2*,*,Auto"
                                           ColumnSpacing="8"
                                           Margin="32,0,0,0"
                                           IsEnabled="{Binding RadioStationData.Type, 
@@ -132,48 +134,67 @@
                                                        IsVisible="{Binding HasCoordinateError}" />
                                         </StackPanel>
 
-                                        <Button Grid.Column="1"
-                                                Classes="Flat"
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                            <TextBox
+                                                Text="{Binding AltitudeInput, Converter={StaticResource NullableDoubleConverter}}"
+                                                Watermark="Alt (ft AGL)"
+                                                Classes="Outline" VerticalAlignment="Center"
+                                                Width="80" />
+                                            <TextBlock Text="ft AGL" VerticalAlignment="Center" Margin="5, 0" />
+                                        </StackPanel>
+
+                                        <Button Grid.Column="2"
+                                                Theme="{StaticResource MaterialFlatButton}" Classes="primary"
                                                 Command="{Binding OpenMapPickerCommand}"
                                                 ToolTip.Tip="Pick on map"
                                                 Width="40" Height="40">
                                             <avalonia:MaterialIcon Kind="MapMarker" Width="20" Height="20" />
                                         </Button>
 
-                                        <TextBox Grid.Column="2"
-                                                 Text="{Binding AltitudeInput}"
-                                                 Watermark="Alt (ft AGL)"
-                                                 Classes="Outline"
-                                                 Width="120" />
+
                                     </Grid>
 
                                     <!-- Aircraft Callsign -->
-                                    <RadioButton
-                                        IsChecked="{Binding RadioStationData.Type,
+                                    <StackPanel IsEnabled="{Binding IsAcmiConnected}">
+
+                                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                            <RadioButton
+                                                VerticalAlignment="Center"
+                                                IsChecked="{Binding RadioStationData.Type,
                                                  Converter={StaticResource EnumToBoolConverter},
                                                  ConverterParameter={x:Static models:RadioStationData+RadioStationType.ACMI}}"
-                                        GroupName="PositionSource"
-                                        Content="Track Aircraft"
-                                        Margin="0,8,0,0" />
+                                                GroupName="PositionSource"
+                                                Content="Track Aircraft" />
+                                            <avalonia:MaterialIcon Kind="Info" IsVisible="{Binding !IsAcmiConnected}"
+                                                                   Width="24" Height="24" VerticalAlignment="Center"
+                                                                   Margin="25, 0, 0, 0" />
+                                            <TextBlock IsVisible="{Binding !IsAcmiConnected}"
+                                                       Text="Requires a Tacview connection" Margin="5, 0"
+                                                       VerticalAlignment="Center" />
+                                        </StackPanel>
 
-                                    <Grid ColumnDefinitions="*, Auto">
-                                        <ComboBox ItemsSource="{Binding TacviewFlightCallsigns}"
-                                                  SelectedItem="{Binding SelectedTacviewCallsign}"
-                                                  PlaceholderText="Select callsign..."
-                                                  Classes="Outline"
-                                                  Margin="32,0,0,0"
-                                                  IsEnabled="{Binding RadioStationData.Type, 
+                                        <Grid ColumnDefinitions="*, *, Auto"
+                                              ColumnSpacing="8"
+                                              IsVisible="{Binding IsAcmiConnected}"
+                                              IsEnabled="{Binding RadioStationData.Type, 
                                               Converter={StaticResource EnumToBoolConverter}, 
-                                              ConverterParameter={x:Static models:RadioStationData+RadioStationType.ACMI}}"
-                                                  HorizontalAlignment="Stretch" />
-                                        <Button Grid.Column="1"
-                                                Classes="Flat"
-                                                Command="{Binding TrackSelectedAircraftCommand}"
-                                                ToolTip.Tip="Track on map"
-                                                Width="40" Height="40">
-                                            <avalonia:MaterialIcon Kind="MapMarker" Width="20" Height="20" />
-                                        </Button>
-                                    </Grid>
+                                              ConverterParameter={x:Static models:RadioStationData+RadioStationType.ACMI}}">
+                                            <ComboBox Grid.ColumnSpan="2"
+                                                      ItemsSource="{Binding TacviewFlightCallsigns}"
+                                                      SelectedItem="{Binding SelectedTacviewCallsign}"
+                                                      PlaceholderText="Select callsign..."
+                                                      Classes="Outline"
+                                                      Margin="32,0,0,0"
+                                                      HorizontalAlignment="Stretch" />
+                                            <Button Grid.Column="2"
+                                                    Theme="{StaticResource MaterialFlatButton}" Classes="primary"
+                                                    Command="{Binding TrackSelectedAircraftCommand}"
+                                                    ToolTip.Tip="Track on map"
+                                                    Width="40" Height="40">
+                                                <avalonia:MaterialIcon Kind="Map" Width="20" Height="20" />
+                                            </Button>
+                                        </Grid>
+                                    </StackPanel>
                                 </StackPanel>
 
                                 <!-- Station Preset -->

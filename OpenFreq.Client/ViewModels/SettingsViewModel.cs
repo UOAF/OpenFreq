@@ -71,7 +71,7 @@ public partial class SettingsViewModel : ViewModelBase
 
     public bool IsReadyToConnect => OpenFreqServerAddress != string.Empty &&
                                     (
-                                        (ModeIsGci && TacviewServerAddress != string.Empty &&
+                                        (ModeIsGci &&
                                          HeightmapPath != string.Empty)
                                         || !ModeIsGci
                                     );
@@ -261,28 +261,28 @@ public partial class SettingsViewModel : ViewModelBase
             // So leave the windows size and position at their defaults.
             return;
         }
-        
+
         if (settings.WindowState == (int)WindowState.Maximized)
         {
             // Try to find the screen it was maximized on
             var screenToMaximeOn = FindScreenByBounds(
-                settings.MaximizedScreenX, 
-                settings.MaximizedScreenY, 
-                settings.MaximizedScreenWidth, 
+                settings.MaximizedScreenX,
+                settings.MaximizedScreenY,
+                settings.MaximizedScreenWidth,
                 settings.MaximizedScreenHeight);
-        
+
             if (screenToMaximeOn != null)
             {
                 // Position window on that screen before maximizing
                 MainWindow.Position = new PixelPoint(
-                    screenToMaximeOn.WorkingArea.X + 100, 
+                    screenToMaximeOn.WorkingArea.X + 100,
                     screenToMaximeOn.WorkingArea.Y + 100);
             }
-        
+
             MainWindow.WindowState = WindowState.Maximized;
             return;
         }
-        
+
         // Never restore to minimized
         if (settings.WindowState.Value == (int)WindowState.Minimized)
         {
@@ -322,16 +322,16 @@ public partial class SettingsViewModel : ViewModelBase
             where screen.WorkingArea.Contains(position)
             select screen).FirstOrDefault();
     }
-    
+
     private Screen? FindScreenByBounds(int? x, int? y, int? width, int? height)
     {
         if (!x.HasValue || !y.HasValue || !width.HasValue || !height.HasValue)
             return null;
-    
-        return MainWindow.Screens.All.FirstOrDefault(s => 
-            s.Bounds.X == x.Value && 
+
+        return MainWindow.Screens.All.FirstOrDefault(s =>
+            s.Bounds.X == x.Value &&
             s.Bounds.Y == y.Value &&
-            s.Bounds.Width == width.Value && 
+            s.Bounds.Width == width.Value &&
             s.Bounds.Height == height.Value);
     }
 
@@ -364,19 +364,19 @@ public partial class SettingsViewModel : ViewModelBase
     {
         // Always save the current state
         _windowState = (int)MainWindow.WindowState;
-    
+
         switch (MainWindow.WindowState)
         {
             case WindowState.Minimized:
                 return;
-            
+
             case WindowState.Normal:
                 _left = MainWindow.Position.X;
                 _top = MainWindow.Position.Y;
                 _width = (int)MainWindow.Width;
                 _height = (int)MainWindow.Height;
                 break;
-            
+
             case WindowState.Maximized:
                 var screen = MainWindow.Screens.ScreenFromWindow(MainWindow);
                 if (screen != null)
@@ -386,6 +386,7 @@ public partial class SettingsViewModel : ViewModelBase
                     _maximizedScreenWidth = screen.Bounds.Width;
                     _maximizedScreenHeight = screen.Bounds.Height;
                 }
+
                 // Don't update _left, _top, _width, _height - keep the last normal values
                 break;
         }

@@ -240,8 +240,13 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
             if (Settings.ConnectionMode == IOpenFreqService.Mode.GCI)
             {
                 _openFreqService.LoadHeightmap(Settings.HeightmapPath);
-                _acmiClientService.ConnectionStatusChanged += OnTacviewConnectionStatusChanged;
-                await _acmiClientService.ConnectAsync(Settings.TacviewServerAddress, Settings.TacviewServerPassword);
+
+                if (!string.IsNullOrEmpty(Settings.TacviewServerAddress))
+                {
+                    _acmiClientService.ConnectionStatusChanged += OnTacviewConnectionStatusChanged;
+                    await _acmiClientService.ConnectAsync(Settings.TacviewServerAddress,
+                        Settings.TacviewServerPassword);
+                }
             }
 
             ClearError();
@@ -278,7 +283,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
             {
                 await _acmiClientService.DisconnectAsync();
             }
-
+            _acmiClientService.CancelConnectionAttempts();
             ClearError();
         }
         catch (Exception ex)
@@ -291,13 +296,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
     {
         UpdateConnectionStatusString();
     }
-
-
-    [RelayCommand]
-    private async Task ConnectToAcmiAsync()
-    {
-        await _acmiClientService.ConnectAsync(Settings.TacviewServerAddress, Settings.TacviewServerPassword);
-    }
+    
 
     [RelayCommand]
     private void ClearError()

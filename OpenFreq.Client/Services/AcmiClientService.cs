@@ -109,7 +109,7 @@ public class AcmiClientService : IAcmiClientService
     }
 
     /// <summary>Connects to the ACMI server</summary>
-    public async Task<bool> ConnectAsync(string connectionString, string password = "", int maxRetries = 99)
+    public async Task<bool> ConnectAsync(string connectionString, string password = "", int maxRetries = -1)
     {
         if (Status == AcmiConnectionStatus.Connected || Status == AcmiConnectionStatus.Connecting)
         {
@@ -123,13 +123,19 @@ public class AcmiClientService : IAcmiClientService
         _serverPort = ipPort.port;
         _password = string.IsNullOrEmpty(password) ? "0" : password;
         _maxRetries = maxRetries;
-
-        await DisconnectAsync();
-
+        
         _cts = new CancellationTokenSource();
         _receiveTask = Task.Run(() => ConnectionLoopAsync(_cts.Token));
 
         return true;
+    }
+
+    public void CancelConnectionAttempts()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+        Status = AcmiConnectionStatus.Disconnected;
+        RaiseConnectionStatusChanged(AcmiConnectionStatus.Disconnected, "Disconnected");
     }
 
     /// <summary>Disconnects from the ACMI server</summary>

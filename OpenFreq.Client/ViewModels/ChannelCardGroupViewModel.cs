@@ -31,6 +31,8 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty] public partial bool EditMode { get; set; }
 
+    [ObservableProperty] public partial bool IsAcmiConnected { get; set; }
+
     public record TacviewAircraftItem(string CallSign, string ObjectId)
     {
         public override string ToString() => CallSign;
@@ -53,7 +55,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
     [ObservableProperty] public partial double Latitude { get; set; }
     [ObservableProperty] public partial double Longitude { get; set; }
     [ObservableProperty] public partial string LatLonInput { get; set; } = "";
-    [ObservableProperty] public partial double AltitudeInput { get; set; } = 0d;
+    [ObservableProperty] public partial double? AltitudeInput { get; set; }
     [ObservableProperty] public partial string? CoordinateError { get; set; }
     [ObservableProperty] public partial bool HasCoordinateError { get; set; }
 
@@ -104,9 +106,16 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
     {
         if (e.Status == AcmiConnectionStatus.Connected)
         {
+            IsAcmiConnected = true;
            await UpdateTacviewCallsigns(new CancellationTokenSource().Token);
         }
+        else
+        {
+            IsAcmiConnected = false;
+        }
     }
+
+    
 
     public ChannelCardViewModel CreateChannel(int frequencyKhz, string name, bool isInEditMode = true, RadioType? bmsRadioType = null)
     {
@@ -157,6 +166,10 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
             {
                 channel.Status = Channel.ChannelStatus.Disconnected;
             }
+        }
+        else if (state == ConnectionState.Connected && !IsAcmiConnected)
+        {
+            RadioStationData.Type = RadioStationData.RadioStationType.STATIONARY;
         }
     }
 
@@ -443,11 +456,12 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         RadioStationData.Position = new Position(xy.x, xy.y, RadioStationData.Position.Z);
     }
 
-    partial void OnAltitudeInputChanged(double value)
+    partial void OnAltitudeInputChanged(double? value)
     {
+        if (value == null) return;
         const double FEET_PER_METER = 3.28084d;
         RadioStationData.Position ??= new Position(0d, 0d, 0d);
-        RadioStationData.Position.Z = value / FEET_PER_METER;
+        RadioStationData.Position.Z = value.Value / FEET_PER_METER;
     }
 
     [RelayCommand]

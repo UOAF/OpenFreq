@@ -15,7 +15,7 @@ public class ChannelGroupData
     public string Name { get; set; } = string.Empty;
     public double Latitude {get; set;}
     public double Longitude {get; set;}
-    public double AltitudeFt {get; set;}
+    public double? AltitudeFt {get; set;}
     public string? AcmiTrackingId { get; set; }
     public List<ChannelData> Channels { get; set; } = [];
     public RadioStationData RadioStationData { get; set; } = new()
