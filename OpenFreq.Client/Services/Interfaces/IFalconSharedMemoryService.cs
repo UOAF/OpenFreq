@@ -21,8 +21,6 @@ public interface IFalconSharedMemoryService : IDisposable, ILifecycleService
     /// </summary>
     FlightPosition? Position { get; }
 
-    Position? HeightMapPosition => Position == null ? null : new Position(Position.X, Position.Y, Position.Z).ToHeightmapPosition();
-
     /// <summary>
     /// Theater terrain directory (read once on connect, null if never connected)
     /// </summary>

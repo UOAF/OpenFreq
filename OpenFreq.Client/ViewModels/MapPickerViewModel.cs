@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Globalization;
+using System.IO;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -24,9 +25,13 @@ public partial class MapPickerViewModel : ViewModelBase
 
     [ObservableProperty] public partial double Latitude { get; set; }
     [ObservableProperty] public partial double Longitude { get; set; }
+    [ObservableProperty] public partial double Heading { get; set; }
+    [ObservableProperty] public partial double Altitude { get; set; }
     [ObservableProperty] public partial string SearchQuery { get; set; } = string.Empty;
     [ObservableProperty] public partial bool IsSearching { get; private set; }
     [ObservableProperty] public partial string? SearchError { get; set; }
+    [ObservableProperty] public partial bool IsTrackingMode { get; private set; }
+    [ObservableProperty] public partial string? TrackedCallsign { get; private set; }
 
     private WritableLayer? _theaterBoundsLayer;
     private WritableLayer? _positionLayer;
@@ -42,6 +47,20 @@ public partial class MapPickerViewModel : ViewModelBase
         Latitude = initialLat;
         Longitude = initialLon;
         _selectedTheatername = selectedTheaterName;
+        IsTrackingMode = false;
+    }
+
+    /// <summary>
+    /// Constructor for tracking mode - displays aircraft with heading and disables position picking
+    /// </summary>
+    public MapPickerViewModel(double initialLat, double initialLon, double initialHeading, string selectedTheaterName, string? callsign = null)
+    {
+        Latitude = initialLat;
+        Longitude = initialLon;
+        Heading = initialHeading;
+        _selectedTheatername = selectedTheaterName;
+        IsTrackingMode = true;
+        TrackedCallsign = callsign;
     }
 
     private Map CreateMap()
@@ -61,16 +80,10 @@ public partial class MapPickerViewModel : ViewModelBase
             map.Layers.Add(_theaterBoundsLayer);
         }
 
-        // Add layer for position marker
+        // Add layer for position marker (aircraft icon in tracking mode, dot in picker mode)
         _positionLayer = new WritableLayer
         {
-            Name = "Position",
-            Style = new SymbolStyle
-            {
-                SymbolScale = 0.5,
-                Fill = new Brush(Color.FromArgb(255, 220, 53, 69)), // Bootstrap danger red
-                Outline = new Pen(Color.White, 3)
-            }
+            Name = IsTrackingMode ? "Aircraft" : "Position"
         };
         map.Layers.Add(_positionLayer);
 
@@ -86,7 +99,7 @@ public partial class MapPickerViewModel : ViewModelBase
         else
         {
             viewCenter = SphericalMercator.FromLonLat(Longitude, Latitude);
-            UpdatePositionMarker(Latitude, Longitude);
+            UpdatePositionMarker(Latitude, Longitude, Heading);
         }
 
         map.Navigator.CenterOnAndZoomTo(new MPoint(viewCenter.x, viewCenter.y), map.Navigator.Resolutions[7]);
@@ -95,6 +108,9 @@ public partial class MapPickerViewModel : ViewModelBase
 
     public void OnMapClicked(MPoint worldPosition)
     {
+        // Disable position picking in tracking mode
+        if (IsTrackingMode) return;
+        
         var lonLat = SphericalMercator.ToLonLat(worldPosition.X, worldPosition.Y);
 
         Latitude = lonLat.lat;
@@ -104,7 +120,7 @@ public partial class MapPickerViewModel : ViewModelBase
         SearchError = null;
     }
 
-    private void UpdatePositionMarker(double lat, double lon)
+    private void UpdatePositionMarker(double lat, double lon, double? heading = null)
     {
         if (_positionLayer == null) return;
 
@@ -113,13 +129,66 @@ public partial class MapPickerViewModel : ViewModelBase
         var mercator = SphericalMercator.FromLonLat(lon, lat);
         var point = new Point(mercator.x, mercator.y);
         var feature = new GeometryFeature { Geometry = point };
+        
+        // Create style based on mode
+        if (IsTrackingMode)
+        {
+            var aircraftHeading = heading ?? Heading;
+            var iconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "airplane_icon.svg");
+                // feature.Styles.Clear();
+                feature.Styles.Add(new ImageStyle
+                {
+                    Image = new Image
+                    {
+                        Source = $"file://{iconPath}"
+                    },
+                    SymbolScale = 0.5,
+                    SymbolRotation = aircraftHeading,
+                    Offset = new Offset(0, 0)
+                });
+        }
+        else
+        {
+            // Position picker: simple dot
+            feature.Styles.Add(new SymbolStyle
+            {
+                SymbolScale = 0.5,
+                Fill = new Brush(Color.FromArgb(255, 220, 53, 69)), // Red for position picking
+                Outline = new Pen(Color.White, 3)
+            });
+        }
 
         _positionLayer.Add(feature);
+    }
+
+    /// <summary>
+    /// Updates the tracked aircraft position and heading (tracking mode only)
+    /// </summary>
+    public void UpdateTrackedPosition(double lat, double lon, double heading, double altitude)
+    {
+        if (!IsTrackingMode) return;
+
+        Latitude = lat;
+        Longitude = lon;
+        Heading = heading;
+        Altitude = altitude;
+
+        UpdatePositionMarker(lat, lon, heading);
+
+        // Pan map to keep aircraft in view
+        if (_map != null)
+        {
+            var mercator = SphericalMercator.FromLonLat(lon, lat);
+            _map.Navigator?.CenterOn(new MPoint(mercator.x, mercator.y));
+        }
     }
 
     [RelayCommand]
     private async Task SearchAddressAsync()
     {
+        // Disable search in tracking mode
+        if (IsTrackingMode) return;
+        
         if (string.IsNullOrWhiteSpace(SearchQuery))
             return;
 
@@ -170,11 +239,13 @@ public partial class MapPickerViewModel : ViewModelBase
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanConfirmPosition))]
     private void ConfirmPosition()
     {
         PositionConfirmed?.Invoke(this, (Latitude, Longitude));
     }
+
+    private bool CanConfirmPosition() => !IsTrackingMode;
 
     // Nominatim API response model
     // ReSharper disable once ClassNeverInstantiated.Local

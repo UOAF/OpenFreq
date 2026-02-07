@@ -35,6 +35,7 @@
         <PackageReference Include="ManagedBass" Version="4.0.2" />
         <PackageReference Include="Mapsui" Version="5.0.2" />
         <PackageReference Include="Mapsui.Avalonia" Version="5.0.2" />
+        <PackageReference Include="Mapsui.Rendering.Skia" Version="5.0.2" />
         <PackageReference Include="Material.Avalonia" Version="3.13.4" />
         <PackageReference Include="Material.Avalonia.Dialogs" Version="3.13.4" />
         <PackageReference Include="Material.Icons.Avalonia" Version="2.4.1" />
@@ -42,6 +43,7 @@
         <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.0" />
         <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.0" />
         <PackageReference Include="SharpHook" Version="7.0.3" />
+        <PackageReference Include="SkiaSharp.Svg" Version="1.60.0" />
     </ItemGroup>
 
     <ItemGroup>

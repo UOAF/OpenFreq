@@ -58,7 +58,10 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
     [ObservableProperty] public partial bool HasCoordinateError { get; set; }
 
     private bool _isUpdatingFromInput;
-
+    
+    private MapPickerWindow? _trackingWindow;
+    private CancellationTokenSource? _trackingCts;
+    [ObservableProperty] public partial bool IsTracking { get; set; }
 
     public ChannelCardGroupViewModel(IOpenFreqService openFreqService, IHotkeyService hotkeyService,
         IAcmiClientService acmiClientService, SettingsViewModel settingsViewModel, string name,
@@ -462,6 +465,87 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
             Latitude = result.Value.lat;
             Longitude = result.Value.lon;
         }
+    }
+    
+    [RelayCommand]
+    private async Task TrackSelectedAircraftAsync()
+    {
+        if (string.IsNullOrEmpty(RadioStationData.AcmiAircraftId))
+            return;
+        
+        var aircraft = _acmiClientService.GetAircraft(RadioStationData.AcmiAircraftId);
+        if (aircraft == null)
+            return;
+        
+        // Open tracking window
+        _trackingWindow = new MapPickerWindow(
+            aircraft.Transform.Latitude,
+            aircraft.Transform.Longitude,
+            aircraft.Transform.Heading,
+            Settings.SelectedTheater,
+            aircraft.CallSign);
+        
+        IsTracking = true;
+        
+        // Start update task
+        _trackingCts = new CancellationTokenSource();
+        var updateTask = UpdateTrackingPositionAsync(_trackingCts.Token);
+        
+        // Show window (non-blocking)
+        var desktop = Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime;
+        if (desktop?.MainWindow != null)
+        {
+            _trackingWindow.Show(desktop.MainWindow);
+            
+            // Handle window close
+            _trackingWindow.Closed += (_, _) =>
+            {
+                StopTracking();
+            };
+        }
+    }
+    
+    private async Task UpdateTrackingPositionAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var aircraft = _acmiClientService.GetAircraft(RadioStationData.AcmiAircraftId ?? string.Empty);
+                if (aircraft != null && _trackingWindow != null)
+                {
+                    // Update window with current aircraft position
+                    _trackingWindow.UpdateTrackedPosition(
+                        aircraft.Transform.Latitude,
+                        aircraft.Transform.Longitude,
+                        aircraft.Transform.Heading, aircraft.Transform.AltitudeFt);
+                }
+                
+                // Update rate: 10 Hz (100ms)
+                await Task.Delay(100, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Normal cancellation
+        }
+        catch (Exception ex)
+        {
+            // Log error
+            Console.WriteLine($"Tracking error: {ex}");
+        }
+    }
+    
+    [RelayCommand]
+    private void StopTracking()
+    {
+        IsTracking = false;
+        _trackingCts?.Cancel();
+        _trackingCts?.Dispose();
+        _trackingCts = null;
+        
+        _trackingWindow?.Close();
+        _trackingWindow = null;
     }
     
     public class ChannelCardGroupDeleteRequestedMessage(Guid channelCardGroupId)

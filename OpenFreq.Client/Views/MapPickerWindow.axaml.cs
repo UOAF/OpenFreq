@@ -9,20 +9,46 @@ namespace OpenFreqClient.Views;
 public partial class MapPickerWindow : Window
 {
     private readonly string _selectedTheaterName;
+    private readonly MapPickerViewModel _viewModel;
     public (double lat, double lon)? SelectedPosition { get; private set; }
     
     public MapPickerWindow()
     {
         InitializeComponent();
+        _viewModel = null!; // Will be set in other constructors
     }
     
+    /// <summary>
+    /// Constructor for position picking mode
+    /// </summary>
     public MapPickerWindow(double initialLat, double initialLon, string selectedTheaterName) : this()
     {
-        _selectedTheaterName  = selectedTheaterName;
-        var viewModel = new MapPickerViewModel(initialLat, initialLon, selectedTheaterName);
-        viewModel.PositionConfirmed += OnPositionConfirmed;
-        DataContext = viewModel;
+        _selectedTheaterName = selectedTheaterName;
+        _viewModel = new MapPickerViewModel(initialLat, initialLon, selectedTheaterName);
+        _viewModel.PositionConfirmed += OnPositionConfirmed;
+        DataContext = _viewModel;
         MapControl.PointerPressed += OnMapPointerPressed;
+    }
+
+    /// <summary>
+    /// Constructor for aircraft tracking mode
+    /// </summary>
+    public MapPickerWindow(double initialLat, double initialLon, double initialHeading, string selectedTheaterName, string? callsign = null) : this()
+    {
+        _selectedTheaterName = selectedTheaterName;
+        _viewModel = new MapPickerViewModel(initialLat, initialLon, initialHeading, selectedTheaterName, callsign);
+        DataContext = _viewModel;
+        
+        // Update window title for tracking mode
+        Title = string.IsNullOrEmpty(callsign) ? "Aircraft Tracking" : $"Tracking: {callsign}";
+    }
+
+    /// <summary>
+    /// Updates the tracked aircraft position (tracking mode only)
+    /// </summary>
+    public void UpdateTrackedPosition(double lat, double lon, double heading, double altitude)
+    {
+        _viewModel.UpdateTrackedPosition(lat, lon, heading, altitude);
     }
     
     private void OnMapPointerPressed(object? sender, PointerPressedEventArgs e)

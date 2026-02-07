@@ -16,6 +16,7 @@ using Microsoft.Extensions.Logging;
 using OpenFreq.Client.Models;
 using OpenFreq.Common;
 using OpenFreq.Services.Acmi;
+using OpenFreq.Utilities;
 using OpenFreqAudio;
 using OpenFreqClient.Models;
 using OpenFreqClient.Services.Interfaces;
@@ -39,6 +40,7 @@ public class OpenFreqService : IOpenFreqService
         public RadioStationData RadioStation { get; set; } = radioStation;
         public bool IsEnabled { get; set; } = isEnabled;
     }
+
     private readonly ConcurrentDictionary<int, TunedFrequencyData> _tunedFrequencies = new();
 
 
@@ -56,7 +58,8 @@ public class OpenFreqService : IOpenFreqService
 
 
     // Cache for audio params: Key is (PeerId, FrequencyKhz)
-    private readonly ConcurrentDictionary<(string PeerId, int FrequencyKhz), AudioParamsCacheEntry> _audioParamsCache = new();
+    private readonly ConcurrentDictionary<(string PeerId, int FrequencyKhz), AudioParamsCacheEntry> _audioParamsCache =
+        new();
 
     // Cache duration
     private readonly TimeSpan _audioParamsCacheDuration = TimeSpan.FromMilliseconds(100);
@@ -164,7 +167,7 @@ public class OpenFreqService : IOpenFreqService
             await _playbackService.StopAll();
             _playbackService = null;
         }
-        
+
         _playbackService = new RadioPlayback(playbackDeviceIndex);
         _playbackService.Initialize();
         _playbackService.Apply3dEffects = Apply3dAudioEffects;
@@ -600,24 +603,25 @@ public class OpenFreqService : IOpenFreqService
         switch (tunedFrequencyData.RadioStation.Type)
         {
             case RadioStationData.RadioStationType.BMS:
-                return _falconSharedMemoryService.State != ServiceState.Connected
-                    ? null
-                    : _falconSharedMemoryService.HeightMapPosition;
+                if (_falconSharedMemoryService.State != ServiceState.Connected ||
+                    _falconSharedMemoryService.Position == null) return null;
+
+                return new Position(BmsHeightmapConverter.ToHeightmap(_falconSharedMemoryService.Position.X,
+                    _falconSharedMemoryService.Position.Y, _falconSharedMemoryService.Position.Z));
+
             case RadioStationData.RadioStationType.STATIONARY:
                 return _tunedFrequencies[frequencyKhz].RadioStation.Position;
             case RadioStationData.RadioStationType.ACMI:
                 var acmiAircraftId = tunedFrequencyData.RadioStation.AcmiAircraftId;
                 if (acmiAircraftId == null) return null;
-                
+
                 var aircraft = _acmiClientService.GetAircraft(acmiAircraftId);
                 if (aircraft == null) return null;
-                return new Position(aircraft.Transform.U, aircraft.Transform.V, aircraft.Transform.V)
-                    .ToHeightmapPosition();
+                return new Position(AcmiHeightmapConverter.ToHeightmap(aircraft.Transform.U, aircraft.Transform.V,
+                    aircraft.Transform.Altitude));
             default:
                 return null;
         }
-
-        throw new InvalidOperationException();
     }
 
     // Client event handlers
@@ -660,7 +664,7 @@ public class OpenFreqService : IOpenFreqService
     private void OnClientPeerJoined(object? sender, PeerEventArgs e)
     {
         CreateAudioStreamForPeer(e.FrequencyKhz, e.PeerId);
-        OnPeerActivity($"Peer {e.PeerId[..Math.Min(8, e.PeerId.Length)]} joined {e.FrequencyKhz/1000d:F3}");
+        OnPeerActivity($"Peer {e.PeerId[..Math.Min(8, e.PeerId.Length)]} joined {e.FrequencyKhz / 1000d:F3}");
     }
 
     private void CreateAudioStreamForPeer(int frequencyKhz, string peerId)
@@ -701,7 +705,7 @@ public class OpenFreqService : IOpenFreqService
             }
         }
 
-        OnPeerActivity($"Peer {e.PeerId[..Math.Min(8, e.PeerId.Length)]} left {e.FrequencyKhz/1000d:F3}");
+        OnPeerActivity($"Peer {e.PeerId[..Math.Min(8, e.PeerId.Length)]} left {e.FrequencyKhz / 1000d:F3}");
     }
 
     private void OnClientTransmissionStateChanged(object? sender, TransmissionStateEventArgs e)
@@ -713,7 +717,7 @@ public class OpenFreqService : IOpenFreqService
     private void OnClientPeerTransmissionStateChanged(object? sender, PeerTransmissionEventArgs e)
     {
         var state = e.IsTransmitting ? "transmitting" : "stopped";
-        OnPeerActivity($"Peer {e.PeerId} {state} on {e.FrequencyKhz/1000d:F3}");
+        OnPeerActivity($"Peer {e.PeerId} {state} on {e.FrequencyKhz / 1000d:F3}");
 
         OnFrequencyStatusChanged(e.FrequencyKhz,
             e.IsTransmitting ? Channel.ChannelStatus.Receiving : Channel.ChannelStatus.Connected);

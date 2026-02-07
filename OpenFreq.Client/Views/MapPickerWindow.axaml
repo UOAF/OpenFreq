@@ -10,10 +10,11 @@
         WindowStartupLocation="CenterOwner">
     
     <Grid RowDefinitions="Auto,*,Auto">
-        <!-- Search bar -->
+        <!-- Search bar (hidden in tracking mode) -->
         <Border Grid.Row="0" 
                 Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
-                Padding="10">
+                Padding="10"
+                IsVisible="{Binding !IsTrackingMode}">
             <Grid ColumnDefinitions="*,Auto">
                 <TextBox Grid.Column="0"
                          Text="{Binding SearchQuery}"
@@ -56,8 +57,21 @@
                     CornerRadius="4"
                     Margin="10">
                 <StackPanel Spacing="4">
-                    <TextBlock Foreground="White" FontWeight="Bold">
+                    <!-- Title changes based on mode -->
+                    <TextBlock Foreground="White" FontWeight="Bold"
+                               IsVisible="{Binding IsTrackingMode}">
+                        Aircraft Position:
+                    </TextBlock>
+                    <TextBlock Foreground="White" FontWeight="Bold"
+                               IsVisible="{Binding !IsTrackingMode}">
                         Selected Position:
+                    </TextBlock>
+                    
+                    <!-- Show callsign if tracking -->
+                    <TextBlock Foreground="White" 
+                               IsVisible="{Binding TrackedCallsign, Converter={x:Static ObjectConverters.IsNotNull}}">
+                        <Run Text="Callsign: "/>
+                        <Run Text="{Binding TrackedCallsign}" FontWeight="Bold"/>
                     </TextBlock>
                     <TextBlock Foreground="White">
                         <Run Text="Lat: "/>
@@ -66,6 +80,17 @@
                     <TextBlock Foreground="White">
                         <Run Text="Lon: "/>
                         <Run Text="{Binding Longitude, StringFormat='{}{0:F6}'}"/>
+                    </TextBlock>
+                    <!-- Show heading if tracking -->
+                    <TextBlock Foreground="White" 
+                               IsVisible="{Binding IsTrackingMode}">
+                        <Run Text="Hdg: "/>
+                        <Run Text="{Binding Heading, StringFormat='{}{0:F1}°'}"/>
+                    </TextBlock>
+                    <TextBlock Foreground="White" 
+                               IsVisible="{Binding IsTrackingMode}">
+                        <Run Text="Alt: "/>
+                        <Run Text="{Binding Altitude, StringFormat='{}{0:F0}ft'}"/>
                     </TextBlock>
                 </StackPanel>
             </Border>
@@ -76,7 +101,8 @@
                     HorizontalAlignment="Left" 
                     VerticalAlignment="Bottom"
                     CornerRadius="4"
-                    Margin="10">
+                    Margin="10"
+                    IsVisible="{Binding !IsTrackingMode}">
                 <TextBlock Foreground="White" FontSize="12">
                     Left-Click to Pan, Right-Click to set position
                 </TextBlock>
@@ -92,13 +118,25 @@
             <StackPanel Orientation="Horizontal" 
                        HorizontalAlignment="Right"
                        Spacing="10">
+                <!-- Cancel button (position picker mode) -->
                 <Button Content="Cancel"
                         Classes="Flat"
                         Click="OnCancel"
-                        Width="100"/>
+                        Width="100"
+                        IsVisible="{Binding !IsTrackingMode}"/>
+                
+                <!-- Close button (tracking mode) -->
+                <Button Content="Close"
+                        Classes="Flat"
+                        Click="OnCancel"
+                        Width="100"
+                        IsVisible="{Binding IsTrackingMode}"/>
+                
+                <!-- Confirm button (only in picker mode) -->
                 <Button Content="Confirm" 
                         Command="{Binding ConfirmPositionCommand}"
-                        Width="100"/>
+                        Width="100"
+                        IsVisible="{Binding !IsTrackingMode}"/>
             </StackPanel>
         </Border>
     </Grid>

@@ -16,6 +16,8 @@ public class AircraftTransform
     /// <summary>Altitude in meters</summary>
     public double Altitude { get; set; }
     
+    public double AltitudeFt => Altitude * 3.28084;
+    
     /// <summary>Roll angle in degrees</summary>
     public double Roll { get; set; }
     

@@ -16,17 +16,16 @@
 
     <UserControl.Resources>
         <converters:EnumToBoolConverter x:Key="EnumToBoolConverter" />
-            <!-- ReSharper disable once Xaml.RedundantResource -->
-            <StackPanel x:Key="Sample2View">
-                <ProgressBar Classes="Circle" IsIndeterminate="True" />
-                <Button Margin="0 16 0 0"
-                        Command="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType=dialogHost:DialogHost}, Path=CloseDialogCommand}">
-                    CLOSE
-                </Button>
-            </StackPanel>
+        <!-- ReSharper disable once Xaml.RedundantResource -->
+        <StackPanel x:Key="Sample2View">
+            <ProgressBar Classes="Circle" IsIndeterminate="True" />
+            <Button Margin="0 16 0 0"
+                    Command="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType=dialogHost:DialogHost}, Path=CloseDialogCommand}">
+                CLOSE
+            </Button>
+        </StackPanel>
     </UserControl.Resources>
-    
-    
+
 
     <ItemsControl ItemsSource="{Binding ChannelGroups}">
         <ItemsControl.ItemTemplate>
@@ -52,7 +51,8 @@
                             </StackPanel>
 
                             <!-- Config Button -->
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" IsVisible="{Binding Settings.ModeIsGci}">
+                            <StackPanel Grid.Column="1" Orientation="Horizontal"
+                                        IsVisible="{Binding Settings.ModeIsGci}">
                                 <Button
                                     IsVisible="{Binding EditMode}"
                                     Classes="Flat"
@@ -61,7 +61,7 @@
                                     ToolTip.Tip="Delete Group"
                                     Padding="8">
                                     <avalonia:MaterialIcon Kind="Trash" Width="24" Height="24"
-                                    Foreground="{DynamicResource MaterialValidationErrorBrush}" />
+                                                           Foreground="{DynamicResource MaterialValidationErrorBrush}" />
                                 </Button>
                                 <Button
                                     Classes="Flat"
@@ -156,15 +156,24 @@
                                         Content="Track Aircraft"
                                         Margin="0,8,0,0" />
 
-                                    <ComboBox ItemsSource="{Binding TacviewFlightCallsigns}"
-                                              SelectedItem="{Binding SelectedTacviewCallsign}"
-                                              PlaceholderText="Select callsign..."
-                                              Classes="Outline"
-                                              Margin="32,0,0,0"
-                                              IsEnabled="{Binding RadioStationData.Type, 
+                                    <Grid ColumnDefinitions="*, Auto">
+                                        <ComboBox ItemsSource="{Binding TacviewFlightCallsigns}"
+                                                  SelectedItem="{Binding SelectedTacviewCallsign}"
+                                                  PlaceholderText="Select callsign..."
+                                                  Classes="Outline"
+                                                  Margin="32,0,0,0"
+                                                  IsEnabled="{Binding RadioStationData.Type, 
                                               Converter={StaticResource EnumToBoolConverter}, 
                                               ConverterParameter={x:Static models:RadioStationData+RadioStationType.ACMI}}"
-                                              HorizontalAlignment="Stretch" />
+                                                  HorizontalAlignment="Stretch" />
+                                        <Button Grid.Column="1"
+                                                Classes="Flat"
+                                                Command="{Binding TrackSelectedAircraftCommand}"
+                                                ToolTip.Tip="Track on map"
+                                                Width="40" Height="40">
+                                            <avalonia:MaterialIcon Kind="MapMarker" Width="20" Height="20" />
+                                        </Button>
+                                    </Grid>
                                 </StackPanel>
 
                                 <!-- Station Preset -->
@@ -248,7 +257,7 @@
                         <!-- ========================================== -->
                         <!-- ADD CHANNEL BUTTON (Bottom of each group) -->
                         <!-- ========================================== -->
-                        <Button Command="{Binding AddChannelCommand}" 
+                        <Button Command="{Binding AddChannelCommand}"
                                 IsVisible="{Binding Settings.ModeIsGci}"
                                 Classes="Flat"
                                 HorizontalAlignment="Stretch"
