@@ -489,7 +489,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         
         // Start update task
         _trackingCts = new CancellationTokenSource();
-        var updateTask = UpdateTrackingPositionAsync(_trackingCts.Token);
+        _ = UpdateTrackingPositionAsync(_trackingCts.Token);
         
         // Show window (non-blocking)
         var desktop = Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime;
@@ -518,7 +518,8 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
                     _trackingWindow.UpdateTrackedPosition(
                         aircraft.Transform.Latitude,
                         aircraft.Transform.Longitude,
-                        aircraft.Transform.Heading, aircraft.Transform.AltitudeFt);
+                        (aircraft.Transform.Heading + 360) % 360, // the ACMI streams sends headings as +/-180
+                        aircraft.Transform.AltitudeFt);
                 }
                 
                 // Update rate: 10 Hz (100ms)

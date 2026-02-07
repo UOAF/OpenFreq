@@ -17,6 +17,7 @@
 
     <ItemGroup>
         <AvaloniaResource Include="Assets\**"/>
+        <EmbeddedResource Include="Assets\airplane_icon.svg" />
     </ItemGroup>
 
     <ItemGroup>

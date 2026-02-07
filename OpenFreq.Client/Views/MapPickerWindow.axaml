@@ -70,7 +70,6 @@
                     <!-- Show callsign if tracking -->
                     <TextBlock Foreground="White" 
                                IsVisible="{Binding TrackedCallsign, Converter={x:Static ObjectConverters.IsNotNull}}">
-                        <Run Text="Callsign: "/>
                         <Run Text="{Binding TrackedCallsign}" FontWeight="Bold"/>
                     </TextBlock>
                     <TextBlock Foreground="White">

@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Globalization;
-using System.IO;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -16,6 +15,10 @@ using Mapsui.Styles;
 using Mapsui.Tiling.Layers;
 using NetTopologySuite.Geometries;
 using OpenFreq.Utilities;
+using Brush = Mapsui.Styles.Brush;
+using Point = NetTopologySuite.Geometries.Point;
+using MapsuiColor = Mapsui.Styles.Color;
+using Pen = Mapsui.Styles.Pen;
 
 namespace OpenFreqClient.ViewModels;
 
@@ -83,7 +86,8 @@ public partial class MapPickerViewModel : ViewModelBase
         // Add layer for position marker (aircraft icon in tracking mode, dot in picker mode)
         _positionLayer = new WritableLayer
         {
-            Name = IsTrackingMode ? "Aircraft" : "Position"
+            Name = IsTrackingMode ? "Aircraft" : "Position",
+            Style = null  // Disable layer-level style, use only feature styles
         };
         map.Layers.Add(_positionLayer);
 
@@ -129,34 +133,33 @@ public partial class MapPickerViewModel : ViewModelBase
         var mercator = SphericalMercator.FromLonLat(lon, lat);
         var point = new Point(mercator.x, mercator.y);
         var feature = new GeometryFeature { Geometry = point };
-        
-        // Create style based on mode
+
         if (IsTrackingMode)
         {
             var aircraftHeading = heading ?? Heading;
-            var iconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "airplane_icon.svg");
-                // feature.Styles.Clear();
-                feature.Styles.Add(new ImageStyle
+            feature.Styles.Add(new ImageStyle
+            {
+                Image = new Image
                 {
-                    Image = new Image
-                    {
-                        Source = $"file://{iconPath}"
-                    },
-                    SymbolScale = 0.5,
-                    SymbolRotation = aircraftHeading,
-                    Offset = new Offset(0, 0)
-                });
+                    Source = "embedded://openfreq-client.Assets.airplane_icon.svg",
+                },
+                SymbolScale = 0.05,
+                SymbolRotation = aircraftHeading,
+                Offset = new Offset(0, 0),
+                
+            });
         }
         else
         {
             // Position picker: simple dot
             feature.Styles.Add(new SymbolStyle
             {
-                SymbolScale = 0.5,
-                Fill = new Brush(Color.FromArgb(255, 220, 53, 69)), // Red for position picking
-                Outline = new Pen(Color.White, 3)
+                SymbolScale = 0.7,
+                Fill = new Brush(MapsuiColor.FromArgb(255, 220, 53, 69)), // Red for position picking
+                Outline = new Pen(MapsuiColor.White, 3)
             });
         }
+
 
         _positionLayer.Add(feature);
     }
@@ -176,11 +179,9 @@ public partial class MapPickerViewModel : ViewModelBase
         UpdatePositionMarker(lat, lon, heading);
 
         // Pan map to keep aircraft in view
-        if (_map != null)
-        {
-            var mercator = SphericalMercator.FromLonLat(lon, lat);
-            _map.Navigator?.CenterOn(new MPoint(mercator.x, mercator.y));
-        }
+        if (_map == null) return;
+        var mercator = SphericalMercator.FromLonLat(lon, lat);
+        _map.Navigator.CenterOn(new MPoint(mercator.x, mercator.y));
     }
 
     [RelayCommand]
@@ -226,7 +227,7 @@ public partial class MapPickerViewModel : ViewModelBase
             if (_map != null)
             {
                 var mercator = SphericalMercator.FromLonLat(Longitude, Latitude);
-                _map.Navigator?.CenterOnAndZoomTo(new MPoint(mercator.x, mercator.y), _map.Navigator.Resolutions[11]);
+                _map.Navigator.CenterOnAndZoomTo(new MPoint(mercator.x, mercator.y), _map.Navigator.Resolutions[11]);
             }
         }
         catch (Exception ex)
@@ -251,9 +252,14 @@ public partial class MapPickerViewModel : ViewModelBase
     // ReSharper disable once ClassNeverInstantiated.Local
     private class NominatimResult
     {
-        public string lat { get; set; } = string.Empty;
-        public string lon { get; set; } = string.Empty;
+        
+        // ReSharper disable InconsistentNaming
+        // Names are equal to the JSON response!
+        private string lat { get; set; } = string.Empty;
+        private string lon { get; set; } = string.Empty;
+        // ReSharper disable once UnusedMember.Local
         public string display_name { get; set; } = string.Empty;
+        // ReSharper restore InconsistentNaming
 
         // Helper properties to convert strings to doubles
         public double Latitude => double.Parse(lat, CultureInfo.InvariantCulture);
@@ -265,7 +271,7 @@ public partial class MapPickerViewModel : ViewModelBase
         try
         {
             // Get pre-calculated corners from TheaterCoordinateConverter
-            var corners = TheaterCoordinateConverter.GetTheaterCornersLatLon(_selectedTheatername!);
+            var corners = TheaterCoordinateConverter.GetTheaterCornersLatLon(_selectedTheatername);
 
             // Convert lat/lon corners to Spherical Mercator for map display
             var mercatorCorners = new Coordinate[corners.Length];
@@ -284,8 +290,8 @@ public partial class MapPickerViewModel : ViewModelBase
                 Name = "Theater Bounds",
                 Style = new VectorStyle
                 {
-                    Fill = new Brush(Color.Transparent),
-                    Outline = new Pen(Color.FromArgb(255, 128, 128, 128), 2)
+                    Fill = new Brush(MapsuiColor.Transparent),
+                    Outline = new Pen(MapsuiColor.FromArgb(255, 128, 128, 128), 2)
                     {
                         PenStyle = PenStyle.ShortDash
                     }
