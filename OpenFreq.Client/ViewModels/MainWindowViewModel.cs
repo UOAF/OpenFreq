@@ -2,6 +2,7 @@
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
+using Avalonia.Media;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -60,8 +61,12 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
     public partial string PeerId { get; set; } = String.Empty;
 
     [ObservableProperty]
-    public partial string ConnectionStatusString { get; set; } = String.Empty;
-
+    [NotifyPropertyChangedFor(nameof(OpenFreqStatusColor))]
+    public partial ConnectionState OpenFreqConnectionState { get; set; } = ConnectionState.Disconnected;
+    
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TacviewStatusColor))]
+    public partial AcmiConnectionStatus AcmiConnectionStatus { get; set; } = AcmiConnectionStatus.Disconnected;
 
     // Error handling properties
     [ObservableProperty]
@@ -73,6 +78,24 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
     [ObservableProperty] private partial ObservableCollection<string> ErrorLog { get; set; } = [];
     [ObservableProperty] public partial bool Is3dMode { get; set; }
     [ObservableProperty] public partial bool IvcWarning { get; set; }
+    
+    public Color OpenFreqStatusColor => OpenFreqConnectionState switch
+    {
+        ConnectionState.Connected => Color.Parse("#4CAF50"),      // Material Green 500
+        ConnectionState.Connecting => Color.Parse("#FF9800"),     // Material Orange 500
+        ConnectionState.Disconnected => Color.Parse("#9E9E9E"),   // Material Grey 500
+        _ => Color.Parse("#9E9E9E")
+    };
+
+    public Color TacviewStatusColor => AcmiConnectionStatus switch
+    {
+        AcmiConnectionStatus.Connected => Color.Parse("#4CAF50"),
+        AcmiConnectionStatus.Connecting => Color.Parse("#FF9800"),
+        AcmiConnectionStatus.Disconnected => Color.Parse("#9E9E9E"),
+        AcmiConnectionStatus.Failed => Color.Parse("#F44336"), // Material Red 500
+        _ => Color.Parse("#9E9E9E")
+    };
+
 
     public ColorZoneMode AppBarColorZone =>
         (OpenFreqConnected && TacviewConnected) ? ColorZoneMode.PrimaryMid : ColorZoneMode.Accent;
@@ -118,9 +141,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         
         // Load config
         _ = LoadConfigurationAsync();
-
-        UpdateConnectionStatusString();
-
+        
         _openFreqService.SetOwnPositionMode(Settings.ConnectionMode);
     }
 
@@ -294,7 +315,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
 
     private void OnTacviewConnectionStatusChanged(object? sender, AcmiConnectionEventArgs e)
     {
-        UpdateConnectionStatusString();
+        AcmiConnectionStatus = e.Status;
     }
     
 
@@ -323,23 +344,10 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         }
     }
 
-    private void UpdateConnectionStatusString()
-    {
-        if (Settings.ConnectionMode == IOpenFreqService.Mode.GCI)
-        {
-            ConnectionStatusString =
-                $"OpenFreq {_openFreqService.Status.ToString()} | Tacview {_acmiClientService.Status.ToString()}";
-        }
-        else
-        {
-            ConnectionStatusString = $"OpenFreq {_openFreqService.Status.ToString()}";
-        }
-    }
-
     // Service event handlers
     private void OnConnectionStateChanged(object? sender, ConnectionState state)
     {
-        UpdateConnectionStatusString();
+        OpenFreqConnectionState = state;
         OpenFreqConnected = state == ConnectionState.Connected || state == ConnectionState.Authenticated;
         StatusMessage = state switch
         {

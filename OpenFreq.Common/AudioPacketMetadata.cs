@@ -28,9 +28,6 @@ public class AudioPacketMetadata
     [JsonPropertyName("server_send_timestamp")]
     public long ServerSendTimestamp { get; set; }
     
-    [JsonPropertyName("3d")]
-    public bool In3D { get; set; }
-    
     [JsonIgnore]
     public bool HasAnyBeginMarker => Frequencies.Any(f => f.BeginMarker);
 }

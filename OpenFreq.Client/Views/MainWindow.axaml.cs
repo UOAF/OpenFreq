@@ -37,7 +37,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void Button_OnClick(object? sender, RoutedEventArgs e)
+    private void AddChannelGroupButton_OnClick(object? sender, RoutedEventArgs e)
     {
         _viewModel?.ChannelList.CreateChannelGroup(
             new ChannelGroupData { Name = $"Channel Group #{_viewModel.ChannelList.AllChannelGroups.Count + 1}" }, true);

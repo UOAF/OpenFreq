@@ -47,6 +47,39 @@
             <Setter Property="Height" Value="8" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
+
+        <!-- Top Bar Styles -->
+        <Style Selector="Button.BurgerButton">
+            <Setter Property="Width" Value="40" />
+            <Setter Property="Height" Value="40" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="CornerRadius" Value="20" />
+        </Style>
+
+        <Style Selector="Button.BurgerButton:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource MaterialPaperBrush}" />
+        </Style>
+
+        <Style Selector="Button.ModeButton">
+            <Setter Property="Width" Value="70" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+
+        <Style Selector="Button.ModeButton:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource MaterialBackgroundBrush}" />
+        </Style>
+
+        <Style Selector="Button.ModeButton.active">
+            <Setter Property="Background" Value="{DynamicResource PrimaryHueMidBrush}" />
+        </Style>
+
+        <Style Selector="TextBlock.StatusText">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
     </Window.Styles>
 
     <dialogHostAvalonia:DialogHost Identifier="MainDialogHost">
@@ -284,8 +317,7 @@
                                         HorizontalAlignment="Stretch"
                                         Margin="0,0,0,16"
                                         Height="40"
-                                        Classes="accent">
-                                </Button>
+                                        Classes="accent" />
 
                                 <!-- Audio Card -->
                                 <controls:Card>
@@ -326,59 +358,119 @@
 
             <!-- Main Content -->
             <DockPanel>
-                <!-- App Bar -->
-                <controls:ColorZone DockPanel.Dock="Top"
-                                    Height="28"
-                                    Classes.connected="{Binding OpenFreqConnected}">
-                    <controls:ColorZone.Styles>
-                        <Style Selector="controls|ColorZone">
-                            <Setter Property="Mode" Value="Accent" />
-                        </Style>
-                        <Style Selector="controls|ColorZone.connected">
-                            <Setter Property="Mode" Value="PrimaryMid" />
-                        </Style>
-                    </controls:ColorZone.Styles>
-
+                <!-- New Top Bar -->
+                <controls:Card DockPanel.Dock="Top"
+                               CornerRadius="0"
+                               Margin="0"
+                               Padding="12,8">
                     <DockPanel>
-                        <!-- Menu Button -->
-                        <Button Classes="Flat"
+                        <!-- Burger Menu Button -->
+                        <Button Classes="BurgerButton Flat"
                                 Click="MenuButton_OnClick"
                                 DockPanel.Dock="Left"
-                                VerticalAlignment="Center"
-                                Margin="4,0,0,0"
-                                Width="24"
-                                Height="24">
-                            <avalonia:MaterialIcon Kind="Menu" Width="24" Height="24"
-                                                   Foreground="White" />
+                                Margin="0,0,8,0">
+                            <avalonia:MaterialIcon Kind="Menu" Width="24" Height="24" />
                         </Button>
 
-                        <!-- Title -->
-                        <TextBlock Text="{Binding ConnectionStatusString}"
+                        <!-- App Title -->
+                        <TextBlock Text="OpenFreq"
+                                   DockPanel.Dock="Left"
+                                   FontSize="18"
+                                   FontWeight="Medium"
                                    VerticalAlignment="Center"
-                                   Margin="16,0,0,0"
-                                   Foreground="White" />
+                                   Margin="0,0,24,0" />
+
+                        <!-- Mode Toggle Buttons (Right) -->
+                        <StackPanel DockPanel.Dock="Right"
+                                    Orientation="Horizontal"
+                                    Spacing="4"
+                                    VerticalAlignment="Center"
+                                    IsVisible="{Binding Settings.ModeIsGci}">
+                            <Button Content="Lobby"
+                                    Classes="ModeButton Flat"
+                                    Classes.active="{Binding !Is3dMode}"
+                                    ToolTip.Tip="Lobby Mode - Your voice will only be heard by other players in the Lobby without any effects." />
+                            <Button Content="Game"
+                                    Classes="ModeButton Flat"
+                                    Classes.active="{Binding Is3dMode}"
+                                    ToolTip.Tip="3D Mode - Your voice will only be heard by other players in the game." />
+                        </StackPanel>
+
+                        <!-- Connection Statuses (Center/Fill) -->
+                        <StackPanel Orientation="Horizontal"
+                                    Spacing="16"
+                                    VerticalAlignment="Center"
+                                    IsVisible="{Binding Settings.ModeIsGci}">
+                            <!-- OpenFreq Server Status -->
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Ellipse Classes="StatusDot">
+                                    <Ellipse.Fill>
+                                        <SolidColorBrush Color="{Binding OpenFreqStatusColor}" />
+                                    </Ellipse.Fill>
+                                </Ellipse>
+                                <TextBlock Text="{Binding OpenFreqConnectionState, StringFormat='OpenFreq: {0}'}"
+                                           Classes="StatusText" />
+                            </StackPanel>
+
+                            <!-- Separator -->
+                            <Border Width="1"
+                                    Height="16"
+                                    Background="{DynamicResource MaterialDividerBrush}"
+                                    VerticalAlignment="Center" />
+
+                            <!-- Tacview Server Status -->
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Ellipse Classes="StatusDot">
+                                    <Ellipse.Fill>
+                                        <SolidColorBrush Color="{Binding TacviewStatusColor}" />
+                                    </Ellipse.Fill>
+                                </Ellipse>
+                                <TextBlock Text="{Binding AcmiConnectionStatus, StringFormat='Tacview: {0}'}"
+                                           Classes="StatusText" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- BMS Mode Status (simpler, fills center) -->
+                        <TextBlock Text="{Binding OpenFreqConnectionState}"
+                                   IsVisible="{Binding !Settings.ModeIsGci}"
+                                   Classes="StatusText"
+                                   VerticalAlignment="Center" />
                     </DockPanel>
-                </controls:ColorZone>
+                </controls:Card>
 
-                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Background="Gray">
-                    <ToggleSwitch Margin="10" Content=" 3D Mode" HorizontalAlignment="Right"
-                                  IsChecked="{Binding Is3dMode}"
-                                  IsEnabled="{Binding Settings.ModeIsGci}" />
-                </StackPanel>
+                <!-- IVC Warning Banner - Material Card Alert -->
+                <controls:Card DockPanel.Dock="Top"
+                               Margin="16,12,16,12"
+                               Background="#FFF3E0"
+                               Padding="16,12"
+                               IsVisible="{Binding IvcWarning}">
+                        <DockPanel  Margin="0,0,12,0"
+                                    VerticalAlignment="Top">
+                                <avalonia:MaterialIcon Kind="Warning"
+                                                       Width="20"
+                                                       Height="20"
+                                                       Foreground="#FF9800" />
+            
+                            <StackPanel Margin="15, 0, 0, 0">
+                                <TextBlock Text="IVC Conflict Detected"
+                                           Classes="Subtitle1"
+                                           Foreground="#E65100"
+                                           Margin="0,0,0,4" />
+                                <TextBlock Text="Falcon BMS IVC must be closed to use OpenFreq in BMS mode."
+                                           Classes="Caption"
+                                           Foreground="Black"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                        </DockPanel>
+                </controls:Card>
 
-                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal"
-                            Background="{DynamicResource MaterialValidationErrorBrush}"
-                            IsVisible="{Binding IvcWarning}">
-
-                    <avalonia:MaterialIcon Kind="Warning" Width="24" Height="24" Margin="5" />
-                    <TextBlock Margin="5" Classes="Subtitle1"
-                               Text="Falcon BMS IVC detected. IVC must be closed to use OpenFreq in BMS mode."
-                               VerticalAlignment="Center" />
-                </StackPanel>
 
                 <!-- Status at bottom -->
                 <TextBlock DockPanel.Dock="Bottom"
-                           Text="{Binding StatusMessage}" />
+                           Text="{Binding StatusMessage}"
+                           Margin="8,4"
+                           FontSize="12"
+                           Opacity="0.7" />
 
                 <!-- Content Area - fills remaining space -->
                 <Grid>
@@ -387,7 +479,7 @@
                     </ScrollViewer>
 
                     <!-- Floating Action Button -->
-                    <controls:FloatingButton Click="Button_OnClick"
+                    <controls:FloatingButton Click="AddChannelGroupButton_OnClick"
                                              IsVisible="{Binding Settings.ModeIsGci}"
                                              HorizontalAlignment="Right"
                                              VerticalAlignment="Bottom"

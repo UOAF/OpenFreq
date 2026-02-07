@@ -29,12 +29,15 @@ public class FrequencyTransmission
 
     [JsonPropertyName("position")]
     public Position? Position { get; set; }
+    
+    [JsonPropertyName("in3d")]
+    public bool In3d { get; set; }
 
     public FrequencyTransmission()
     {
     }
 
-    public FrequencyTransmission(int khz, double txPowerWatts, Position? position, bool beginMarker = false,
+    public FrequencyTransmission(int khz, double txPowerWatts, Position? position, bool in3d, bool beginMarker = false,
         bool endMarker = false)
     {
         Khz = khz;
@@ -42,6 +45,7 @@ public class FrequencyTransmission
         BeginMarker = beginMarker;
         EndMarker = endMarker;
         Position = position;
+        In3d = in3d;
     }
 
     public override string ToString()

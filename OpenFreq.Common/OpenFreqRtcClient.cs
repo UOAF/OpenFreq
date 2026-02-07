@@ -255,7 +255,7 @@ public class OpenFreqRtcClient : IDisposable
     }
 
 
-    public void SendAudio(byte[] pcmData, List<(int frequencyKhz, double txPowerWatts, Position? position)> frequencies)
+    public void SendAudio(byte[] pcmData, List<(int frequencyKhz, double txPowerWatts, Position? position)> frequencies, bool in3d)
     {
         var frequencyTransmissions = new List<FrequencyTransmission>();
         foreach (var freq in frequencies)
@@ -263,7 +263,9 @@ public class OpenFreqRtcClient : IDisposable
             bool needsBeginMarker = _frequencyFirstPacketSent.TryGetValue(freq.frequencyKhz, out var sent) && !sent;
             frequencyTransmissions.Add(new FrequencyTransmission(
                 khz: freq.frequencyKhz,
-                txPowerWatts: freq.txPowerWatts, position: freq.position,
+                txPowerWatts: freq.txPowerWatts, 
+                position: freq.position,
+                in3d: in3d,
                 beginMarker: needsBeginMarker,
                 endMarker: false
             ));

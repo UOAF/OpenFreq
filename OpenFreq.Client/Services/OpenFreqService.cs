@@ -575,7 +575,7 @@ public class OpenFreqService : IOpenFreqService
                 }
             }
 
-            _client?.SendAudio(audioData, frequenciesData);
+            _client?.SendAudio(audioData, frequenciesData, Apply3dAudioEffects);
 
             // Clean up any frequencies which might have been disabled in the meantime
             foreach (var disabledFrequency in disabledFrequencies)
@@ -737,10 +737,17 @@ public class OpenFreqService : IOpenFreqService
         if (e.Metadata.Frequencies.Count == 0)
         {
             _logger.LogWarning($"Audio data received without frequencies, dropping");
+            return;
         }
 
         foreach (var frequencyTransmission in e.Metadata.Frequencies)
         {
+            if (frequencyTransmission.In3d != Apply3dAudioEffects)
+            {
+                _logger.LogDebug("{FrequencyTransmissionKhz:F3}: Audio data received but not matching 3D settings - dropping", frequencyTransmission.Khz/1000d);
+                continue;
+            }
+
             AudioParams audioParams;
             var streamId = GetStreamId(e.PeerId, frequencyTransmission.Khz);
 
