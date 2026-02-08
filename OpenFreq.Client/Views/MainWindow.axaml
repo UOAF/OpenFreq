@@ -331,7 +331,7 @@
 
             <!-- Main Content -->
             <DockPanel>
-                <!-- New Top Bar -->
+                <!-- Top Bar -->
                 <controls:Card DockPanel.Dock="Top"
                                CornerRadius="0"
                                Margin="0"
@@ -357,8 +357,13 @@
                         <StackPanel DockPanel.Dock="Right"
                                     Orientation="Horizontal"
                                     Spacing="4"
-                                    VerticalAlignment="Center"
-                                    IsVisible="{Binding Settings.ModeIsGci}">
+                                    VerticalAlignment="Center">
+                            <StackPanel.IsEnabled>
+                                <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                    <Binding Path="Settings.ModeIsGci" />
+                                    <Binding Path="OpenFreqConnected" />
+                                </MultiBinding>
+                            </StackPanel.IsEnabled>
 
                             <StackPanel.Styles>
                                 <Style Selector="RadioButton">
@@ -379,8 +384,8 @@
 
                             <RadioButton GroupName="3dMode"
                                          IsChecked="{Binding !Is3dMode}"
-                                         IsEnabled="{Binding Settings.ModeIsGci}"
                                          ToolTip.Tip="Lobby Mode - Your voice will only be heard by other players in the Lobby without any effects.">
+                                
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <avalonia:MaterialIcon Kind="Account" Width="20" Height="20" />
                                     <TextBlock Text="Lobby" VerticalAlignment="Center" />
@@ -389,7 +394,6 @@
 
                             <RadioButton GroupName="3dMode"
                                          IsChecked="{Binding Is3dMode}"
-                                         IsEnabled="{Binding Settings.ModeIsGci}"
                                          ToolTip.Tip="3D Mode - Your voice will only be heard by other players in the game.">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <avalonia:MaterialIcon Kind="ShieldAirplane" Width="20" Height="20" />
@@ -401,8 +405,7 @@
                         <!-- Connection Statuses (Center/Fill) -->
                         <StackPanel Orientation="Horizontal"
                                     Spacing="16"
-                                    VerticalAlignment="Center"
-                                    IsVisible="{Binding Settings.ModeIsGci}">
+                                    VerticalAlignment="Center">
                             <!-- OpenFreq Server Status -->
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <Ellipse Classes="StatusDot">
@@ -418,10 +421,11 @@
                             <Border Width="1"
                                     Height="16"
                                     Background="{DynamicResource MaterialDividerBrush}"
-                                    VerticalAlignment="Center" />
+                                    VerticalAlignment="Center"
+                                    IsVisible="{Binding Settings.ModeIsGci}"/>
 
                             <!-- Tacview Server Status -->
-                            <StackPanel Orientation="Horizontal" Spacing="6">
+                            <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding Settings.ModeIsGci}">
                                 <Ellipse Classes="StatusDot">
                                     <Ellipse.Fill>
                                         <SolidColorBrush Color="{Binding TacviewStatusColor}" />
@@ -431,16 +435,11 @@
                                            Classes="StatusText" />
                             </StackPanel>
                         </StackPanel>
-
-                        <!-- BMS Mode Status (simpler, fills center) -->
-                        <TextBlock Text="{Binding OpenFreqConnectionState}"
-                                   IsVisible="{Binding !Settings.ModeIsGci}"
-                                   Classes="StatusText"
-                                   VerticalAlignment="Center" />
+                        
                     </DockPanel>
                 </controls:Card>
 
-                <!-- IVC Warning Banner - Material Card Alert -->
+                <!-- IVC Warning Banner -->
                 <controls:Card DockPanel.Dock="Top"
                                Margin="16,12,16,12"
                                Background="#FFF3E0"

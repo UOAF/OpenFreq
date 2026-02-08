@@ -132,8 +132,15 @@ public class AcmiClientService : IAcmiClientService
 
     public void CancelConnectionAttempts()
     {
-        _cts?.Cancel();
-        _cts?.Dispose();
+        try
+        {
+            _cts?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // CTS already disposed, ignore
+        }
+        
         Status = AcmiConnectionStatus.Disconnected;
         RaiseConnectionStatusChanged(AcmiConnectionStatus.Disconnected, "Disconnected");
     }
@@ -141,13 +148,24 @@ public class AcmiClientService : IAcmiClientService
     /// <summary>Disconnects from the ACMI server</summary>
     public async Task DisconnectAsync()
     {
-        _cts?.Cancel();
+        // Cancel the token source if it exists and hasn't been disposed
+        try
+        {
+            _cts?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // CTS already disposed, ignore
+        }
+        
         _stream?.Dispose();
         _client?.Dispose();
+        var ctsToDispose = _cts;
+        _cts = null;
+        ctsToDispose?.Dispose();
         
         _stream = null;
         _client = null;
-        _cts = null;
         _receiveTask = null;
         
         // Clear persistent buffer to avoid data leaking between connections
