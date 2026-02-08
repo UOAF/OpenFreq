@@ -49,33 +49,6 @@
         </Style>
 
         <!-- Top Bar Styles -->
-        <Style Selector="Button.BurgerButton">
-            <Setter Property="Width" Value="40" />
-            <Setter Property="Height" Value="40" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="CornerRadius" Value="20" />
-        </Style>
-
-        <Style Selector="Button.BurgerButton:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource MaterialPaperBrush}" />
-        </Style>
-
-        <Style Selector="Button.ModeButton">
-            <Setter Property="Width" Value="70" />
-            <Setter Property="Height" Value="32" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="FontSize" Value="13" />
-            <Setter Property="CornerRadius" Value="4" />
-        </Style>
-
-        <Style Selector="Button.ModeButton:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource MaterialBackgroundBrush}" />
-        </Style>
-
-        <Style Selector="Button.ModeButton.active">
-            <Setter Property="Background" Value="{DynamicResource PrimaryHueMidBrush}" />
-        </Style>
-
         <Style Selector="TextBlock.StatusText">
             <Setter Property="FontSize" Value="13" />
             <Setter Property="VerticalAlignment" Value="Center" />
@@ -380,20 +353,49 @@
                                    VerticalAlignment="Center"
                                    Margin="0,0,24,0" />
 
-                        <!-- Mode Toggle Buttons (Right) -->
+                        <!-- Mode Toggle -->
                         <StackPanel DockPanel.Dock="Right"
                                     Orientation="Horizontal"
                                     Spacing="4"
                                     VerticalAlignment="Center"
                                     IsVisible="{Binding Settings.ModeIsGci}">
-                            <Button Content="Lobby"
-                                    Classes="ModeButton Flat"
-                                    Classes.active="{Binding !Is3dMode}"
-                                    ToolTip.Tip="Lobby Mode - Your voice will only be heard by other players in the Lobby without any effects." />
-                            <Button Content="Game"
-                                    Classes="ModeButton Flat"
-                                    Classes.active="{Binding Is3dMode}"
-                                    ToolTip.Tip="3D Mode - Your voice will only be heard by other players in the game." />
+
+                            <StackPanel.Styles>
+                                <Style Selector="RadioButton">
+                                    <Setter Property="Theme" Value="{StaticResource MaterialButtonlikeRadioButton}" />
+                                    <Setter Property="HorizontalAlignment" Value="Stretch" />
+                                    <Setter Property="HorizontalContentAlignment" Value="Center" />
+                                    <Setter Property="Height" Value="40" />
+                                    <Setter Property="MinWidth" Value="100" />
+                                    <Setter Property="Padding" Value="12, 8" />
+                                    <Setter Property="Margin" Value="5, 0" />
+                                    <Setter Property="Foreground" Value="{DynamicResource MaterialBodyBrush}" />
+                                    <Setter Property="FontWeight" Value="Bold" />
+                                </Style>
+                                <Style Selector="RadioButton:checked">
+                                    <Setter Property="Foreground" Value="{DynamicResource PrimaryHueMidBrush}" />
+                                </Style>
+                            </StackPanel.Styles>
+
+                            <RadioButton GroupName="3dMode"
+                                         IsChecked="{Binding !Is3dMode}"
+                                         IsEnabled="{Binding Settings.ModeIsGci}"
+                                         ToolTip.Tip="Lobby Mode - Your voice will only be heard by other players in the Lobby without any effects.">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <avalonia:MaterialIcon Kind="Account" Width="20" Height="20" />
+                                    <TextBlock Text="Lobby" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </RadioButton>
+
+                            <RadioButton GroupName="3dMode"
+                                         IsChecked="{Binding Is3dMode}"
+                                         IsEnabled="{Binding Settings.ModeIsGci}"
+                                         ToolTip.Tip="3D Mode - Your voice will only be heard by other players in the game.">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <avalonia:MaterialIcon Kind="ShieldAirplane" Width="20" Height="20" />
+                                    <TextBlock Text="Game" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </RadioButton>
                         </StackPanel>
 
                         <!-- Connection Statuses (Center/Fill) -->
@@ -444,24 +446,24 @@
                                Background="#FFF3E0"
                                Padding="16,12"
                                IsVisible="{Binding IvcWarning}">
-                        <DockPanel  Margin="0,0,12,0"
-                                    VerticalAlignment="Top">
-                                <avalonia:MaterialIcon Kind="Warning"
-                                                       Width="20"
-                                                       Height="20"
-                                                       Foreground="#FF9800" />
-            
-                            <StackPanel Margin="15, 0, 0, 0">
-                                <TextBlock Text="IVC Conflict Detected"
-                                           Classes="Subtitle1"
-                                           Foreground="#E65100"
-                                           Margin="0,0,0,4" />
-                                <TextBlock Text="Falcon BMS IVC must be closed to use OpenFreq in BMS mode."
-                                           Classes="Caption"
-                                           Foreground="Black"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
-                        </DockPanel>
+                    <DockPanel Margin="0,0,12,0"
+                               VerticalAlignment="Top">
+                        <avalonia:MaterialIcon Kind="Warning"
+                                               Width="20"
+                                               Height="20"
+                                               Foreground="#FF9800" />
+
+                        <StackPanel Margin="15, 0, 0, 0">
+                            <TextBlock Text="IVC Conflict Detected"
+                                       Classes="Subtitle1"
+                                       Foreground="#E65100"
+                                       Margin="0,0,0,4" />
+                            <TextBlock Text="Falcon BMS IVC must be closed to use OpenFreq in BMS mode."
+                                       Classes="Caption"
+                                       Foreground="Black"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </DockPanel>
                 </controls:Card>
 
 
