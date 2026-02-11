@@ -560,8 +560,7 @@ public class OpenFreqService : IOpenFreqService
                     disabledFrequencies.Add(frequencyKhz);
                     continue;
                 }
-
-
+                
                 var position = GetOwnPosition(frequencyKhz) ?? new Position(0, 0, 0);
                 _logger.LogDebug($"[Recording] {frequencyKhz} Position: {position}");
 
@@ -616,7 +615,10 @@ public class OpenFreqService : IOpenFreqService
                     _falconSharedMemoryService.Position.Y, _falconSharedMemoryService.Position.Z));
 
             case RadioStationData.RadioStationType.STATIONARY:
-                return _tunedFrequencies[frequencyKhz].RadioStation.Position;
+                var position = tunedFrequencyData.RadioStation.Position;
+                position?.Z += tunedFrequencyData.RadioStation.Preset.AntennaElevation_m;
+                return position;
+            
             case RadioStationData.RadioStationType.ACMI:
                 var acmiAircraftId = tunedFrequencyData.RadioStation.AcmiAircraftId;
                 if (acmiAircraftId == null) return null;
@@ -624,7 +626,7 @@ public class OpenFreqService : IOpenFreqService
                 var aircraft = _acmiClientService.GetAircraft(acmiAircraftId);
                 if (aircraft == null) return null;
                 return new Position(AcmiHeightmapConverter.ToHeightmap(aircraft.Transform.U, aircraft.Transform.V,
-                    aircraft.Transform.Altitude));
+                    aircraft.Transform.Altitude + tunedFrequencyData.RadioStation.Preset.AntennaElevation_m));
             default:
                 return null;
         }

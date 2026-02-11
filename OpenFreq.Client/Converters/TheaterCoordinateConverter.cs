@@ -123,7 +123,7 @@ namespace OpenFreq.Utilities
         /// <param name="targetCoordinateSystem">The coordinate system where X and Y will be located in</param>
         /// <returns>Tuple of (X, Y) coordinates in meters</returns>
         /// <exception cref="ArgumentException">Thrown when theater name is not found</exception>
-        public static (double x, double y) LatLonToXY(string theaterName, double latitude, double longitude,
+        public static (double x, double y) LatLonToXYMeters(string theaterName, double latitude, double longitude,
             CoordinateSystem targetCoordinateSystem)
         {
             if (!Theaters.TryGetValue(theaterName, out var theater))
@@ -136,17 +136,16 @@ namespace OpenFreq.Utilities
             if (targetCoordinateSystem == CoordinateSystem.BMS_HEIGHTMAP_COORDINATE_SYTEM)
             {
                 const double HEIGHTMAP_SIZE_M = 1024000.0;
-                const double METERS_PER_PIXEL = 31.25;
                 const double HALF_SIZE_M = HEIGHTMAP_SIZE_M / 2;
-                
-                // Heightmap bottom-left corner in projection space
+        
+                // Heightmap bottom-left corner in projection space (METERS)
                 double xOffset = theater.CenterProjected.x - HALF_SIZE_M;
                 double yOffset = theater.CenterProjected.y - HALF_SIZE_M;
-    
-                // Convert to heightmap pixels
-                double heightmapX = (xy.x - xOffset) / METERS_PER_PIXEL;
-                double heightmapY = 32768.0 - ((xy.y - yOffset) / METERS_PER_PIXEL);
-    
+
+                // Convert to heightmap coordinates (METERS)
+                double heightmapX = xy.x - xOffset;
+                double heightmapY = HEIGHTMAP_SIZE_M - (xy.y - yOffset);  // Y-flip
+
                 return (heightmapX, heightmapY);
             }
 
@@ -225,7 +224,7 @@ namespace OpenFreq.Utilities
                     $"Theater '{theaterName}' not found. Available theaters: {string.Join(", ", Theaters.Keys)}");
             }
 
-            var xy = LatLonToXY(theaterName, latitude, longitude, CoordinateSystem.BMS_HEIGHTMAP_COORDINATE_SYTEM);
+            var xy = LatLonToXYMeters(theaterName, latitude, longitude, CoordinateSystem.BMS_HEIGHTMAP_COORDINATE_SYTEM);
             xy.y = HEIGHTMAP_SIZE_M - xy.y;
             
             const double epsilon = 2;

@@ -415,7 +415,6 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
                 channelGroup.Latitude = channelGroupData.Latitude;
                 channelGroup.Longitude = channelGroupData.Longitude;
                 channelGroup.AltitudeInput = channelGroupData.AltitudeFt;
-                channelGroup.RadioStationData = channelGroupData.RadioStationData;
                 // Load channels
                 foreach (var channelData in channelGroupData.Channels)
                 {

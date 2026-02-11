@@ -42,7 +42,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private ObservableCollection<TacviewAircraftItem> _tacviewFlightCallsigns = [];
     [ObservableProperty] private TacviewAircraftItem? _selectedTacviewCallsign;
 
-    [ObservableProperty] public partial RadioStationData RadioStationData { get; set; }
+    public RadioStationData RadioStationData { get; private set; }
 
     private readonly IOpenFreqService _openFreqService;
     private readonly IHotkeyService _hotkeyService;
@@ -168,7 +168,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
                 channel.Status = Channel.ChannelStatus.Disconnected;
             }
         }
-        else if (state == ConnectionState.Connected && !IsAcmiConnected)
+        else if (Settings.ModeIsGci && state == ConnectionState.Connected && !IsAcmiConnected)
         {
             RadioStationData.Type = RadioStationData.RadioStationType.STATIONARY;
         }
@@ -452,7 +452,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
             RadioStationData.Position = new Position(0d, 0d, 0d);
         }
 
-        var xy = TheaterCoordinateConverter.LatLonToXY(
+        var xy = TheaterCoordinateConverter.LatLonToXYMeters(
             Settings.SelectedTheater,
             lat,
             lon,
