@@ -255,7 +255,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
     {
         try
         {
-            Console.WriteLine("[DEBUG] Creating RCS shared memory...");
+            _logger.LogDebug("Creating RCS shared memory...");
 
             _hRcsMemory = Win32RadioMemory.CreateFileMapping(
                 Win32RadioMemory.INVALID_HANDLE_VALUE,
@@ -268,11 +268,9 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
             if (_hRcsMemory == IntPtr.Zero)
             {
                 var error = Marshal.GetLastWin32Error();
-                Console.WriteLine($"[ERROR] CreateFileMapping failed. Error: {error}");
+                _logger.LogError("CreateFileMapping failed. Error: {Error}", error);
                 return false;
             }
-
-            Console.WriteLine($"[DEBUG] RCS handle: 0x{_hRcsMemory:X}");
 
             _lpRcsBaseAddress = Win32RadioMemory.MapViewOfFile(
                 _hRcsMemory,
@@ -283,27 +281,23 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
             if (_lpRcsBaseAddress == IntPtr.Zero)
             {
                 var error = Marshal.GetLastWin32Error();
-                Console.WriteLine($"[ERROR] MapViewOfFile failed. Error: {error}");
+                _logger.LogError("MapViewOfFile failed. Error: {Error}", error);
                 Win32RadioMemory.CloseHandle(_hRcsMemory);
                 _hRcsMemory = IntPtr.Zero;
                 return false;
             }
 
-            Console.WriteLine($"[DEBUG] RCS base address: 0x{_lpRcsBaseAddress:X}");
-
             // Initialize RCS: clear all flags
             SetClientStatus(ClientStatusFlags.AllClear);
-            Console.WriteLine("[DEBUG] RCS cleared");
+            _logger.LogDebug("RCS cleared");
 
             // Set clientactive flag
             AddClientStatus(ClientStatusFlags.ClientActive);
-            Console.WriteLine($"[DEBUG] clientactive set. Status = 0x{(int)GetClientStatus():X}");
-
             return true;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[ERROR] Exception: {ex.Message}");
+            _logger.LogError(ex, "Exception in CreateRcsSharedMemory");
             return false;
         }
     }
@@ -324,15 +318,15 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
 
                     // Read initial data BEFORE changing state to Connected
                     // This ensures data is available when StateChanged event fires
-                    Console.WriteLine("[DEBUG] RCC opened, reading initial data...");
+                    _logger.LogDebug("RCC opened, reading initial data...");
                     if (!TryReadRadioData())
                     {
-                        Console.WriteLine("[ERROR] Failed to read initial RCC data, closing and retrying");
+                        _logger.LogError("Failed to read initial RCC data, closing and retrying");
                         CloseRccSharedMemory();
                         continue;
                     }
 
-                    Console.WriteLine("[DEBUG] Initial RCC data read successfully");
+                    _logger.LogDebug("Initial RCC data read successfully");
 
                     // Now that we have data, change state to Connected
                     lock (_dataLock)
@@ -347,7 +341,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
                 // Regular polling: read RCC data
                 if (!TryReadRadioData())
                 {
-                    Console.WriteLine("[ERROR] Failed to read RCC data");
+                    _logger.LogError("Failed to read RCC data");
 
                     // If read fails, RCC might have been closed by BMS
                     // Close our handle and try to reopen on next iteration
@@ -365,7 +359,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ERROR] RCC polling error: {ex.Message}");
+                _logger.LogError(ex, "RCC polling error");
             }
         }
     }
@@ -517,7 +511,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
                          !string.IsNullOrEmpty(connParams.Address))
                 {
                     // Initial read with active connection request - fire event!
-                    Console.WriteLine("[DEBUG] Initial read with active connection request - firing event");
+                    _logger.LogDebug("Initial read with active connection request - firing event");
                     var dummyOldParams = new ConnectionParameters(); // Empty old params
 
                     // Fire the event outside the lock
@@ -529,8 +523,8 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
                 }
                 else
                 {
-                    Console.WriteLine(
-                        $"[DEBUG] Skipping change detection: _connectionParameters={(_connectionParameters != null)}, _initialReadDone={_initialReadDone}");
+                    _logger.LogDebug("Skipping change detection: ConnectionParameters={HasConnectionParameters}, InitialReadDone={InitialReadDone}",
+                        _connectionParameters != null, _initialReadDone);
                 }
 
                 _connectionParameters = connParams;
@@ -539,7 +533,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
                 if (!_initialReadDone)
                 {
                     _initialReadDone = true;
-                    Console.WriteLine("[DEBUG] Initial read completed");
+                    _logger.LogDebug("Initial read completed");
                 }
             }
 

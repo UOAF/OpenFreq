@@ -11,12 +11,10 @@ using FalconBmsDataService.Models;
 using FalconBmsDataService.Services;
 using FalconRadioService.Models;
 using ManagedBass;
-using Mapsui.Utilities;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Client.Models;
 using OpenFreq.Common;
 using OpenFreq.Services.Acmi;
-using OpenFreq.Utilities;
 using OpenFreqAudio;
 using OpenFreqClient.Models;
 using OpenFreqClient.Services.Interfaces;
@@ -134,18 +132,18 @@ public class OpenFreqService : IOpenFreqService
     /// </summary>
     public async Task Initialize(OpenFreqSettings settings, int recordingDeviceIndex, int playbackDeviceIndex)
     {
-        Console.WriteLine($"[SERVICE] Initialize called - IsInitialized: {_isInitialized}");
+        _logger.LogDebug("Initialize called - IsInitialized: {IsInitialized}", _isInitialized);
         if (_isInitialized)
         {
-            Console.WriteLine($"[SERVICE] Calling Shutdown from Initialize");
+            _logger.LogDebug("Calling Shutdown from Initialize");
             await Shutdown();
         }
 
         // Create client with server settings
-        Console.WriteLine($"[SERVICE] Creating new client");
+        _logger.LogDebug("Creating new client");
         _client = new OpenFreqRtcClient(_loggerFactory.CreateLogger<OpenFreqRtcClient>(),
             settings.OpenFreqServerAddress, settings.OpenFreqPassword);
-        Console.WriteLine($"[SERVICE] Client created: {_client.GetHashCode()}");
+        _logger.LogDebug("Client created: {ClientHashCode}", _client.GetHashCode());
 
         // Subscribe to client events
         _client.ConnectionStateChanged += OnClientConnectionStateChanged;
@@ -216,7 +214,7 @@ public class OpenFreqService : IOpenFreqService
 
     public async Task Shutdown()
     {
-        Console.WriteLine($"[SERVICE] Shutdown called - IsInitialized: {_isInitialized}");
+        _logger.LogDebug("Shutdown called - IsInitialized: {IsInitialized}", _isInitialized);
         if (!_isInitialized) return;
 
         try
@@ -241,21 +239,20 @@ public class OpenFreqService : IOpenFreqService
                 _client.AudioDataReceived -= OnClientAudioDataReceived;
                 _client.ErrorOccurred -= OnClientErrorOccurred;
 
-                Console.WriteLine($"[SERVICE] Disconnecting client: {_client.GetHashCode()}");
+                _logger.LogDebug("Disconnecting client: {ClientHashCode}", _client.GetHashCode());
                 await _client.DisconnectAsync();
                 Status = IOpenFreqService.OpenFreqStatus.Disconnected;
-                Console.WriteLine($"[SERVICE] Disposing client: {_client.GetHashCode()}");
+                _logger.LogDebug("Disposing client: {ClientHashCode}", _client.GetHashCode());
                 _client.Dispose();
                 _client = null;
             }
 
             _isInitialized = false;
-            Console.WriteLine($"[SERVICE] Shutdown complete");
+            _logger.LogDebug("Shutdown complete");
         }
         catch (Exception e)
         {
-            Console.WriteLine($"[SERVICE] Shutdown exception: {e}");
-            Console.WriteLine(e);
+            _logger.LogError(e, "Shutdown exception");
             throw;
         }
     }
@@ -382,7 +379,7 @@ public class OpenFreqService : IOpenFreqService
             Bass.RecordInit(RecordingDeviceIndex);
             Bass.CurrentRecordingDevice = RecordingDeviceIndex;
 
-            Console.WriteLine("RecordingDeviceIndex set to " + RecordingDeviceIndex);
+            _logger.LogDebug("RecordingDeviceIndex set to {RecordingDeviceIndex}", RecordingDeviceIndex);
 
             _recordHandle = Bass.RecordStart(
                 OpenFreqRtcClient.SAMPLE_RATE,
@@ -524,8 +521,8 @@ public class OpenFreqService : IOpenFreqService
 
             if (length > expectedBytes)
             {
-                Console.WriteLine(
-                    $"[Recording] Packet oversized: {length} bytes, truncating to {expectedBytes}");
+                _logger.LogWarning("Recording packet oversized: {Length} bytes, truncating to {ExpectedBytes}", 
+                    length, expectedBytes);
                 // Option 1: Only use the LAST 20ms (most recent audio)
                 buffer = IntPtr.Add(buffer, length - expectedBytes);
                 length = expectedBytes;
@@ -752,16 +749,13 @@ public class OpenFreqService : IOpenFreqService
         {
             if (frequencyTransmission.In3d != Apply3dAudioEffects)
             {
-                _logger.LogDebug(
-                    "{FrequencyTransmissionKhz/F3}: Audio data received but not matching 3D settings - dropping",
-                    frequencyTransmission.Khz / 1000d);
+                _logger.LogTrace("Audio data received but not matching 3D settings - dropping");
                 continue;
             }
 
             if (Apply3dAudioEffects && _activeTransmissionsAndMutedFrequencies.ContainsKey(frequencyTransmission.Khz))
             {
-                _logger.LogDebug("{FrequencyTransmissionKhz:F3}: Receiving transmission when we are sending - dropping",
-                    frequencyTransmission.Khz / 1000d);
+                _logger.LogTrace("Receiving transmission when we are sending - dropping");
                 continue;
             }
 
@@ -771,7 +765,7 @@ public class OpenFreqService : IOpenFreqService
             var ownPosition = GetOwnPosition(frequencyTransmission.Khz);
             if (frequencyTransmission.Position == null || ownPosition == null || _audioSim == null)
             {
-                _logger.LogDebug($"No position data, using defaults for {frequencyTransmission}");
+                _logger.LogInformation($"No position data, using defaults for {frequencyTransmission}");
                 audioParams = FastPathAudioSim.GetDefaultAudioParams(frequencyTransmission.Khz);
             }
             else
@@ -822,8 +816,7 @@ public class OpenFreqService : IOpenFreqService
                         LastCalculated = now
                     };
 
-                    _logger.LogInformation(
-                        $"Calculated Audio params for stream {streamId}: Gain={audioParams.Gain}, SNR={audioParams.SNR_dB}");
+                    _logger.LogInformation($"Calculated Audio params for stream {streamId}: Gain={audioParams.Gain}, SNR={audioParams.SNR_dB}");
                 }
 
                 _signalStrengthTracker.UpdateSignalStrength(audioParams.RadioFrequencyKHz, audioParams);
@@ -890,7 +883,7 @@ public class OpenFreqService : IOpenFreqService
 
     private void OnFrequencyStatusChanged(int frequencyKhz, Channel.ChannelStatus status)
     {
-        Console.WriteLine($"{frequencyKhz}: {status}");
+        _logger.LogDebug("Frequency {FrequencyKhz}: {Status}", frequencyKhz, status);
         FrequencyStatusChanged?.Invoke(this, new FrequencyStatusEventArgs(frequencyKhz, status));
     }
 

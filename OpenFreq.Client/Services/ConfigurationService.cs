@@ -1,11 +1,12 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using OpenFreqClient.Models;
 
 namespace OpenFreqClient.Services;
 
-public class ConfigurationService : IConfigurationService
+public class ConfigurationService(ILogger<ConfigurationService> logger) : IConfigurationService
 {
     private static readonly string ConfigDirectory = 
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OpenFreq");
@@ -28,7 +29,7 @@ public class ConfigurationService : IConfigurationService
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Failed to load configuration: {ex.Message}");
+            logger.LogError("Failed to load configuration: {ExMessage}", ex.Message);
             return new AppConfiguration();
         }
     }
@@ -45,7 +46,7 @@ public class ConfigurationService : IConfigurationService
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Failed to save configuration: {ex.Message}");
+            logger.LogError("Failed to save configuration: {ExMessage}", ex.Message);
         }
     }
 

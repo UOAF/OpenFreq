@@ -180,7 +180,7 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error in polling loop: {ex.Message}");
+                _logger.LogError(ex, "Error in polling loop");
             }
         }
     }

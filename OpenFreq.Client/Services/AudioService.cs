@@ -4,11 +4,12 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ManagedBass;
+using Microsoft.Extensions.Logging;
 using OpenFreqClient.Services.Interfaces;
 
 namespace OpenFreqClient;
 
-public class AudioService : IAudioService
+public class AudioService(ILogger<AudioService> logger) : IAudioService
 {
     public int DefaultPlaybackDevice { get; private set; } = -1;
     public int DefaultRecordingDevice { get; private set; } = -1;
@@ -49,7 +50,7 @@ public class AudioService : IAudioService
         _monitoringCts = new CancellationTokenSource();
         _monitoringTask = Task.Run(async () =>
         {
-            Console.WriteLine("[AudioService] Device monitoring started");
+            logger.LogInformation("Device monitoring started");
 
             while (!_monitoringCts.Token.IsCancellationRequested)
             {
@@ -65,11 +66,11 @@ public class AudioService : IAudioService
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[AudioService] Error monitoring devices: {ex.Message}");
+                    logger.LogError(ex, "Error monitoring devices");
                 }
             }
 
-            Console.WriteLine("[AudioService] Device monitoring stopped");
+            logger.LogInformation("Device monitoring stopped");
         });
     }
 
@@ -79,7 +80,7 @@ public class AudioService : IAudioService
         var currentPlaybackDevices = GetPlaybackDevices();
         if (!currentPlaybackDevices.SequenceEqual(_lastPlaybackDevices))
         {
-            Console.WriteLine("[AudioService] Playback devices changed");
+            logger.LogInformation("Playback devices changed");
             _lastPlaybackDevices = currentPlaybackDevices;
             HandlePlaybackDeviceChange();
         }
@@ -88,7 +89,7 @@ public class AudioService : IAudioService
         var currentRecordingDevices = GetRecordingDevices();
         if (!currentRecordingDevices.SequenceEqual(_lastRecordingDevices))
         {
-            Console.WriteLine("[AudioService] Recording devices changed");
+            logger.LogInformation("Recording devices changed");
             _lastRecordingDevices = currentRecordingDevices;
             HandleRecordingDeviceChange();
         }
@@ -109,8 +110,8 @@ public class AudioService : IAudioService
         // If device was removed or not found, fall back to default
         if (newIndex == -1)
         {
-            Console.WriteLine(
-                $"[AudioService] Playback device '{_selectedPlaybackDeviceName}' not found, falling back to default device {DefaultPlaybackDevice}");
+            logger.LogWarning("Playback device '{DeviceName}' not found, falling back to default device {DefaultDevice}",
+                _selectedPlaybackDeviceName, DefaultPlaybackDevice);
             newIndex = DefaultPlaybackDevice;
 
             if (newIndex != -1)
@@ -147,8 +148,8 @@ public class AudioService : IAudioService
         // If device was removed or not found, fall back to default
         if (newIndex == -1)
         {
-            Console.WriteLine(
-                $"[AudioService] Recording device '{_selectedRecordingDeviceName}' not found, falling back to default device {DefaultRecordingDevice}");
+            logger.LogWarning("Recording device '{DeviceName}' not found, falling back to default device {DefaultDevice}",
+                _selectedRecordingDeviceName, DefaultRecordingDevice);
             newIndex = DefaultRecordingDevice;
 
             if (newIndex != -1)
@@ -207,7 +208,8 @@ public class AudioService : IAudioService
             {
                 _selectedPlaybackDeviceIndex = deviceIndex;
                 _selectedPlaybackDeviceName = deviceInfo.Name;
-                Console.WriteLine($"[AudioService] Selected playback device: {deviceIndex} - {deviceInfo.Name}");
+                logger.LogInformation("Selected playback device: {DeviceIndex} - {DeviceName}", 
+                    deviceIndex, deviceInfo.Name);
             }
         }
     }
@@ -221,7 +223,8 @@ public class AudioService : IAudioService
             {
                 _selectedRecordingDeviceIndex = deviceIndex;
                 _selectedRecordingDeviceName = deviceInfo.Name;
-                Console.WriteLine($"[AudioService] Selected recording device: {deviceIndex} - {deviceInfo.Name}");
+                logger.LogInformation("Selected recording device: {DeviceIndex} - {DeviceName}", 
+                    deviceIndex, deviceInfo.Name);
             }
         }
     }
