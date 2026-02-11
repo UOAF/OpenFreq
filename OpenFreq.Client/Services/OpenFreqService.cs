@@ -270,7 +270,7 @@ public class OpenFreqService : IOpenFreqService
             throw new InvalidOperationException("Service not initialized. Call Initialize() first.");
         }
 
-        OnStatusMessage("Connecting to OpenFreq server...");
+        OnStatusMessage($"Connecting to OpenFreq server {_client._serverIp}...");
         Status = IOpenFreqService.OpenFreqStatus.Connecting;
         await _client.ConnectAsync();
     }

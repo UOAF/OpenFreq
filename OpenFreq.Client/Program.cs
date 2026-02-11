@@ -1,8 +1,10 @@
 ﻿using System;
+using System.IO;
 using Avalonia;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using OpenFreqClient.Services;
+using Serilog;
+using Serilog.Events;
 
 namespace OpenFreqClient;
 
@@ -15,6 +17,42 @@ sealed class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        // Initialize Serilog for file logging
+        var logsDirectory = Path.Combine(AppContext.BaseDirectory, "logs");
+        Directory.CreateDirectory(logsDirectory);
+        
+        var logFile = Path.Combine(logsDirectory, $"openfreq-client-{DateTime.Now:yyyy-MM-dd}.log");
+
+#if DEBUG
+        Log.Logger = new LoggerConfiguration()
+            .MinimumLevel.Debug()
+            .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+            .MinimumLevel.Override("System", LogEventLevel.Warning)
+            .Enrich.FromLogContext()
+            .Enrich.WithProperty("Application", "OpenFreqClient")
+            .WriteTo.File(
+                logFile,
+                outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}",
+                rollingInterval: RollingInterval.Day,
+                retainedFileCountLimit: 30,
+                shared: true)
+            .CreateLogger();
+#else
+        Log.Logger = new LoggerConfiguration()
+            .MinimumLevel.Information()
+            .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+            .MinimumLevel.Override("System", LogEventLevel.Warning)
+            .Enrich.FromLogContext()
+            .Enrich.WithProperty("Application", "OpenFreqClient")
+            .WriteTo.File(
+                logFile,
+                outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}",
+                rollingInterval: RollingInterval.Day,
+                retainedFileCountLimit: 30,
+                shared: true)
+            .CreateLogger();
+#endif
+        
         // Set up dependency injection
         var services = new ServiceCollection();
         services.AddOpenFreqServices();

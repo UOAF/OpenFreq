@@ -37,7 +37,7 @@ public class OpenFreqRtcClient : IDisposable
     private bool _opusCompressionEnabled = true;
 
     // Connection state
-    private readonly string _serverIp;
+    public readonly string _serverIp;
     private readonly string _password;
     private ClientWebSocket? _webSocket;
     private UdpClient? _audioClient;

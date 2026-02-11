@@ -122,6 +122,23 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
         }
     }
 
+    public void SetClientStatus(ClientStatusFlags flags)
+    {
+        if (_lpRcsBaseAddress == IntPtr.Zero)
+        {
+            _logger.LogDebug("Skipping SetClientStatus - not RCS owner");
+            return;
+        }
+
+        try
+        {
+            Marshal.WriteInt32(_lpRcsBaseAddress, (int)flags);
+        }
+        catch
+        {
+        }
+    }
+
     public ClientStatusFlags GetClientStatus()
     {
         if (_lpRcsBaseAddress == IntPtr.Zero)
@@ -135,20 +152,6 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
         catch
         {
             return ClientStatusFlags.AllClear;
-        }
-    }
-
-    public void SetClientStatus(ClientStatusFlags flags)
-    {
-        if (_lpRcsBaseAddress == IntPtr.Zero)
-            return;
-
-        try
-        {
-            Marshal.WriteInt32(_lpRcsBaseAddress, (int)flags);
-        }
-        catch
-        {
         }
     }
 
@@ -177,14 +180,36 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
                 true,
                 Win32RadioMemory.RADIO_CLIENT_SEMAPHORE);
 
-            // Create RCS shared memory
-            if (!CreateRcsSharedMemory())
-            {
-                CleanupResources();
-                throw new InvalidOperationException("Failed to create RCS shared memory");
-            }
+            // Check if we actually got ownership (i.e., we're the first instance)
+            int error = Marshal.GetLastWin32Error();
+            const int ERROR_ALREADY_EXISTS = 183;
 
-            ChangeState(ServiceState.RcsCreated);
+            if (error == ERROR_ALREADY_EXISTS)
+            {
+                // Another radio client is already running
+                _logger.LogWarning("Another radio client is already active. This instance will run in READ-ONLY mode.");
+
+                // Clean up the mutex handle we got
+                if (_hMutex != IntPtr.Zero)
+                {
+                    Win32RadioMemory.CloseHandle(_hMutex);
+                    _hMutex = IntPtr.Zero;
+                }
+
+                // Skip RCS creation - we won't write status
+                ChangeState(ServiceState.RcsCreated);
+            }
+            else
+            {
+                // We're the first/only instance - create RCS normally
+                if (!CreateRcsSharedMemory())
+                {
+                    CleanupResources();
+                    throw new InvalidOperationException("Failed to create RCS shared memory");
+                }
+
+                ChangeState(ServiceState.RcsCreated);
+            }
         }
 
         _cts = new CancellationTokenSource();
@@ -213,6 +238,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
         }
         catch
         {
+            // dont care
         }
 
         CleanupResources();
@@ -363,6 +389,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
             }
             catch
             {
+                // dont care
             }
         }
     }

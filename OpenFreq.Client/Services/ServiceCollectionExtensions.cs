@@ -6,6 +6,7 @@ using OpenFreq.Client.Services;
 using OpenFreq.Services.Acmi;
 using OpenFreqClient.Services.Interfaces;
 using OpenFreqClient.ViewModels;
+using Serilog;
 
 namespace OpenFreqClient.Services;
 
@@ -18,12 +19,8 @@ public static class ServiceCollectionExtensions
     {
         services.AddLogging(builder =>
         {
-            builder.AddConsole();
-            #if DEBUG
-            builder.SetMinimumLevel(LogLevel.Debug);
-            #else
-            builder.SetMinimumLevel(LogLevel.Information);
-            #endif
+            builder.ClearProviders();
+            builder.AddSerilog(dispose: true);
         });
         
         // Register services as singletons (one instance for the application lifetime)
