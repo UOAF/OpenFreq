@@ -141,7 +141,7 @@ public class OpenFreqService : IOpenFreqService
 
         // Create client with server settings
         _logger.LogDebug("Creating new client");
-        _client = new OpenFreqRtcClient(_loggerFactory.CreateLogger<OpenFreqRtcClient>(),
+        _client = new OpenFreqRtcClient(_loggerFactory,
             settings.OpenFreqServerAddress, settings.OpenFreqPassword);
         _logger.LogDebug("Client created: {ClientHashCode}", _client.GetHashCode());
 
@@ -267,7 +267,7 @@ public class OpenFreqService : IOpenFreqService
             throw new InvalidOperationException("Service not initialized. Call Initialize() first.");
         }
 
-        OnStatusMessage($"Connecting to OpenFreq server {_client._serverIp}...");
+        OnStatusMessage($"Connecting to OpenFreq server {_client.ServerIp}...");
         Status = IOpenFreqService.OpenFreqStatus.Connecting;
         await _client.ConnectAsync();
     }

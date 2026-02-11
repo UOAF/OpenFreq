@@ -37,16 +37,14 @@ public class OpenFreqRtcClient : IDisposable
     private bool _opusCompressionEnabled = true;
 
     // Connection state
-    public readonly string _serverIp;
+    public readonly string ServerIp;
     private readonly string _password;
     private ClientWebSocket? _webSocket;
-    private UdpClient? _audioClient;
-    private IPEndPoint? _serverAudioEndpoint;
     private string? _myPeerId;
     private int _audioPort;
     private bool _isConnected;
     private bool _isAuthenticated;
-    private CancellationTokenSource? _cts = new();
+    private CancellationTokenSource _cts = new();
     private string clientId = Guid.NewGuid().ToString();
 
     // Transmission state
@@ -55,18 +53,19 @@ public class OpenFreqRtcClient : IDisposable
     private readonly Dictionary<int, HashSet<string>> _frequencyPeers = new();
     
     private readonly ILogger<OpenFreqRtcClient> _logger;
+    private readonly ILoggerFactory _loggerFactory;
 
     // Properties
     public string? MyPeerId => _myPeerId;
     public int AudioPort => _audioPort;
     public bool IsConnected => _isConnected;
     public bool IsAuthenticated => _isAuthenticated;
-    public IReadOnlyDictionary<int, bool> FrequencyTransmissionState => _frequencyTransmissionState;
 
-    public OpenFreqRtcClient(ILogger<OpenFreqRtcClient> logger, string serverIp, string password)
+    public OpenFreqRtcClient(ILoggerFactory loggerFactory, string serverIp, string password)
     {
-        _logger = logger;
-        _serverIp = serverIp;
+        _loggerFactory = loggerFactory;
+        _logger = loggerFactory.CreateLogger<OpenFreqRtcClient>();
+        ServerIp = serverIp;
         _password = password;
     }
 
@@ -77,11 +76,11 @@ public class OpenFreqRtcClient : IDisposable
     {
         try
         {
-            _cts?.Dispose();
+            _cts.Dispose();
             _cts = new CancellationTokenSource();
             
             // Connect WebSocket
-            var ipPort = Util.ResolveAddress(_serverIp, DEFAULT_PORT);
+            var ipPort = Util.ResolveAddress(ServerIp, DEFAULT_PORT);
 
             // we need to wrap IPv6 into [] for a valid URI
             IPAddress? ip;
@@ -103,7 +102,6 @@ public class OpenFreqRtcClient : IDisposable
             await SendMessageAsync(SignalingMessageFactory.CreateAuthenticate(_password));
 
             // Wait for authentication response with timeout
-            var authWaitTask = Task.Delay(5000, _cts.Token);
             var startTime = DateTime.UtcNow;
             while (!_isAuthenticated && (DateTime.UtcNow - startTime).TotalSeconds < 5)
             {
@@ -117,13 +115,13 @@ public class OpenFreqRtcClient : IDisposable
 
             // Create RTP sender
             _rtpSender = new RtpAudioSender(
+                logger:  _loggerFactory.CreateLogger<RtpAudioSender>(),
                 serverHost: ipPort.ipAddress,
                 serverPort: _audioPort,
                 opusEnabled: _opusCompressionEnabled
             );
 
-            var port = 10000;
-            _rtpReceiver = new RtpAudioReceiver(
+            _rtpReceiver = new RtpAudioReceiver(_loggerFactory,
                 udpClient: _rtpSender.UdpClient,
                 opusEnabled: _opusCompressionEnabled,
                 initialBufferMs: 150
@@ -131,7 +129,7 @@ public class OpenFreqRtcClient : IDisposable
 
             // Subscribe to clean audio events
             _rtpReceiver.AudioReceived += OnRtpAudioReceived;
-            _rtpReceiver.ErrorOccurred += (sender, error) => { _logger.LogError("RTP Error: {Error}", error); };
+            _rtpReceiver.ErrorOccurred += (_, error) => { _logger.LogError("RTP Error: {Error}", error); };
 
             _isConnected = true;
             OnConnectionStateChanged(ConnectionState.Connected);
@@ -146,7 +144,7 @@ public class OpenFreqRtcClient : IDisposable
         }
     }
 
-    private void CleanupRTP()
+    private void CleanupRtp()
     {
         _rtpSender?.Dispose();
         _rtpSender = null;
@@ -283,8 +281,8 @@ public class OpenFreqRtcClient : IDisposable
     /// </summary>
     public async Task DisconnectAsync()
     {
-        CleanupRTP();
-        _cts?.Cancel();
+        CleanupRtp();
+        _cts.Cancel();
         
         if (_webSocket?.State == WebSocketState.Open)
         {
@@ -501,12 +499,8 @@ public class OpenFreqRtcClient : IDisposable
 
     public void Dispose()
     {
-        Console.WriteLine($"[CLIENT] Dispose called - Instance: {GetHashCode()}");
-        _cts?.Cancel();
-        _cts?.Dispose();
-
-        _audioClient?.Close();
-        _audioClient?.Dispose();
+        _cts.Cancel();
+        _cts.Dispose();
 
         if (_webSocket?.State == WebSocketState.Open)
         {

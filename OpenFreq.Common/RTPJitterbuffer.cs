@@ -1,4 +1,5 @@
-﻿using OpenFreq.Common.Rtp;
+﻿using Microsoft.Extensions.Logging;
+using OpenFreq.Common.Rtp;
 
 namespace OpenFreq.Common;
 
@@ -8,9 +9,11 @@ namespace OpenFreq.Common;
 /// </summary>
 public class RtpJitterBuffer
 {
+    private readonly ILogger<RtpJitterBuffer> _logger;
+    
     private class BufferedPacket
     {
-        public RtpPacket Packet { get; set; }
+        public required RtpPacket Packet { get; set; }
         public DateTime ReceivedTime { get; set; }
         public uint PlayoutTimestamp { get; set; }
     }
@@ -21,30 +24,32 @@ public class RtpJitterBuffer
     private readonly int _maxBufferPackets;
         
     // State
-    private ushort _nextExpectedSequence = 0;
-    private uint _baseTimestamp = 0;
+    private ushort _nextExpectedSequence;
+    private uint _baseTimestamp;
     private DateTime _baseTime = DateTime.MinValue;
     private DateTime _playoutStartTime = DateTime.MinValue;
     private DateTime _lastPacketReceived = DateTime.MinValue;
-    private double _lastPacketTimestamp = 0;
-    private bool _initialized = false;
+    private double _lastPacketTimestamp;
+    private bool _initialized;
         
     // Adaptive jitter buffer parameters
     private double _targetBufferMs = 60; // Start with 60ms
-    private double _measuredJitterMs = 0;
+    private double _measuredJitterMs;
     private const double MIN_BUFFER_MS = 30;
     private const double MAX_BUFFER_MS = 500;
         
     // Statistics
-    private int _packetsReceived = 0;
-    private int _packetsLost = 0;
-    private int _packetsLate = 0;
-    private int _packetsDuplicate = 0;
-    private int _packetsPlayed = 0;
+    private int _packetsReceived;
+    private int _packetsLost;
+    private int _packetsLate;
+    private int _packetsDuplicate;
+    private int _packetsPlayed;
         
-    public RtpJitterBuffer(int sampleRate = 48000, int maxBufferPackets = 50)
+    public RtpJitterBuffer(ILogger<RtpJitterBuffer> logger, int sampleRate = 48000, int maxBufferPackets = 50)
     {
+        _logger = logger;
         _sampleRate = sampleRate;
+        _packetsLate = 0;
         _maxBufferPackets = maxBufferPackets;
     }
         
@@ -63,7 +68,8 @@ public class RtpJitterBuffer
             _playoutStartTime = _baseTime.AddMilliseconds(_targetBufferMs);  // Wait before playing
             _initialized = true;
     
-            Console.WriteLine($"[JitterBuffer] Initialized: buffer={_targetBufferMs}ms, will start playout at {_playoutStartTime:HH:mm:ss.fff}");
+            _logger.LogInformation("Initialized: buffer={BufferMs}ms, will start playout at {PlayoutStartTime:HH:mm:ss.fff}", 
+                _targetBufferMs, _playoutStartTime);
         }
 
         lock (_buffer)
@@ -101,7 +107,7 @@ public class RtpJitterBuffer
             {
                 var oldest = _buffer.Keys.First();
                 _buffer.Remove(oldest);
-                Console.WriteLine($"[JitterBuffer] Buffer overflow, dropped seq {oldest}");
+                _logger.LogWarning("Buffer overflow, dropped seq {SequenceNumber}", oldest);
             }
         }
     }
@@ -134,8 +140,8 @@ public class RtpJitterBuffer
 
             foreach (var kvp in _buffer.OrderBy(k => k.Key).Take(3))
             {
-                var packetTS = kvp.Value.PlayoutTimestamp;
-                var diff = RtpPacket.TimestampDifference(playoutTimestamp, packetTS);
+                var valuePlayoutTimestamp = kvp.Value.PlayoutTimestamp;
+                RtpPacket.TimestampDifference(playoutTimestamp, valuePlayoutTimestamp);
             }
 
             // Find packets ready for playout
@@ -156,20 +162,20 @@ public class RtpJitterBuffer
             // Check if this is the expected sequence (loss detection)
             if (nextPacket.Key != _nextExpectedSequence)
             {
-                int gap = RtpPacket.SequenceDifference(nextPacket.Key, _nextExpectedSequence);
+                var gap = RtpPacket.SequenceDifference(nextPacket.Key, _nextExpectedSequence);
                 if (gap > 0)
                 {
                     // Skipped packets (loss)
                     _packetsLost += gap;
-                    Console.WriteLine(
-                        $"[JitterBuffer] Packet loss: {gap} packets (seq {_nextExpectedSequence} to {nextPacket.Key - 1})");
+                    _logger.LogWarning("Packet loss: {Gap} packets (seq {ExpectedSeq} to {LastSeq})", 
+                        gap, _nextExpectedSequence, nextPacket.Key - 1);
                 }
                 else
                 {
                     // Late packet
                     _packetsLate++;
-                    Console.WriteLine(
-                        $"[JitterBuffer] Late packet seq {nextPacket.Key} (expected {_nextExpectedSequence})");
+                    _logger.LogWarning("Late packet seq {SequenceNumber} (expected {ExpectedSequence})", 
+                        nextPacket.Key, _nextExpectedSequence);
                 }
             }
 
@@ -199,7 +205,7 @@ public class RtpJitterBuffer
         // Ignore abnormal timestamp deltas (first packet often has accumulated frames)
         if (expectedIntervalMs > 150)
         {
-            Console.WriteLine($"[JitterBuffer] Ignoring abnormal timestamp delta: {expectedIntervalMs:F0}ms");
+            _logger.LogWarning("Ignoring abnormal timestamp delta: {DeltaMs:F0}ms", expectedIntervalMs);
             _lastPacketReceived = packet.ReceivedTime;
             _lastPacketTimestamp = expectedTimestampMs;
             return;
@@ -208,7 +214,7 @@ public class RtpJitterBuffer
         // Detect transmission gap (PTT released)
         if (actualIntervalMs > 500 || expectedIntervalMs > 500)
         {
-            Console.WriteLine($"[JitterBuffer] Transmission gap detected ({actualIntervalMs:F0}ms), resetting jitter measurement");
+            _logger.LogInformation("Transmission gap detected ({IntervalMs:F0}ms), resetting jitter measurement", actualIntervalMs);
             _jitterSamples.Clear();
             _measuredJitterMs = 0;
             _lastPacketReceived = packet.ReceivedTime;
@@ -316,6 +322,6 @@ public class RtpJitterBuffer
     public void SetTargetBufferSize(double milliseconds)
     {
         _targetBufferMs = Math.Clamp(milliseconds, MIN_BUFFER_MS, MAX_BUFFER_MS);
-        Console.WriteLine($"[JitterBuffer] Manual buffer size: {_targetBufferMs:F0}ms");
+        _logger.LogInformation("Manual buffer size: {BufferMs:F0}ms", _targetBufferMs);
     }
 }

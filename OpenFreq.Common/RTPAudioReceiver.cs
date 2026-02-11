@@ -2,8 +2,8 @@
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
-using Concentus;
 using Concentus.Structs;
+using Microsoft.Extensions.Logging;
 using OpenFreq.Common.Rtp;
 
 namespace OpenFreq.Common;
@@ -24,40 +24,47 @@ public class RtpAudioReceiver : IDisposable
     public event EventHandler<AudioReceivedEventArgs>? AudioReceived;
     public event EventHandler<string>? ErrorOccurred;
 
+    private readonly ILogger<RtpAudioReceiver> _logger;
     private readonly UdpClient _udpClient;
     private readonly RtpJitterBuffer _jitterBuffer;
     private readonly OpusDecoder? _opusDecoder;
     private readonly bool _opusEnabled;
     private readonly CancellationTokenSource _cts = new();
     private readonly Timer _playoutTimer;
-        
+    private readonly ILoggerFactory _loggerFactory;
+
     private const int PLAYOUT_INTERVAL_MS = 20; // Check for ready packets every 20ms
         
     /// <summary>
     /// Create RTP audio receiver with adaptive jitter buffer
     /// </summary>
+    /// <param name="logger">Logger instance</param>
     /// <param name="udpClient">Existing UDP client</param>
     /// <param name="opusEnabled">Whether to decode Opus (true) or expect raw PCM (false)</param>
     /// <param name="initialBufferMs">Initial jitter buffer size in milliseconds (will adapt)</param>
-    public RtpAudioReceiver(UdpClient udpClient, bool opusEnabled = true, int initialBufferMs = 150)
+    public RtpAudioReceiver(ILoggerFactory loggerFactory, UdpClient udpClient, bool opusEnabled = true, int initialBufferMs = 150)
     {
+        _loggerFactory = loggerFactory;
+        _logger = loggerFactory.CreateLogger<RtpAudioReceiver>();
         _opusEnabled = opusEnabled;
 
         if (_opusEnabled)
         {
-            _opusDecoder =  new OpusDecoder(OpenFreqRtcClient.SAMPLE_RATE, OpenFreqRtcClient.CHANNELS) as OpusDecoder; // OpusCodecFactory.CreateDecoder(OpenFreqRtcClient.SAMPLE_RATE, OpenFreqRtcClient.CHANNELS) as OpusDecoder;
+            #pragma warning disable CS0618 // Using the new factory method will not work in Linux!
+            _opusDecoder =  new OpusDecoder(OpenFreqRtcClient.SAMPLE_RATE, OpenFreqRtcClient.CHANNELS) as OpusDecoder;
+            #pragma warning restore CS0618 // Type or member is obsolete
         }
 
         // Create jitter buffer
-        _jitterBuffer = new RtpJitterBuffer(sampleRate: 48000);
+        _jitterBuffer = new RtpJitterBuffer(loggerFactory.CreateLogger<RtpJitterBuffer>());
         _jitterBuffer.SetTargetBufferSize(initialBufferMs);
 
         // Reuse UDP Client
         _udpClient = udpClient;
         var port = (_udpClient.Client.LocalEndPoint as IPEndPoint).Port;
-        Console.WriteLine($"[RtpAudioReceiver] Started on port {port}");
-        Console.WriteLine($"[RtpAudioReceiver]   Opus: {_opusEnabled}");
-        Console.WriteLine($"[RtpAudioReceiver]   Initial buffer: {initialBufferMs}ms (adaptive)");
+        _logger.LogInformation("Started on port {Port}", port);
+        _logger.LogInformation("  Opus: {OpusEnabled}", _opusEnabled);
+        _logger.LogInformation("  Initial buffer: {BufferMs}ms (adaptive)", initialBufferMs);
 
         // Start receiving task
         Task.Run(() => ReceiveLoop(), _cts.Token);
@@ -65,19 +72,23 @@ public class RtpAudioReceiver : IDisposable
         // Start playout timer (pulls packets from jitter buffer)
         _playoutTimer = new Timer(PlayoutTimerCallback, null, 0, PLAYOUT_INTERVAL_MS);
 
-        Task.Run(() =>
+        if (!_logger.IsEnabled(LogLevel.Debug))
         {
-            while (true)
+            Task.Run(() =>
             {
-                var stats = GetStatistics();
-                Console.WriteLine($"[Network Stats]");
-                Console.WriteLine($"  Packets: received={stats.received}, lost={stats.lost} ({stats.lossPercent:F1}%)");
-                Console.WriteLine($"  Jitter: {stats.jitterMs:F1}ms");
-                Console.WriteLine($"  Buffer size: {stats.bufferMs:F0}ms (adaptive)");
-                Console.WriteLine($"  Buffered packets: {stats.buffered}");
-                Task.Delay(5000).Wait();
-            }
-        });
+                while (true)
+                {
+                    var stats = GetStatistics();
+                    _logger.LogDebug("Network Stats");
+                    _logger.LogDebug("  Packets: received={Received}, lost={Lost} ({LossPercent:F1}%)",
+                        stats.received, stats.lost, stats.lossPercent);
+                    _logger.LogDebug("  Jitter: {JitterMs:F1}ms", stats.jitterMs);
+                    _logger.LogDebug("  Buffer size: {BufferMs:F0}ms (adaptive)", stats.bufferMs);
+                    _logger.LogDebug("  Buffered packets: {Buffered}", stats.buffered);
+                    Task.Delay(5000).Wait();
+                }
+            });
+        }
     }
 
     /// <summary>
@@ -85,7 +96,7 @@ public class RtpAudioReceiver : IDisposable
     /// </summary>
     private async Task ReceiveLoop()
     {
-        Console.WriteLine("[RtpAudioReceiver] Receive loop started");
+        _logger.LogInformation("Receive loop started");
             
         while (!_cts.Token.IsCancellationRequested)
         {
@@ -104,7 +115,7 @@ public class RtpAudioReceiver : IDisposable
             }
         }
             
-        Console.WriteLine("[RtpAudioReceiver] Receive loop stopped");
+        _logger.LogInformation("Receive loop stopped");
     }
 
     /// <summary>
@@ -118,7 +129,7 @@ public class RtpAudioReceiver : IDisposable
             var rtpPacket = RtpPacket.Parse(data);
             if (rtpPacket == null)
             {
-                Console.WriteLine("[RtpAudioReceiver] Invalid RTP packet");
+                _logger.LogWarning("Invalid RTP packet");
                 return;
             }
 
@@ -138,10 +149,8 @@ public class RtpAudioReceiver : IDisposable
     {
         try
         {
-            RtpPacket? packet;
-            
             // Pull all ready packets
-            while ((packet = _jitterBuffer.GetNextPacket()) != null)
+            while (_jitterBuffer.GetNextPacket() is { } packet)
             {
                 ProcessReadyPacket(packet);
             }
@@ -163,25 +172,25 @@ public class RtpAudioReceiver : IDisposable
             // Format: [2 bytes metadata len][JSON metadata][audio data]
             if (packet.Payload.Length < 2)
             {
-                Console.WriteLine("[RtpAudioReceiver] Payload too small");
+                _logger.LogWarning("Payload too small");
                 return;
             }
 
-            ushort metadataLength = (ushort)((packet.Payload[0] << 8) | packet.Payload[1]);
+            var metadataLength = (ushort)((packet.Payload[0] << 8) | packet.Payload[1]);
                 
             if (metadataLength + 2 > packet.Payload.Length)
             {
-                Console.WriteLine($"[RtpAudioReceiver] Invalid metadata length: {metadataLength}");
+                _logger.LogWarning("Invalid metadata length: {MetadataLength}", metadataLength);
                 return;
             }
 
             // Extract metadata JSON
-            string metadataJson = Encoding.UTF8.GetString(packet.Payload, 2, metadataLength);
+            var metadataJson = Encoding.UTF8.GetString(packet.Payload, 2, metadataLength);
             var metadata = JsonSerializer.Deserialize(metadataJson, OpenFreqJsonContext.Default.AudioPacketMetadata);
 
             if (metadata == null)
             {
-                Console.WriteLine("[RtpAudioReceiver] Failed to parse metadata");
+                _logger.LogWarning("Failed to parse metadata");
                 return;
             }
             
@@ -191,9 +200,9 @@ public class RtpAudioReceiver : IDisposable
             }
 
             // Extract audio data
-            int audioDataStart = 2 + metadataLength;
-            int audioDataLength = packet.Payload.Length - audioDataStart;
-            byte[] audioData = new byte[audioDataLength];
+            var audioDataStart = 2 + metadataLength;
+            var audioDataLength = packet.Payload.Length - audioDataStart;
+            var audioData = new byte[audioDataLength];
             Array.Copy(packet.Payload, audioDataStart, audioData, 0, audioDataLength);
 
             // Decode audio if Opus is enabled
@@ -229,7 +238,7 @@ public class RtpAudioReceiver : IDisposable
     private byte[] DecodeOpus(byte[] opusData)
     {
         if (_opusDecoder == null)
-            return Array.Empty<byte>();
+            return [];
 
         try
         {
@@ -248,20 +257,20 @@ public class RtpAudioReceiver : IDisposable
 
             if (samplesDecoded <= 0)
             {
-                Console.WriteLine($"[RtpAudioReceiver] Opus decode failed for {opusData.Length} bytes");
-                return Array.Empty<byte>();
+                _logger.LogWarning("Opus decode failed for {ByteCount} bytes", opusData.Length);
+                return [];
             }
 
             // Convert to byte array (16-bit PCM)
-            byte[] decodedAudio = new byte[samplesDecoded * 2];
+            var decodedAudio = new byte[samplesDecoded * 2];
             Buffer.BlockCopy(pcmSamples, 0, decodedAudio, 0, decodedAudio.Length);
                 
             return decodedAudio;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[RtpAudioReceiver] Opus decode exception: {ex.Message}");
-            return Array.Empty<byte>();
+            _logger.LogError(ex, "Opus decode exception");
+            return [];
         }
     }
 
@@ -280,16 +289,16 @@ public class RtpAudioReceiver : IDisposable
     public void PrintStatistics()
     {
         var stats = GetStatistics();
-        Console.WriteLine("=== RTP Receiver Statistics ===");
-        Console.WriteLine($"  Packets received: {stats.received}");
-        Console.WriteLine($"  Packets lost: {stats.lost} ({stats.lossPercent:F2}%)");
-        Console.WriteLine($"  Packets late: {stats.late}");
-        Console.WriteLine($"  Packets duplicate: {stats.duplicate}");
-        Console.WriteLine($"  Packets played: {stats.played}");
-        Console.WriteLine($"  Measured jitter: {stats.jitterMs:F1}ms");
-        Console.WriteLine($"  Buffer size: {stats.bufferMs:F0}ms (adaptive)");
-        Console.WriteLine($"  Currently buffered: {stats.buffered} packets");
-        Console.WriteLine("================================");
+        _logger.LogInformation("=== RTP Receiver Statistics ===");
+        _logger.LogInformation("  Packets received: {Received}", stats.received);
+        _logger.LogInformation("  Packets lost: {Lost} ({LossPercent:F2}%)", stats.lost, stats.lossPercent);
+        _logger.LogInformation("  Packets late: {Late}", stats.late);
+        _logger.LogInformation("  Packets duplicate: {Duplicate}", stats.duplicate);
+        _logger.LogInformation("  Packets played: {Played}", stats.played);
+        _logger.LogInformation("  Measured jitter: {JitterMs:F1}ms", stats.jitterMs);
+        _logger.LogInformation("  Buffer size: {BufferMs:F0}ms (adaptive)", stats.bufferMs);
+        _logger.LogInformation("  Currently buffered: {Buffered} packets", stats.buffered);
+        _logger.LogInformation("================================");
     }
 
     /// <summary>
@@ -302,11 +311,10 @@ public class RtpAudioReceiver : IDisposable
 
     public void Dispose()
     {
-        _cts?.Cancel();
+        _cts.Cancel();
         _playoutTimer?.Dispose();
         _opusDecoder?.Dispose();
-            
         PrintStatistics();
-        Console.WriteLine("[RtpAudioReceiver] Disposed");
+        _logger.LogInformation("Disposed");
     }
 }
