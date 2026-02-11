@@ -33,7 +33,7 @@ public class OpenFreqService : IOpenFreqService
 
     private OpenFreqRtcClient? _client;
     private int _recordHandle;
-    private readonly ConcurrentHashSet<int> _activeTransmissions = [];
+    private readonly ConcurrentDictionary<int, List<int>> _activeTransmissionsAndMutedFrequencies = new();
 
     private class TunedFrequencyData(RadioStationData radioStation, bool isEnabled)
     {
@@ -283,13 +283,13 @@ public class OpenFreqService : IOpenFreqService
         if (_client == null) return;
 
         // Stop all transmissions
-        foreach (var frequencyKhz in _activeTransmissions)
+        foreach (var frequencyKhz in _activeTransmissionsAndMutedFrequencies.Keys)
         {
             await StopTransmissionAsync(frequencyKhz);
         }
 
         await _client.DisconnectAsync();
-        _activeTransmissions.Clear();
+        _activeTransmissionsAndMutedFrequencies.Clear();
         _tunedFrequencies.Clear();
         OnStatusMessage("Disconnected from OpenFreq server");
         Status = IOpenFreqService.OpenFreqStatus.Disconnected;
@@ -354,7 +354,7 @@ public class OpenFreqService : IOpenFreqService
     /// <summary>
     /// Start transmitting on a frequency
     /// </summary>
-    public async Task StartTransmissionAsync(int frequencyKhz)
+    public async Task StartTransmissionAsync(int frequencyKhz, List<int> mutedFrequencies)
     {
         if (_client == null || _playbackService == null)
         {
@@ -369,7 +369,9 @@ public class OpenFreqService : IOpenFreqService
         }
 
         // Add to active transmissions
-        _activeTransmissions.Add(frequencyKhz);
+        _activeTransmissionsAndMutedFrequencies.TryAdd(frequencyKhz, mutedFrequencies);
+        _playbackService.AddTransmittingFrequencies(mutedFrequencies);
+
         // Mute the noise
         //_playbackService.SetSquelchLevel(frequency, 1.0f);
 
@@ -391,7 +393,7 @@ public class OpenFreqService : IOpenFreqService
 
             if (_recordHandle == 0)
             {
-                _activeTransmissions.Clear();
+                _activeTransmissionsAndMutedFrequencies.Clear();
                 OnStatusMessage($"Failed to start recording: {Bass.LastError}");
                 return;
             }
@@ -411,10 +413,14 @@ public class OpenFreqService : IOpenFreqService
         if (_client == null) return;
 
         // Remove from active transmissions
-        _activeTransmissions.TryRemove(frequencyKhz);
+        _activeTransmissionsAndMutedFrequencies.TryRemove(frequencyKhz, out var mutedFrequencies);
+        if (mutedFrequencies != null)
+        {
+            _playbackService?.RemoveTransmittingFrequencies(mutedFrequencies);
+        }
 
         // If NO more transmissions, stop recording
-        if (_activeTransmissions.Count == 0 && _recordHandle != 0)
+        if (_activeTransmissionsAndMutedFrequencies.IsEmpty && _recordHandle != 0)
         {
             Bass.ChannelStop(_recordHandle);
             Bass.StreamFree(_recordHandle);
@@ -484,7 +490,7 @@ public class OpenFreqService : IOpenFreqService
     /// </summary>
     public bool IsTransmitting(int frequency)
     {
-        return _activeTransmissions.Contains(frequency);
+        return _activeTransmissionsAndMutedFrequencies.ContainsKey(frequency);
     }
 
     /// <summary>
@@ -502,7 +508,7 @@ public class OpenFreqService : IOpenFreqService
     private bool RecordProcedure(int handle, IntPtr buffer, int length, IntPtr user)
     {
         // If not transmitting on any frequency, skip
-        if (_activeTransmissions.Count == 0)
+        if (_activeTransmissionsAndMutedFrequencies.Count == 0)
             return true;
 
         try
@@ -538,9 +544,9 @@ public class OpenFreqService : IOpenFreqService
 
             // List of frequencies that got disabled in the meantime
             var disabledFrequencies = new List<int>();
-            foreach (var transmission in _activeTransmissions)
+            foreach (var transmission in _activeTransmissionsAndMutedFrequencies)
             {
-                var frequencyKhz = transmission;
+                var frequencyKhz = transmission.Key;
                 _tunedFrequencies.TryGetValue(frequencyKhz, out var radioStationData);
                 if (radioStationData == null)
                 {
@@ -580,7 +586,7 @@ public class OpenFreqService : IOpenFreqService
             // Clean up any frequencies which might have been disabled in the meantime
             foreach (var disabledFrequency in disabledFrequencies)
             {
-                _activeTransmissions.TryRemove(disabledFrequency);
+                _activeTransmissionsAndMutedFrequencies.TryRemove(disabledFrequency, out _);
             }
         }
         catch (Exception ex)
@@ -744,7 +750,16 @@ public class OpenFreqService : IOpenFreqService
         {
             if (frequencyTransmission.In3d != Apply3dAudioEffects)
             {
-                _logger.LogDebug("{FrequencyTransmissionKhz:F3}: Audio data received but not matching 3D settings - dropping", frequencyTransmission.Khz/1000d);
+                _logger.LogDebug(
+                    "{FrequencyTransmissionKhz/F3}: Audio data received but not matching 3D settings - dropping",
+                    frequencyTransmission.Khz / 1000d);
+                continue;
+            }
+
+            if (Apply3dAudioEffects && _activeTransmissionsAndMutedFrequencies.ContainsKey(frequencyTransmission.Khz))
+            {
+                _logger.LogDebug("{FrequencyTransmissionKhz:F3}: Receiving transmission when we are sending - dropping",
+                    frequencyTransmission.Khz / 1000d);
                 continue;
             }
 
@@ -891,7 +906,7 @@ public class OpenFreqService : IOpenFreqService
         Bass.StreamFree(_recordHandle);
 
         _recordHandle = 0;
-        _activeTransmissions.Clear();
+        _activeTransmissionsAndMutedFrequencies.Clear();
 
         _playbackService?.StopAll();
         _demReader?.Dispose();

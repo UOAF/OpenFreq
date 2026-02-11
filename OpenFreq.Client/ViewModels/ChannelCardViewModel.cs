@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -16,6 +17,7 @@ namespace OpenFreqClient.ViewModels;
 public partial class ChannelCardViewModel : ViewModelBase, IDisposable
 {
     private readonly IHotkeyService _hotkeyService;
+    private readonly ChannelCardGroupViewModel _parentChannelCardGroupViewModel;
 
     public Guid Id { get; } = Guid.NewGuid();
 
@@ -39,18 +41,16 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         }
     }
 
-    [ObservableProperty]
-    public partial string? Name { get; set; }
+    [ObservableProperty] public partial string? Name { get; set; }
 
-    [ObservableProperty]
-    public partial float RxDb { get; set; }
+    [ObservableProperty] public partial float RxDb { get; set; }
 
     // this is just to display it in the UI
     public Channel.ChannelType Type
     {
         get
         {
-            return (FrequencyKhz /1000d) switch
+            return (FrequencyKhz / 1000d) switch
             {
                 < 200 and > 30 => Channel.ChannelType.VHF,
                 > 200 => Channel.ChannelType.UHF,
@@ -58,17 +58,15 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
             };
         }
     }
-    
+
     // Direct mapping to BMS RadioType or null in GCI mode.
     // We cant use a sane frequency->type mapping because BMS likes to set lobby frequencies, e.g. 1.234 MHz
-    public RadioType? BmsRadioType { get; set; } 
+    public RadioType? BmsRadioType { get; set; }
 
     [ObservableProperty] public partial float SignalStrength { get; set; }
 
-    [ObservableProperty]
-    public partial Channel.ChannelStatus Status { get; set; } = Channel.ChannelStatus.Disconnected;
-    [ObservableProperty]
-    public partial bool IsEditing { get; set; } = true;
+    [ObservableProperty] public partial Channel.ChannelStatus Status { get; set; } = Channel.ChannelStatus.Disconnected;
+    [ObservableProperty] public partial bool IsEditing { get; set; } = true;
 
     [ObservableProperty] private bool _channelWasChanged;
 
@@ -121,10 +119,12 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     }
 
 
-    public ChannelCardViewModel(IHotkeyService hotkeyService, RadioStationData radioStationData, bool isEnabled = true, RadioType? bmsRadioType = null)
+    public ChannelCardViewModel(IHotkeyService hotkeyService, RadioStationData radioStationData,
+        ChannelCardGroupViewModel parentChannelCardGroupViewModel, bool isEnabled = true, RadioType? bmsRadioType = null)
     {
         _hotkeyService = hotkeyService;
         RadioStationData = radioStationData;
+        _parentChannelCardGroupViewModel = parentChannelCardGroupViewModel;
         IsEnabled = isEnabled;
         BmsRadioType = bmsRadioType;
 
@@ -138,12 +138,14 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
             });
     }
 
-    public ChannelCardViewModel(IHotkeyService hotkeyService, Channel channel, RadioStationData radioStationData, RadioType? bmsRadioType = null)
+    public ChannelCardViewModel(IHotkeyService hotkeyService, Channel channel, RadioStationData radioStationData,
+        ChannelCardGroupViewModel parentChannelCardGroupViewModel, RadioType? bmsRadioType = null)
     {
         _hotkeyService = hotkeyService;
         IsEnabled = channel.Enabled;
         BmsRadioType = bmsRadioType;
         RadioStationData = radioStationData;
+        _parentChannelCardGroupViewModel = parentChannelCardGroupViewModel;
         FrequencyKhz = channel.FrequencyKhz;
         Name = channel.Name;
         RxDb = channel.RxDb;
@@ -230,12 +232,12 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     {
         return key == KeyCode.VcUndefined ? "None" : key.ToString().Replace("Vc", "");
     }
-    
+
     partial void OnFrequencyKhzChanged(int value)
     {
         _channelWasChanged = true;
     }
-    
+
 
     [RelayCommand]
     public void DeleteChannel()
@@ -248,7 +250,9 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         if (Status == Channel.ChannelStatus.Disconnected)
             return;
 
-        WeakReferenceMessenger.Default.Send(new StartTransmissionMessage(Id, FrequencyKhz, RadioStationData));
+        var mutedFrequencies = _parentChannelCardGroupViewModel.GetAllFrequenciesOfChannelGroup(Type);
+        mutedFrequencies.Remove(FrequencyKhz);
+        WeakReferenceMessenger.Default.Send(new StartTransmissionMessage(Id, FrequencyKhz, RadioStationData, mutedFrequencies));
     }
 
     public void StopTransmission()
@@ -309,11 +313,16 @@ public class ChannelEnabledDisabledMessage(
     public bool Enabled { get; } = enabled;
 }
 
-public class StartTransmissionMessage(Guid channelId, int frequencyKhz, RadioStationData radioStationData)
+public class StartTransmissionMessage(
+    Guid channelId,
+    int frequencyKhz,
+    RadioStationData radioStationData,
+    List<int> mutedRadioChannels)
 {
     public Guid ChannelId { get; } = channelId;
     public int FrequencyKhz { get; } = frequencyKhz;
     public RadioStationData RadioStationData { get; } = radioStationData;
+    public List<int> MutedRadioChannels { get; } = mutedRadioChannels;
 }
 
 public class StopTransmissionMessage(Guid channelId, int frequencyKhz)

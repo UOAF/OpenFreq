@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using OpenFreq.Client.Models;
 using OpenFreq.Common;
@@ -35,7 +36,7 @@ public interface IOpenFreqService : IDisposable
     bool FrequencyJoined(int frequencyKhz);
     Task JoinFrequencyAsync(int frequencyKhz, RadioStationData radioStationData, bool isEnabled);
     Task LeaveFrequencyAsync(int frequencyKhz);
-    Task StartTransmissionAsync(int frequencyKhz);
+    Task StartTransmissionAsync(int frequencyKhz, List<int> mutedFrequencies);
     Task StopTransmissionAsync(int frequencyKhz);
 
     void SetVolume(int frequencyKhz, float volumeValue);

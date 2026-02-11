@@ -140,7 +140,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         }
 
         _logger.LogDebug($"VOLUME {e.OldVolume} -> {e.NewVolume}");
-        
+
         // BMS dB scale
         const float dbMin = -6.0f; // +6dB boost at DX=0
         const float dbMax = 40.0f; // -40dB attenuation at DX=10000
@@ -270,9 +270,11 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         if (channel == null || channel.Status == Channel.ChannelStatus.Disconnected) return;
         switch (e)
         {
+            // mute all incoming transmissions from this group which have the same channel type
             case { OldPtt: false, NewPtt: true }:
-                _openFreqService.StartTransmissionAsync(channel.FrequencyKhz)
-                    .Wait();
+                var mutedFrequencies = FalconChannelGroup.GetAllFrequenciesOfChannelGroup(channel.Type);
+                mutedFrequencies.Remove(channel.FrequencyKhz);
+                _openFreqService.StartTransmissionAsync(channel.FrequencyKhz, mutedFrequencies).Wait();
                 break;
             case { OldPtt: true, NewPtt: false }:
                 _openFreqService.StopTransmissionAsync(channel.FrequencyKhz).Wait();
@@ -310,8 +312,8 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                     e.NewFrequencyKhz,
                     BMS_GROUP_NAME,
                     false);
-                
-                channel.IsEnabled = channelIsPowerOn; 
+
+                channel.IsEnabled = channelIsPowerOn;
                 return channel;
             }).GetAwaiter().GetResult();
             JoinFrequencyAsync(newChannel.FrequencyKhz, FalconChannelGroup.RadioStationData, newChannel.IsEnabled)
@@ -339,7 +341,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
 
         try
         {
-            await _openFreqService.StartTransmissionAsync(msg.FrequencyKhz);
+            await _openFreqService.StartTransmissionAsync(msg.FrequencyKhz, msg.MutedRadioChannels);
         }
         catch (Exception ex)
         {

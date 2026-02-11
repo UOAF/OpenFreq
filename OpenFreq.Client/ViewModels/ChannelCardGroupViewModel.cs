@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
@@ -119,7 +120,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
 
     public ChannelCardViewModel CreateChannel(int frequencyKhz, string name, bool isInEditMode = true, RadioType? bmsRadioType = null)
     {
-        var channel = new ChannelCardViewModel(_hotkeyService, RadioStationData);
+        var channel = new ChannelCardViewModel(_hotkeyService, RadioStationData, this);
         channel.Name = name;
         channel.FrequencyKhz = frequencyKhz;
         channel.IsEditing = isInEditMode;
@@ -220,7 +221,10 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
                 var channel = Channels.FirstOrDefault(c => c.Id == channelId);
                 if (channel != null && channel.Status != Channel.ChannelStatus.Disconnected && !channel.IsEditing)
                 {
-                    await _openFreqService.StartTransmissionAsync(channel.FrequencyKhz);
+                    // mute all channels of the same channel type in this group when transmitting
+                    var mutedFrequencies = GetAllFrequenciesOfChannelGroup(channel.Type);
+                    mutedFrequencies.Remove(channel.FrequencyKhz);
+                    await _openFreqService.StartTransmissionAsync(channel.FrequencyKhz, mutedFrequencies);
                 }
             }
         }
@@ -573,5 +577,17 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
     {
         WeakReferenceMessenger.Default.Send(
             new ChannelCardGroupDeleteRequestedMessage(Id));
+    }
+
+    public List<int> GetAllFrequenciesOfChannelGroup(Channel.ChannelType? filterChannelType = null)
+    {
+        var query = Channels.AsEnumerable();
+
+        if (filterChannelType is not null)
+            query = query.Where(c => c.Type == filterChannelType);
+
+        return query
+            .Select(c => c.FrequencyKhz)
+            .ToList();
     }
 }
