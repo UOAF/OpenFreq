@@ -8,7 +8,7 @@ namespace OpenFreq.Common;
 public class AudioPacketMetadata
 {
     [JsonPropertyName("id")]
-    public string clientId  { get; set; }
+    public required string ClientId  { get; set; }
    
     /// <summary>
     /// Frequencies being transmitted on with per-frequency markers

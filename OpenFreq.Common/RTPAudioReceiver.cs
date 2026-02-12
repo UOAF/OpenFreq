@@ -61,7 +61,7 @@ public class RtpAudioReceiver : IDisposable
 
         // Reuse UDP Client
         _udpClient = udpClient;
-        var port = (_udpClient.Client.LocalEndPoint as IPEndPoint).Port;
+        var port = (_udpClient.Client.LocalEndPoint as IPEndPoint)!.Port;
         _logger.LogInformation("Started on port {Port}", port);
         _logger.LogInformation("  Opus: {OpusEnabled}", _opusEnabled);
         _logger.LogInformation("  Initial buffer: {BufferMs}ms (adaptive)", initialBufferMs);
@@ -245,7 +245,7 @@ public class RtpAudioReceiver : IDisposable
             const int MAX_OPUS_FRAME_SAMPLES = 5760; // 120ms at 48kHz
             short[] pcmSamples = new short[MAX_OPUS_FRAME_SAMPLES];
                 
-            int samplesDecoded = _opusDecoder.Decode(
+            int? samplesDecoded = _opusDecoder?.Decode(
                 opusData, 
                 0, 
                 opusData.Length, 
@@ -255,14 +255,14 @@ public class RtpAudioReceiver : IDisposable
                 false
             );
 
-            if (samplesDecoded <= 0)
+            if (samplesDecoded is null or <= 0)
             {
                 _logger.LogWarning("Opus decode failed for {ByteCount} bytes", opusData.Length);
                 return [];
             }
 
             // Convert to byte array (16-bit PCM)
-            var decodedAudio = new byte[samplesDecoded * 2];
+            var decodedAudio = new byte[samplesDecoded.Value * 2];
             Buffer.BlockCopy(pcmSamples, 0, decodedAudio, 0, decodedAudio.Length);
                 
             return decodedAudio;

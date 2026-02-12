@@ -5,7 +5,6 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Common.Signaling;
-using OpenFreqClient;
 
 namespace OpenFreq.Common;
 
@@ -311,7 +310,7 @@ public class OpenFreqRtcClient : IDisposable
 
     private void OnRtpAudioReceived(object? sender, RtpAudioReceiver.AudioReceivedEventArgs e)
     {
-        OnAudioDataReceived(e.Metadata.clientId, e.AudioData, e.Metadata);
+        OnAudioDataReceived(e.Metadata.ClientId, e.AudioData, e.Metadata);
     }
     
     private async Task ReceiveMessagesAsync()

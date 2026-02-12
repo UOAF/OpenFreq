@@ -43,9 +43,6 @@ public class RtpAudioSender : IDisposable
         public byte[] PcmData;
         public string ClientId;
         public List<FrequencyTransmission> FrequencyTransmissions;
-        public bool BeginMarker;
-        public bool EndMarker;
-        public double txWatts;
         public uint Timestamp;
         public ushort SequenceNumber;
     }
@@ -93,11 +90,13 @@ public class RtpAudioSender : IDisposable
         {
             try
             {
+                #pragma warning disable CS0618 // Do not use the factory - it does not work with Linux
                 _opusEncoder = new OpusEncoder(
                     OpenFreqRtcClient.SAMPLE_RATE,
                     OpenFreqRtcClient.CHANNELS,
                     OpusApplication.OPUS_APPLICATION_RESTRICTED_LOWDELAY
                 );
+                #pragma warning restore CS0618 // Type or member is obsolete
             }
             catch (OpusException ex)
             {
@@ -106,12 +105,20 @@ public class RtpAudioSender : IDisposable
                 _logger.LogError("Message: {Message}", ex.Message);
             }
 
-            // Configure for low latency VoIP
-            _opusEncoder.Bitrate = 128000; // 128 kbps
-            _opusEncoder.Complexity = 5; // Medium complexity
-            _opusEncoder.SignalType = OpusSignal.OPUS_SIGNAL_MUSIC;
-            _opusEncoder.UseInbandFEC = true; // Forward error correction
-            _opusEncoder.PacketLossPercent = 5; // Assume 5% loss for FEC tuning
+            if (_opusEncoder == null)
+            {
+                _logger.LogError("Could not create OpusEncoder");
+                return;
+            }
+            else
+            {
+                // Configure for low latency VoIP
+                _opusEncoder.Bitrate = 128000; // 128 kbps
+                _opusEncoder.Complexity = 5; // Medium complexity
+                _opusEncoder.SignalType = OpusSignal.OPUS_SIGNAL_MUSIC;
+                _opusEncoder.UseInbandFEC = true; // Forward error correction
+                _opusEncoder.PacketLossPercent = 5; // Assume 5% loss for FEC tuning
+            }
         }
 
         // Start pacing timer - sends one packet every 10ms
@@ -251,7 +258,7 @@ public class RtpAudioSender : IDisposable
             // Build metadata
             var metadata = new AudioPacketMetadata
             {
-                clientId = queuedValue.ClientId,
+                ClientId = queuedValue.ClientId,
                 Frequencies = queuedValue.FrequencyTransmissions,
             };
 

@@ -1,7 +1,6 @@
-using System;
 using System.Net;
 
-namespace OpenFreqClient;
+namespace OpenFreq.Common;
 
 public static class Util
 {
@@ -28,7 +27,7 @@ public static class Util
         }
 
         // Try to parse the first part as an IP address
-        if (IPAddress.TryParse(parts[0], out IPAddress ip))
+        if (IPAddress.TryParse(parts[0], out var ip))
         {
             ipAddress = ip.ToString();
         }

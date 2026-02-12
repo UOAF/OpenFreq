@@ -68,12 +68,12 @@ public partial class MainWindow : Window
         var file = await storage.OpenFilePickerAsync(filepickerOptions);
         if (file.Count > 0)
         {
-            _viewModel.Settings.HeightmapPath = file[0].Path.LocalPath;
+            _viewModel?.Settings.HeightmapPath = file[0].Path.LocalPath;
         }
     }
     
     protected override void OnClosing(WindowClosingEventArgs e)
     {
-        _viewModel.Settings.UpdateWindowSettings();
+        _viewModel?.Settings.UpdateWindowSettings();
     }
 }

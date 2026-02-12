@@ -30,15 +30,19 @@ public partial class App : Application
         
             // Get services from DI
             var serviceProvider = Program.ServiceProvider;
+            if (serviceProvider is null)
+            {
+                throw new InvalidOperationException("Service provider not initialized");
+            }
         
 #if WINDOWS
-        _services = new List<ILifecycleService>
-        {
+        _services =
+        [
             serviceProvider.GetRequiredService<IFalconRadioSharedMemoryService>(),
             serviceProvider.GetRequiredService<IFalconSharedMemoryService>(),
-            serviceProvider.GetRequiredService<IAcmiClientService>(),                
-            serviceProvider.GetRequiredService<IHotkeyService>(),
-        };
+            serviceProvider.GetRequiredService<IAcmiClientService>(),
+            serviceProvider.GetRequiredService<IHotkeyService>()
+        ];
 #else
             _services = new List<ILifecycleService>
             {
