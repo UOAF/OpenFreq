@@ -36,6 +36,7 @@ sealed class Program
                 rollingInterval: RollingInterval.Day,
                 retainedFileCountLimit: 30,
                 shared: true)
+            .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}")
             .CreateLogger();
 #else
         Log.Logger = new LoggerConfiguration()

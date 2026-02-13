@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using OpenFreqClient.Services.Interfaces;
 
 namespace OpenFreqClient.Services;
@@ -9,6 +10,7 @@ namespace OpenFreqClient.Services;
 #if WINDOWS
 public class IvcMonitorService : IIvcMonitorService
 {
+    private readonly ILogger<IvcMonitorService> _logger;
     private const string? IvcProcessName = "IVC Client";
     private CancellationTokenSource? _monitoringCts;
     private Task? _monitoringTask;
@@ -16,12 +18,17 @@ public class IvcMonitorService : IIvcMonitorService
     public event EventHandler<IvcStatusChangedEventArgs>? IvcStatusChanged;
     public bool IsIvcRunning { get; private set; }
 
+    public IvcMonitorService(ILogger<IvcMonitorService> logger)
+    {
+        _logger = logger;
+    }
+
     public void Start()
     {
         _monitoringCts = new CancellationTokenSource();
         _monitoringTask = Task.Run(async () =>
         {
-            Console.WriteLine("[IvcMonitor] Monitoring started");
+            _logger.LogInformation("Monitoring started");
 
             while (!_monitoringCts.Token.IsCancellationRequested)
             {
@@ -36,11 +43,11 @@ public class IvcMonitorService : IIvcMonitorService
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[IvcMonitor] Error monitoring IVC: {ex.Message}");
+                    _logger.LogError(ex, "Error monitoring IVC");
                 }
             }
 
-            Console.WriteLine("[IvcMonitor] Monitoring stopped");
+            _logger.LogInformation("Monitoring stopped");
         });
     }
 
@@ -58,7 +65,7 @@ public class IvcMonitorService : IIvcMonitorService
         // Only fire event if status changed
         if (isRunning == IsIvcRunning) return;
         IsIvcRunning = isRunning;
-        Console.WriteLine($"[IvcMonitor] IVC status changed: {(isRunning ? "Running" : "Stopped")}");
+        _logger.LogInformation("IVC status changed: {Status}", isRunning ? "Running" : "Stopped");
         IvcStatusChanged?.Invoke(this, new IvcStatusChangedEventArgs { IsRunning = isRunning });
     }
     
@@ -80,7 +87,6 @@ public class IvcMonitorService : IIvcMonitorService
 
     public async ValueTask DisposeAsync()
     {
-        Console.WriteLine("[IvcMonitor] DisposeAsync starting");
         _monitoringCts?.Cancel();
 
         if (_monitoringTask != null)
@@ -89,7 +95,6 @@ public class IvcMonitorService : IIvcMonitorService
         }
 
         _monitoringCts?.Dispose();
-        Console.WriteLine("[IvcMonitor] DisposeAsync complete");
     }
 }
 #else
