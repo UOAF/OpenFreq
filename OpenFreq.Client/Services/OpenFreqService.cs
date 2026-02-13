@@ -166,7 +166,7 @@ public class OpenFreqService : IOpenFreqService
             _playbackService = null;
         }
 
-        _playbackService = new RadioPlayback(playbackDeviceIndex);
+        _playbackService = new RadioPlayback(_loggerFactory, playbackDeviceIndex);
         _playbackService.Initialize();
         _playbackService.Apply3dEffects = Apply3dAudioEffects;
 
