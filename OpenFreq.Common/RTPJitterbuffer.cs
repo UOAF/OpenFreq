@@ -185,6 +185,61 @@ public class RtpJitterBuffer
 
         return nextPacket.Value.Packet;
     }
+    
+    /// <summary>
+    /// Peek at the next packet that would be returned, without removing it
+    /// Used for FEC decoding when checking if packet N+1 exists
+    /// </summary>
+    public RtpPacket? PeekNextPacket()
+    {
+        if (!_initialized || _buffer.Count == 0)
+            return null;
+        
+        var now = DateTime.UtcNow;
+    
+        if (now < _playoutStartTime)
+        {
+            return null;
+        }
+    
+        // Calculate elapsed time since playout started
+        var elapsedMs = (now - _playoutStartTime).TotalMilliseconds;
+    
+        // Calculate which timestamp we should be playing now
+        uint playoutTimestamp = _baseTimestamp + (uint)((elapsedMs / 1000.0) * _sampleRate);
+
+        lock (_buffer)
+        {
+            // Find packets ready for playout
+            var readyPackets = _buffer
+                .Where(kvp => RtpPacket.TimestampDifference(playoutTimestamp, kvp.Value.PlayoutTimestamp) >= 0)
+                .OrderBy(kvp => kvp.Key)
+                .ToList();
+
+            if (readyPackets.Count == 0)
+            {
+                return null;
+            }
+
+            // Return the packet without removing it
+            return readyPackets.First().Value.Packet;
+        }
+    }
+    
+    /// <summary>
+    /// Try to get a specific packet by sequence number (for FEC)
+    /// </summary>
+    public RtpPacket? GetPacketBySequence(ushort sequenceNumber)
+    {
+        lock (_buffer)
+        {
+            if (_buffer.TryGetValue(sequenceNumber, out var bufferedPacket))
+            {
+                return bufferedPacket.Packet;
+            }
+            return null;
+        }
+    }
         
     /// <summary>
     /// Measure packet arrival jitter

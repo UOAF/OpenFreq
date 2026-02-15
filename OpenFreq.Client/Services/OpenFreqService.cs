@@ -43,6 +43,8 @@ public class OpenFreqService : IOpenFreqService
 
 
     private RadioPlayback? _playbackService;
+    private readonly Lock _streamCreationLock = new();
+
     private DEMReader? _demReader;
     private FastPathAudioSim? _audioSim;
     private readonly IAcmiClientService _acmiClientService;
@@ -125,6 +127,7 @@ public class OpenFreqService : IOpenFreqService
     public bool IsConnected => _client?.IsConnected ?? false;
     public bool IsAuthenticated => _client?.IsAuthenticated ?? false;
     public string? PeerId => _client?.MyPeerId;
+    private int _radioPlaybackInstanceId = 0;
 
 
     /// <summary>
@@ -132,7 +135,6 @@ public class OpenFreqService : IOpenFreqService
     /// </summary>
     public async Task Initialize(OpenFreqSettings settings, int recordingDeviceIndex, int playbackDeviceIndex)
     {
-        _logger.LogDebug("Initialize called - IsInitialized: {IsInitialized}", _isInitialized);
         if (_isInitialized)
         {
             _logger.LogDebug("Calling Shutdown from Initialize");
@@ -162,14 +164,21 @@ public class OpenFreqService : IOpenFreqService
 
         if (_playbackService != null)
         {
+            _logger.LogWarning("Disposing old RadioPlayback instance: {InstanceId}", _radioPlaybackInstanceId);
             await _playbackService.StopAll();
+            if (_playbackService is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+
             _playbackService = null;
         }
 
+        _radioPlaybackInstanceId++;
         _playbackService = new RadioPlayback(_loggerFactory, playbackDeviceIndex);
+        _logger.LogWarning("Created NEW RadioPlayback instance: {InstanceId}", _radioPlaybackInstanceId);
         _playbackService.Initialize();
         _playbackService.Apply3dEffects = Apply3dAudioEffects;
-
         _isInitialized = true;
 
         _falconSharedMemoryService.FlyingStateChanged += OnFlyingStateChanged;
@@ -521,7 +530,7 @@ public class OpenFreqService : IOpenFreqService
 
             if (length > expectedBytes)
             {
-                _logger.LogWarning("Recording packet oversized: {Length} bytes, truncating to {ExpectedBytes}", 
+                _logger.LogWarning("Recording packet oversized: {Length} bytes, truncating to {ExpectedBytes}",
                     length, expectedBytes);
                 // Option 1: Only use the LAST 20ms (most recent audio)
                 buffer = IntPtr.Add(buffer, length - expectedBytes);
@@ -557,7 +566,7 @@ public class OpenFreqService : IOpenFreqService
                     disabledFrequencies.Add(frequencyKhz);
                     continue;
                 }
-                
+
                 var position = GetOwnPosition(frequencyKhz) ?? new Position(0, 0, 0);
                 _logger.LogDebug($"[Recording] {frequencyKhz} Position: {position}");
 
@@ -615,7 +624,7 @@ public class OpenFreqService : IOpenFreqService
                 var position = tunedFrequencyData.RadioStation.Position;
                 position?.Z += tunedFrequencyData.RadioStation.Preset.AntennaElevation_m;
                 return position;
-            
+
             case RadioStationData.RadioStationType.ACMI:
                 var acmiAircraftId = tunedFrequencyData.RadioStation.AcmiAircraftId;
                 if (acmiAircraftId == null) return null;
@@ -759,90 +768,92 @@ public class OpenFreqService : IOpenFreqService
                 continue;
             }
 
-            AudioParams audioParams;
             var streamId = GetStreamId(e.PeerId, frequencyTransmission.Khz);
+            lock (_streamCreationLock)
+            {
+                var streamExists = _playbackService?.IsStreamActive(streamId) ?? false;
 
-            var ownPosition = GetOwnPosition(frequencyTransmission.Khz);
-            if (frequencyTransmission.Position == null || ownPosition == null || _audioSim == null)
-            {
-                _logger.LogInformation($"No position data, using defaults for {frequencyTransmission}");
-                audioParams = FastPathAudioSim.GetDefaultAudioParams(frequencyTransmission.Khz);
-            }
-            else
-            {
-                _tunedFrequencies.TryGetValue(frequencyTransmission.Khz, out var receiverData);
-                if (receiverData == null)
+                if (!streamExists)
                 {
-                    _logger.LogWarning(
-                        "Received audio data for non-tuned frequency {FrequencyTransmissionMhz/1000d:F3}, skipping",
-                        frequencyTransmission.Khz);
-                    return;
+                    // Create stream with default params - will be updated async
+                    var defaultParams = FastPathAudioSim.GetDefaultAudioParams(frequencyTransmission.Khz);
+
+                    _logger.LogDebug(
+                        $"Creating new stream: {streamId}, SR={OpenFreqRtcClient.SAMPLE_RATE}, CH={OpenFreqRtcClient.CHANNELS}");
+
+                    _playbackService?.StartPushStream(
+                        streamId,
+                        OpenFreqRtcClient.SAMPLE_RATE,
+                        OpenFreqRtcClient.CHANNELS,
+                        defaultParams);
                 }
-
-                _logger.LogDebug("TX POS: {txPos} | RX POS: {rxPos}", frequencyTransmission.Position, ownPosition);
-
-                var receiverSensitivityDb = RadioStationPreset.IsVHF(frequencyTransmission.Khz)
-                    ? receiverData.RadioStation.Preset.RxSensitivity_VHF_dBm
-                    : receiverData.RadioStation.Preset.RxSensitivity_UHF_dBm;
-
-                // Check cache
-                var cacheKey = (e.PeerId, frequencyTransmission.Khz);
-                var now = DateTime.UtcNow;
-
-                if (_audioParamsCache.TryGetValue(cacheKey, out var cached) &&
-                    (now - cached.LastCalculated) < _audioParamsCacheDuration)
-                {
-                    // Use cached value
-                    audioParams = cached.Params;
-                }
-                else
-                {
-                    // Calculate new value
-                    audioParams = _audioSim.CalculateAudioParams(
-                        frequencyTransmission.Position.X,
-                        frequencyTransmission.Position.Y,
-                        frequencyTransmission.Position.Z,
-                        ownPosition.X,
-                        ownPosition.Y,
-                        ownPosition.Z,
-                        frequencyTransmission.Khz,
-                        frequencyTransmission.TxPowerWatts,
-                        receiverSensitivityDb);
-
-                    // Update cache
-                    _audioParamsCache[cacheKey] = new AudioParamsCacheEntry
-                    {
-                        Params = audioParams,
-                        LastCalculated = now
-                    };
-
-                    _logger.LogInformation($"Calculated Audio params for stream {streamId}: Gain={audioParams.Gain}, SNR={audioParams.SNR_dB}");
-                }
-
-                _signalStrengthTracker.UpdateSignalStrength(audioParams.RadioFrequencyKHz, audioParams);
             }
 
-            // Check if stream exists
-            var streamExists = _playbackService?.IsStreamActive(streamId) ?? false;
-
-            if (!streamExists)
-            {
-                _logger.LogDebug(
-                    $"Creating new stream: {streamId}, SR={OpenFreqRtcClient.SAMPLE_RATE}, CH={OpenFreqRtcClient.CHANNELS}");
-                _playbackService?.StartPushStream(
-                    streamId,
-                    OpenFreqRtcClient.SAMPLE_RATE,
-                    OpenFreqRtcClient.CHANNELS,
-                    audioParams);
-            }
-            else
-            {
-                _playbackService?.UpdateStreamParams(streamId, audioParams);
-            }
-
-            _playbackService?.PushAudioData(streamId, e.AudioData, frequencyTransmission.BeginMarker,
+            // Calculate and update audio params asynchronously (off audio thread)
+            _ = Task.Run(() => UpdateAudioParamsAsync(streamId, frequencyTransmission, e.PeerId));
+            
+            // Push audio data immediately
+            _playbackService?.PushAudioData(streamId, e.AudioData,
+                frequencyTransmission.BeginMarker,
                 frequencyTransmission.EndMarker);
         }
+    }
+
+
+    private Task UpdateAudioParamsAsync(string streamId,
+        FrequencyTransmission frequencyTransmission, string peerId)
+    {
+        try
+        {
+            var ownPosition = GetOwnPosition(frequencyTransmission.Khz);
+            if (frequencyTransmission.Position == null || ownPosition == null || _audioSim == null)
+                return Task.CompletedTask;
+
+            // Check cache
+            var cacheKey = (peerId, frequencyTransmission.Khz);
+            var now = DateTime.UtcNow;
+
+            if (_audioParamsCache.TryGetValue(cacheKey, out var cached) &&
+                (now - cached.LastCalculated) < _audioParamsCacheDuration)
+            {
+                _playbackService?.UpdateStreamParams(streamId, cached.Params);
+                return Task.CompletedTask;
+            }
+
+            // Calculate
+            _tunedFrequencies.TryGetValue(frequencyTransmission.Khz, out var receiverData);
+            if (receiverData == null) return Task.CompletedTask;
+
+            var receiverSensitivityDb = RadioStationPreset.IsVHF(frequencyTransmission.Khz)
+                ? receiverData.RadioStation.Preset.RxSensitivity_VHF_dBm
+                : receiverData.RadioStation.Preset.RxSensitivity_UHF_dBm;
+
+            var audioParams = _audioSim.CalculateAudioParams(
+                frequencyTransmission.Position.X, frequencyTransmission.Position.Y, frequencyTransmission.Position.Z,
+                ownPosition.X, ownPosition.Y, ownPosition.Z,
+                frequencyTransmission.Khz, frequencyTransmission.TxPowerWatts, receiverSensitivityDb);
+
+            // Update cache
+            _audioParamsCache[cacheKey] = new AudioParamsCacheEntry
+            {
+                Params = audioParams,
+                LastCalculated = now
+            };
+
+            // Update stream params asynchronously
+            _playbackService?.UpdateStreamParams(streamId, audioParams);
+            _signalStrengthTracker.UpdateSignalStrength(audioParams.RadioFrequencyKHz, audioParams);
+            
+            #if DEBUG
+            _logger.LogDebug($"Updated audio params for {streamId}: Gain={audioParams.Gain}, SNR={audioParams.SNR_dB}");
+            #endif
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating audio params for {StreamId}", streamId);
+        }
+
+        return Task.CompletedTask;
     }
 
     // Periodical Cache cleanup

@@ -112,12 +112,12 @@ public class RtpAudioSender : IDisposable
             }
             else
             {
-                // Configure for low latency VoIP
-                _opusEncoder.Bitrate = 128000; // 128 kbps
-                _opusEncoder.Complexity = 5; // Medium complexity
+                _opusEncoder.Bitrate = 98000; 
+                _opusEncoder.Complexity = 8;
                 _opusEncoder.SignalType = OpusSignal.OPUS_SIGNAL_MUSIC;
-                _opusEncoder.UseInbandFEC = true; // Forward error correction
-                _opusEncoder.PacketLossPercent = 5; // Assume 5% loss for FEC tuning
+                _opusEncoder.UseInbandFEC = true;
+                _opusEncoder.PacketLossPercent = 15;
+                _opusEncoder.ForceMode = OpusMode.MODE_SILK_ONLY;
             }
         }
 
