@@ -39,6 +39,7 @@ public class TerminalGuiServer : IDisposable
 
     public void Start()
     {
+        Console.OutputEncoding = System.Text.Encoding.UTF8;
         Terminal.Gui.Application.Init();
 
         try
@@ -74,6 +75,11 @@ public class TerminalGuiServer : IDisposable
     {
         var top = Application.Top;
 
+        var useUnicode = !OperatingSystem.IsWindows();
+        var freqTab = useUnicode ? "📡 Frequencies" : "≋ Frequencies";
+        var clientTab = useUnicode ? "👥 Clients" : "☺ Clients";
+        var logTab = useUnicode ? "📝 Logs" : "▤ Logs";
+        
         var schemeDefault = new ColorScheme
         {
             Normal = Terminal.Gui.Attribute.Make(Color.Gray, Color.Black),
@@ -123,9 +129,9 @@ public class TerminalGuiServer : IDisposable
             ColorScheme = schemeDefault
         };
 
-        _tabView.AddTab(new TabView.Tab("📡 Frequencies", CreateFrequenciesView(schemeFrame, schemeHeader)), false);
-        _tabView.AddTab(new TabView.Tab("👥 Clients", CreateClientsView(schemeFrame, schemeHeader)), false);
-        _tabView.AddTab(new TabView.Tab("📝 Logs", CreateLogsView(schemeFrame, schemeHeader)), false);
+        _tabView.AddTab(new TabView.Tab(freqTab, CreateFrequenciesView(schemeFrame, schemeHeader)), false);
+        _tabView.AddTab(new TabView.Tab(clientTab, CreateClientsView(schemeFrame, schemeHeader)), false);
+        _tabView.AddTab(new TabView.Tab(logTab, CreateLogsView(schemeFrame, schemeHeader)), false);
 
         top.Add(_tabView);
 
