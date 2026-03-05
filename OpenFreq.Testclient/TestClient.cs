@@ -120,7 +120,6 @@ public class TestClient
 
 public class TestClientWrapper : IDisposable
 {
-    const int SAMPLE_RATE = 48000;
     const int CHANNELS = 1;
     
     private readonly Queue<byte> _audioBuffer = new();
@@ -176,7 +175,7 @@ public class TestClientWrapper : IDisposable
         }
 
         // Initialize playback stream
-        _playbackStream = Bass.CreateStream(SAMPLE_RATE, CHANNELS, BassFlags.Default, StreamProcedureType.Push);
+        _playbackStream = Bass.CreateStream(OpenFreqRtcClient.SAMPLE_RATE, CHANNELS, BassFlags.Default, StreamProcedureType.Push);
         if (_playbackStream == 0)
         {
             throw new Exception($"Failed to create playback stream: {Bass.LastError}");
@@ -246,7 +245,7 @@ public class TestClientWrapper : IDisposable
         Bass.CurrentRecordingDevice = 0;
 
         // Start recording with callback that sends via client
-        _recordHandle = Bass.RecordStart(SAMPLE_RATE, CHANNELS, BassFlags.RecordPause, RecordProcedure);
+        _recordHandle = Bass.RecordStart(OpenFreqRtcClient.SAMPLE_RATE, CHANNELS, BassFlags.RecordPause, RecordProcedure);
         if (_recordHandle == 0)
         {
             Console.WriteLine($"Failed to start recording: {Bass.LastError}");

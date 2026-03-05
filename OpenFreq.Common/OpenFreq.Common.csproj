@@ -13,6 +13,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\BMSAudioSim\OpenFreqAudio\OpenFreqAudio.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Reference Include="Microsoft.Extensions.Logging.Abstractions">
       <HintPath>..\..\..\.nuget\packages\microsoft.extensions.logging.abstractions\10.0.0\lib\net9.0\Microsoft.Extensions.Logging.Abstractions.dll</HintPath>
     </Reference>

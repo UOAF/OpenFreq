@@ -1,4 +1,3 @@
-using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
@@ -189,24 +188,22 @@ public class AudioStreamServer
     }
 
     /// <summary>
-    /// Parses a UDP RTP audio packet with metadata
-    /// Packet format: [12 bytes RTP header][2 bytes: header length][N bytes: JSON metadata][remaining: audio data]
+    /// Parses a UDP RTP audio packet with metadata in the header extension
+    /// Packet format: [12 bytes RTP header][4 bytes ext header][N bytes JSON metadata + padding][audio data]
     /// </summary>
     private (RtpPacket? rtpPacket, AudioPacketMetadata? metadata, byte[]? audioData) ParseRtpAudioPacket(
-        byte[] packet, 
+        byte[] packet,
         string clientId)
     {
         try
         {
-            // Minimum packet size: 12 bytes RTP + 2 bytes header length + metadata
-            if (packet.Length < RtpPacket.HEADER_SIZE + 4)
+            if (packet.Length < RtpPacket.HEADER_SIZE)
             {
                 if (_logger.IsEnabled(LogLevel.Warning))
                     _logger.LogWarning("Packet too small: {Length} bytes", packet.Length);
                 return (null, null, null);
             }
 
-            // Parse RTP header
             var rtpPacket = RtpPacket.Parse(packet);
             if (rtpPacket == null)
             {
@@ -215,48 +212,20 @@ public class AudioStreamServer
                 return (null, null, null);
             }
 
-            // RTP payload contains: [2 bytes header len][JSON metadata][audio data]
-            var payload = rtpPacket.Payload;
-            
-            if (payload.Length < 4)
-            {
-                if (_logger.IsEnabled(LogLevel.Warning))
-                    _logger.LogWarning("RTP payload too small: {Length} bytes", payload.Length);
+            // Keepalive packets have no extension — silently ignore
+            if (rtpPacket.ExtensionData is not { Length: > 0 })
                 return (null, null, null);
-            }
 
-            // Read metadata header length (first 2 bytes of payload, big-endian)
-            var headerLength = BinaryPrimitives.ReadUInt16BigEndian(payload.AsSpan(0, 2));
-            
-            // Validate header length
-            if (headerLength > payload.Length - 2)
-            {
-                if (_logger.IsEnabled(LogLevel.Warning))
-                    _logger.LogWarning("Invalid metadata header length: {HeaderLength}, payload size: {PayloadLength}", 
-                        headerLength, payload.Length);
-                return (null, null, null);
-            }
-
-            // Extract metadata JSON
-            var metadataBytes = new byte[headerLength];
-            Array.Copy(payload, 2, metadataBytes, 0, headerLength);
-            var metadataJson = Encoding.UTF8.GetString(metadataBytes);
-            
-            // Parse metadata
+            var metadataJson = Encoding.UTF8.GetString(rtpPacket.ExtensionData).TrimEnd('\0');
             var metadata = Json.Instance.Deserialize<AudioPacketMetadata>(metadataJson);
             if (metadata == null)
             {
                 if (_logger.IsEnabled(LogLevel.Warning))
-                    _logger.LogWarning("Failed to deserialize metadata");
+                    _logger.LogWarning("Failed to deserialize metadata from client {ClientId}", clientId);
                 return (null, null, null);
             }
 
-            // Extract audio data (everything after metadata in payload)
-            var audioDataLength = payload.Length - 2 - headerLength;
-            var audioData = new byte[audioDataLength];
-            Array.Copy(payload, 2 + headerLength, audioData, 0, audioDataLength);
-
-            return (rtpPacket, metadata, audioData);
+            return (rtpPacket, metadata, rtpPacket.Payload);
         }
         catch (Exception ex)
         {
@@ -282,23 +251,10 @@ public class AudioStreamServer
             PacketsSent = 0
         });
 
-        // Build metadata payload: [2 bytes header len][JSON metadata][audio data]
-        metadata.ServerSendTimestamp =  DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        // Stamp server send time into metadata, then place in header extension
+        metadata.ServerSendTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var metadataJson = Json.Instance.Serialize(metadata);
         var metadataBytes = Encoding.UTF8.GetBytes(metadataJson);
-        var headerLength = (ushort)metadataBytes.Length;
-
-        var payload = new byte[2 + metadataBytes.Length + audioData.Length];
-        
-        // Write header length (big-endian)
-        payload[0] = (byte)(headerLength >> 8);
-        payload[1] = (byte)(headerLength & 0xFF);
-        
-        // Write metadata
-        Array.Copy(metadataBytes, 0, payload, 2, metadataBytes.Length);
-        
-        // Write audio data
-        Array.Copy(audioData, 0, payload, 2 + metadataBytes.Length, audioData.Length);
 
         // Create new RTP packet with server's sequence number and SSRC
         var rtpPacket = new RtpPacket
@@ -308,8 +264,10 @@ public class AudioStreamServer
             SequenceNumber = rtpState.NextSequence,       // SERVER's sequence for this receiver
             Timestamp = originalRtpPacket.Timestamp,      // Preserve original timestamp for jitter calc
             Ssrc = _serverSsrc,                           // Server is the source
-            Payload = payload,
-            Marker =  originalRtpPacket.Marker            // Currently unused but still preserve it
+            Marker = originalRtpPacket.Marker,            // Currently unused but still preserve it
+            ExtensionProfile = RtpPacket.OpenFreqProfile,
+            ExtensionData = metadataBytes,
+            Payload = audioData
         };
 
         // Update receiver state

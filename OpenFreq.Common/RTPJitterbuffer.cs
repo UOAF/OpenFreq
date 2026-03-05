@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 using OpenFreq.Common.Rtp;
 
 namespace OpenFreq.Common;
@@ -14,7 +15,7 @@ public class RtpJitterBuffer
     private class BufferedPacket
     {
         public required RtpPacket Packet { get; set; }
-        public DateTime ReceivedTime { get; set; }
+        public long ReceivedTicks { get; set; }
         public uint PlayoutTimestamp { get; set; }
     }
         
@@ -26,9 +27,9 @@ public class RtpJitterBuffer
     // State
     private ushort _nextExpectedSequence;
     private uint _baseTimestamp;
-    private DateTime _baseTime = DateTime.MinValue;
-    private DateTime _playoutStartTime = DateTime.MinValue;
-    private DateTime _lastPacketReceived = DateTime.MinValue;
+    private long _baseTimeTicks;
+    private long _playoutStartTicks;
+    private long _lastPacketReceivedTicks;
     private double _lastPacketTimestamp;
     private bool _initialized;
         
@@ -64,12 +65,11 @@ public class RtpJitterBuffer
         if (!_initialized)
         {
             _baseTimestamp = packet.Timestamp;
-            _baseTime = DateTime.UtcNow;
-            _playoutStartTime = _baseTime.AddMilliseconds(_targetBufferMs);  // Wait before playing
+            _baseTimeTicks = Stopwatch.GetTimestamp();
+            _playoutStartTicks = _baseTimeTicks + (long)(_targetBufferMs / 1000.0 * Stopwatch.Frequency);
             _initialized = true;
-    
-            _logger.LogInformation("Initialized: buffer={BufferMs}ms, will start playout at {PlayoutStartTime:HH:mm:ss.fff}", 
-                _targetBufferMs, _playoutStartTime);
+
+            _logger.LogInformation("Initialized: buffer={BufferMs}ms", _targetBufferMs);
         }
 
         lock (_buffer)
@@ -90,7 +90,7 @@ public class RtpJitterBuffer
             var bufferedPacket = new BufferedPacket
             {
                 Packet = packet,
-                ReceivedTime = DateTime.UtcNow,
+                ReceivedTicks = Stopwatch.GetTimestamp(),
                 PlayoutTimestamp = packet.Timestamp
             };
 
@@ -120,18 +120,15 @@ public class RtpJitterBuffer
         if (!_initialized || _buffer.Count == 0)
             return null;
         
-        var now = DateTime.UtcNow;
-    
-        if (now < _playoutStartTime)
-        {
+        var nowTicks = Stopwatch.GetTimestamp();
+
+        if (nowTicks < _playoutStartTicks)
             return null;
-        }
-    
-        // Calculate elapsed time since playout started
-        var elapsedMs = (now - _playoutStartTime).TotalMilliseconds;
-    
+
+        var elapsedTicks = nowTicks - _playoutStartTicks;
+
         // Calculate which timestamp we should be playing now
-        uint playoutTimestamp = _baseTimestamp + (uint)((elapsedMs / 1000.0) * _sampleRate);
+        uint playoutTimestamp = _baseTimestamp + (uint)((double)elapsedTicks * _sampleRate / Stopwatch.Frequency);
 
         KeyValuePair<ushort, BufferedPacket> nextPacket;
         lock (_buffer)
@@ -195,18 +192,17 @@ public class RtpJitterBuffer
         if (!_initialized || _buffer.Count == 0)
             return null;
         
-        var now = DateTime.UtcNow;
-    
-        if (now < _playoutStartTime)
+        var nowTicks = Stopwatch.GetTimestamp();
+
+        if (nowTicks < _playoutStartTicks)
         {
             return null;
         }
-    
-        // Calculate elapsed time since playout started
-        var elapsedMs = (now - _playoutStartTime).TotalMilliseconds;
-    
+
+        var elapsedTicks = nowTicks - _playoutStartTicks;
+
         // Calculate which timestamp we should be playing now
-        uint playoutTimestamp = _baseTimestamp + (uint)((elapsedMs / 1000.0) * _sampleRate);
+        uint playoutTimestamp = _baseTimestamp + (uint)((double)elapsedTicks * _sampleRate / Stopwatch.Frequency);
 
         lock (_buffer)
         {
@@ -246,22 +242,22 @@ public class RtpJitterBuffer
     /// </summary>
     private void MeasureJitter(BufferedPacket packet, double expectedTimestampMs)
     {
-        if (_lastPacketReceived == DateTime.MinValue)
+        if (_lastPacketReceivedTicks == 0)
         {
             // First packet - just record baseline
-            _lastPacketReceived = packet.ReceivedTime;
+            _lastPacketReceivedTicks = packet.ReceivedTicks;
             _lastPacketTimestamp = expectedTimestampMs;
             return;
         }
-    
-        double actualIntervalMs = (packet.ReceivedTime - _lastPacketReceived).TotalMilliseconds;
+
+        double actualIntervalMs = (packet.ReceivedTicks - _lastPacketReceivedTicks) * 1000.0 / Stopwatch.Frequency;
         double expectedIntervalMs = expectedTimestampMs - _lastPacketTimestamp;
     
         // Ignore abnormal timestamp deltas (first packet often has accumulated frames)
         if (expectedIntervalMs > 150)
         {
             _logger.LogWarning("Ignoring abnormal timestamp delta: {DeltaMs:F0}ms", expectedIntervalMs);
-            _lastPacketReceived = packet.ReceivedTime;
+            _lastPacketReceivedTicks = packet.ReceivedTicks;
             _lastPacketTimestamp = expectedTimestampMs;
             return;
         }
@@ -272,7 +268,7 @@ public class RtpJitterBuffer
             _logger.LogInformation("Transmission gap detected ({IntervalMs:F0}ms), resetting jitter measurement", actualIntervalMs);
             _jitterSamples.Clear();
             _measuredJitterMs = 0;
-            _lastPacketReceived = packet.ReceivedTime;
+            _lastPacketReceivedTicks = packet.ReceivedTicks;
             _lastPacketTimestamp = expectedTimestampMs;
             return;
         }
@@ -289,7 +285,7 @@ public class RtpJitterBuffer
             _measuredJitterMs = _jitterSamples.Average();
         }
     
-        _lastPacketReceived = packet.ReceivedTime;
+        _lastPacketReceivedTicks = packet.ReceivedTicks;
         _lastPacketTimestamp = expectedTimestampMs;
     }
         
@@ -354,9 +350,9 @@ public class RtpJitterBuffer
             _buffer.Clear();
             _jitterSamples.Clear();
             _initialized = false;
-            _baseTime = DateTime.MinValue;
-            _playoutStartTime = DateTime.MinValue;
-            _lastPacketReceived = DateTime.MinValue;
+            _baseTimeTicks = 0;
+            _playoutStartTicks = 0;
+            _lastPacketReceivedTicks = 0;
             _lastPacketTimestamp = 0;
             _packetsReceived = 0;
             _packetsLost = 0;

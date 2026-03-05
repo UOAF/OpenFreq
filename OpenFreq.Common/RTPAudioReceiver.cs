@@ -328,24 +328,14 @@ public class RtpAudioReceiver : IDisposable
     {
         try
         {
-            // Parse metadata from payload
-            // Format: [2 bytes metadata len][JSON metadata][audio data]
-            if (packet.Payload.Length < 2)
+            // Parse metadata from RTP header extension
+            if (packet.ExtensionData is not { Length: > 0 })
             {
-                _logger.LogWarning("Payload too small");
+                _logger.LogWarning("Missing RTP header extension metadata");
                 return;
             }
 
-            var metadataLength = (ushort)((packet.Payload[0] << 8) | packet.Payload[1]);
-                
-            if (metadataLength + 2 > packet.Payload.Length)
-            {
-                _logger.LogWarning("Invalid metadata length: {MetadataLength}", metadataLength);
-                return;
-            }
-
-            // Extract metadata JSON
-            var metadataJson = Encoding.UTF8.GetString(packet.Payload, 2, metadataLength);
+            var metadataJson = Encoding.UTF8.GetString(packet.ExtensionData).TrimEnd('\0');
             var metadata = JsonSerializer.Deserialize(metadataJson, OpenFreqJsonContext.Default.AudioPacketMetadata);
 
             if (metadata == null)
@@ -353,15 +343,12 @@ public class RtpAudioReceiver : IDisposable
                 _logger.LogWarning("Failed to parse metadata");
                 return;
             }
-            
+
             // Save metadata for PLC frequency reconstruction
             _lastValidMetadata = metadata;
 
-            // Extract audio data
-            var audioDataStart = 2 + metadataLength;
-            var audioDataLength = packet.Payload.Length - audioDataStart;
-            var audioData = new byte[audioDataLength];
-            Array.Copy(packet.Payload, audioDataStart, audioData, 0, audioDataLength);
+            // Payload is pure audio data
+            var audioData = packet.Payload;
 
             // Decode audio if Opus is enabled
             byte[] decodedAudio;
@@ -481,36 +468,10 @@ public class RtpAudioReceiver : IDisposable
     
     /// <summary>
     /// Extract Opus-encoded audio data from RTP packet payload
-    /// Payload format: [2 bytes metadata len][JSON metadata][audio data]
     /// </summary>
-    private byte[]? ExtractOpusDataFromPacket(RtpPacket packet)
+    private static byte[]? ExtractOpusDataFromPacket(RtpPacket packet)
     {
-        try
-        {
-            if (packet.Payload.Length < 2)
-                return null;
-
-            var metadataLength = (ushort)((packet.Payload[0] << 8) | packet.Payload[1]);
-            
-            if (metadataLength + 2 > packet.Payload.Length)
-                return null;
-
-            // Extract audio data (after metadata)
-            var audioDataStart = 2 + metadataLength;
-            var audioDataLength = packet.Payload.Length - audioDataStart;
-            
-            if (audioDataLength <= 0)
-                return null;
-            
-            var audioData = new byte[audioDataLength];
-            Array.Copy(packet.Payload, audioDataStart, audioData, 0, audioDataLength);
-            
-            return audioData;
-        }
-        catch
-        {
-            return null;
-        }
+        return packet.Payload.Length > 0 ? packet.Payload : null;
     }
 
     /// <summary>
