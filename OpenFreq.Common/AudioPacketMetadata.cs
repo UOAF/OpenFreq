@@ -32,8 +32,8 @@ public class AudioPacketMetadata
     public bool HasAnyBeginMarker => Frequencies.Any(f => f.BeginMarker);
 }
 
-// Position data structure
-public class Position
+// Vector data structure
+public class Vector3
 {
     [JsonPropertyName("x")]
     public double X { get; set; }
@@ -42,16 +42,16 @@ public class Position
     [JsonPropertyName("z")]
     public double Z { get; set; }
     
-    public Position() {}
+    public Vector3() {}
 
-    public Position(double x, double y, double z)
+    public Vector3(double x, double y, double z)
     {
         X = x;
         Y = y;
         Z = z;
     }
 
-    public Position((double, double, double) data)
+    public Vector3((double, double, double) data)
     {
         X = data.Item1;
         Y = data.Item2;
@@ -62,4 +62,6 @@ public class Position
     {
         return $"{X},{Y},{Z}";
     }
+    
+    public (double, double, double) ToTuple() => (X, Y, Z);
 }

@@ -62,6 +62,9 @@ public class AcmiAircraft
     
     /// <summary>Position and orientation data</summary>
     public AircraftTransform Transform { get; set; } = new();
+
+    /// <summary>Air speed (mach))</summary>
+    public float Mach { get; set; } = 0f;
     
     /// <summary>Last update timestamp</summary>
     public DateTime LastUpdate { get; set; } = DateTime.UtcNow;

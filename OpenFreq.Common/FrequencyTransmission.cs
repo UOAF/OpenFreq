@@ -28,7 +28,10 @@ public class FrequencyTransmission
     public bool EndMarker { get; set; }
 
     [JsonPropertyName("position")]
-    public Position? Position { get; set; }
+    public Vector3? Position { get; set; }
+    
+    [JsonPropertyName("velocity")]
+    public Vector3? Velocity { get; set; }
     
     [JsonPropertyName("in3d")]
     public bool In3d { get; set; }
@@ -40,7 +43,7 @@ public class FrequencyTransmission
     {
     }
 
-    public FrequencyTransmission(int khz, double txPowerWatts, double ppm, Position? position, bool in3d, bool beginMarker = false,
+    public FrequencyTransmission(int khz, double txPowerWatts, double ppm, Vector3? position, Vector3? velocity, bool in3d, bool beginMarker = false,
         bool endMarker = false)
     {
         Khz = khz;
@@ -49,6 +52,7 @@ public class FrequencyTransmission
         BeginMarker = beginMarker;
         EndMarker = endMarker;
         Position = position;
+        Velocity = velocity;
         In3d = in3d;
     }
 

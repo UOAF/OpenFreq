@@ -24,7 +24,7 @@ public class ChannelGroupData
     public RadioStationData RadioStationData { get; set; } = new()
     {
         Preset = RadioStationPresets.AWACS,
-        Position = new Position(0, 0, 0),
+        Vector3 = new Vector3(0, 0, 0),
         Ppm = RadioStationPresets.AWACS.GetRandomPpm()
     };
 }

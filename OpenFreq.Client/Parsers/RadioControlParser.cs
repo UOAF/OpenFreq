@@ -10,7 +10,6 @@ namespace FalconRadioService.Parsers;
 [SuppressMessage("ReSharper", "InconsistentNaming")]
 public static class RadioControlParser
 {
-    // CORRECTED Structure offsets - VERSION_NUMBER is NOT a member!
     private const int OFFSET_PORT = 0;              // int (4 bytes)
     private const int OFFSET_ADDRESS = 4;           // char[64]
     private const int OFFSET_PASSWORD = 68;         // char[64]

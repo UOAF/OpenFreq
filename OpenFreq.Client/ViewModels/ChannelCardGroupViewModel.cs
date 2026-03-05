@@ -492,7 +492,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
             Longitude,
             TheaterCoordinateConverter.CoordinateSystem.BMS_HEIGHTMAP_COORDINATE_SYTEM);
 
-        RadioStationData.Position = new Position(
+        RadioStationData.Vector3 = new Vector3(
             xy.x,
             xy.y,
             AltitudeFeet / FeetPerMeter);

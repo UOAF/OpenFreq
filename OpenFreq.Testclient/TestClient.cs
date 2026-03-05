@@ -316,10 +316,10 @@ public class TestClientWrapper : IDisposable
                 }
 
                 // Send complete frame to all transmitting frequencies
-                var transmitData = new List<(int frequencyKhz, double txPowerWatts, double ppm, Position? position)>();
+                var transmitData = new List<(int frequencyKhz, double txPowerWatts, double ppm, Vector3? position, Vector3? velocity)>();
                 foreach (var frequency in _isTransmitting.Keys)
                 {
-                    transmitData.Add((frequency, 50, 0, new Position()));
+                    transmitData.Add((frequency, 50, 0, new Vector3(), null));
                 }
                 _client.SendAudio(frameData, transmitData, false);
             }

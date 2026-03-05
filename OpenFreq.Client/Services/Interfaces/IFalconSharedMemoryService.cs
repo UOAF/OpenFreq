@@ -20,6 +20,11 @@ public interface IFalconSharedMemoryService : IDisposable, ILifecycleService
     /// Current flight position (null if disconnected)
     /// </summary>
     FlightPosition? Position { get; }
+    
+    /// <summary>
+    /// Current flight velocity (null if disconnected)
+    /// </summary>
+    FlightVelocity? Velocity { get; }
 
     /// <summary>
     /// Theater terrain directory (read once on connect, null if never connected)

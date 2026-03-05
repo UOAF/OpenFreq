@@ -33,6 +33,11 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
     private const int OFFSET_X = 0; // float at byte 0
     private const int OFFSET_Y = 4; // float at byte 4
     private const int OFFSET_Z = 8; // float at byte 8
+    
+    private const int OFFSET_X_DOT = 12; // float at byte 0
+    private const int OFFSET_Y_DOT = 16; // float at byte 4
+    private const int OFFSET_Z_DOT = 20; // float at byte 8
+    
     private const int OFFSET_HSIBITS = 232; // hsiBits (uint) at byte 232
 
     private ServiceState _state = ServiceState.Stopped;
@@ -48,6 +53,7 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
     private IntPtr _lpStringBaseAddress = IntPtr.Zero;
 
     private FlightPosition? _position;
+    private FlightVelocity? _velocity;
     private string? _theaterTerrainDir;
     private readonly object _dataLock = new();
     private bool _disposed;
@@ -73,6 +79,15 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
         {
             lock (_dataLock)
                 return _position;
+        }
+    }
+    
+    public FlightVelocity? Velocity
+    {
+        get
+        {
+            lock (_dataLock)
+                return _velocity;
         }
     }
 
@@ -361,8 +376,15 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
 
             // For some reason, the BMS altitude is inverted
             float z = BitConverter.ToSingle(ReadBytes(_lpPrimaryBaseAddress, OFFSET_Z, 4), 0) * -1;
+            
+            // Read the velocity
+            float xDot = BitConverter.ToSingle(ReadBytes(_lpPrimaryBaseAddress, OFFSET_X_DOT, 4), 0);
+            float yDot = BitConverter.ToSingle(ReadBytes(_lpPrimaryBaseAddress, OFFSET_Y_DOT, 4), 0);
+            
+            // Inverted
+            float zDot = BitConverter.ToSingle(ReadBytes(_lpPrimaryBaseAddress, OFFSET_Z_DOT, 4), 0) * -1;
 
-            // Read hsiBits (uint at offset 708)
+            // Read hsiBits
             uint hsiBits = BitConverter.ToUInt32(ReadBytes(_lpPrimaryBaseAddress, OFFSET_HSIBITS, 4), 0);
             bool isFlying = (hsiBits & HSI_FLYING_BIT) != 0;
 
@@ -373,11 +395,12 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
 
             _wasFlying = isFlying;
 
-            // Update position
+            // Update position & velocity
             lock (_dataLock)
             {
                 // For some reason BMS switches x & y in shmem, correct this
                 _position = new FlightPosition((int)y, (int)x, (int)z);
+                _velocity = new FlightVelocity(yDot, xDot, zDot);
                 _isFlying = isFlying;
             }
 
@@ -429,6 +452,7 @@ public class FalconSharedMemoryService : IFalconSharedMemoryService
 
     public ServiceState State { get; }
     public FlightPosition? Position { get; }
+    private FlightVelocity? _velocity;
     public string? TheaterTerrainDir { get; }
     public bool? IsFlying { get; }
     public double PollingFrequencyHz { get; set; }

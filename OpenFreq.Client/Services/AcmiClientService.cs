@@ -643,7 +643,19 @@ public class AcmiClientService : IAcmiClientService
                 {
                     aircraft.Coalition = value.ToString();
                 }
-                // Skip all other properties (IAS, CAS, Mach, AOA, Health, etc.)
+                else if (key.SequenceEqual("Mach".AsSpan()))
+                {
+                    try
+                    {
+                        aircraft.Mach = float.Parse(value.ToString());
+                    }
+                    catch (Exception e)
+                    {
+                        _logger.LogError("{ToString}", e.ToString());
+                       aircraft.Mach = 0;
+                    }
+                }
+                // Skip all other properties (IAS, CAS, AOA, Health, etc.)
             }
 
             pos = propEnd + 1;

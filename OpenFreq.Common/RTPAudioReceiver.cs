@@ -294,6 +294,7 @@ public class RtpAudioReceiver : IDisposable
                             txPowerWatts: freq.TxPowerWatts,
                             ppm: freq.Ppm,
                             position: freq.Position,
+                            velocity: freq.Velocity,
                             in3d: freq.In3d,
                             beginMarker: false,
                             endMarker: false
