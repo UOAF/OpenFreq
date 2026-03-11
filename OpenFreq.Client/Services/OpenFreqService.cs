@@ -712,6 +712,11 @@ public class OpenFreqService : IOpenFreqService
             _ => Status
         };
 
+        if (e.State == ConnectionState.Disconnected)
+        {
+            _tunedFrequencies.Clear();
+        }
+
         ConnectionStateChanged?.Invoke(this, e.State);
     }
 

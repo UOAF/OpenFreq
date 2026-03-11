@@ -138,6 +138,7 @@ public class OpenFreqRtcClient : IDisposable
         catch (Exception ex)
         {
             _isConnected = false;
+            _isAuthenticated = false;
             OnConnectionStateChanged(ConnectionState.Disconnected);
             OnError($"Connection failed: {ex.Message}");
             throw;
@@ -335,6 +336,7 @@ public class OpenFreqRtcClient : IDisposable
                     await _webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Server closing",
                         CancellationToken.None);
                     _isConnected = false;
+                    _isAuthenticated = false;
                     OnConnectionStateChanged(ConnectionState.Disconnected);
                     break;
                 }
@@ -360,6 +362,7 @@ public class OpenFreqRtcClient : IDisposable
         {
             OnError($"WebSocket error: {ex.Message}");
             _isConnected = false;
+            _isAuthenticated = false;
             OnConnectionStateChanged(ConnectionState.Disconnected);
         }
     }
