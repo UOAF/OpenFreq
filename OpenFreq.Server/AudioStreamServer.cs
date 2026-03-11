@@ -17,7 +17,7 @@ namespace OpenFreq.Server;
 public class AudioStreamServer
 {
     private readonly ConcurrentDictionary<string, AudioStreamSession> _sessions = new();
-    private readonly ConcurrentDictionary<string, ReceiverRtpState> _receiverRtpStates = new();
+    private readonly ConcurrentDictionary<(string clientId, uint Ssrc), ReceiverRtpState> _receiverRtpStates = new();
     private readonly FrequencyChannelManager _channelManager;
     private readonly ConcurrentDictionary<string, ClientSession> _clients;
     private readonly ILogger<AudioStreamServer> _logger;
@@ -25,9 +25,6 @@ public class AudioStreamServer
     private readonly int _basePort;
     private int _nextPortOffset = 0;
     private CancellationTokenSource _cts = new();
-    
-    // Server's SSRC (synchronization source identifier)
-    private readonly uint _serverSsrc = (uint)Random.Shared.Next();
 
     // High-performance logging delegates
     private static readonly Action<ILogger, string, int, Exception?> _logAudioSessionCreated =
@@ -60,7 +57,7 @@ public class AudioStreamServer
         _basePort = basePort;
         _udpManager = new UdpStreamManager(loggerFactory.CreateLogger<UdpStreamManager>());
         
-        _logger.LogInformation("AudioStreamServer initialized as RTP translator (SSRC: 0x{Ssrc:X8})", _serverSsrc);
+        _logger.LogInformation("AudioStreamServer initialized");
     }
 
     public async Task<int> CreateAudioSession(string clientId)
@@ -244,8 +241,9 @@ public class AudioStreamServer
         AudioPacketMetadata metadata,
         byte[] audioData)
     {
+        var senderSsrc = originalRtpPacket.Ssrc;
         // Get or create RTP state for this receiver
-        var rtpState = _receiverRtpStates.GetOrAdd(receiverClientId, _ => new ReceiverRtpState
+        var rtpState = _receiverRtpStates.GetOrAdd((receiverClientId, senderSsrc), _ => new ReceiverRtpState
         {
             NextSequence = 0,
             PacketsSent = 0
@@ -256,14 +254,14 @@ public class AudioStreamServer
         var metadataJson = Json.Instance.Serialize(metadata);
         var metadataBytes = Encoding.UTF8.GetBytes(metadataJson);
 
-        // Create new RTP packet with server's sequence number and SSRC
+        // Create new RTP packet with server's sequence number
         var rtpPacket = new RtpPacket
         {
             Version = 2,
             PayloadType = originalRtpPacket.PayloadType,  // Preserve payload type (Opus/PCM)
             SequenceNumber = rtpState.NextSequence,       // SERVER's sequence for this receiver
             Timestamp = originalRtpPacket.Timestamp,      // Preserve original timestamp for jitter calc
-            Ssrc = _serverSsrc,                           // Server is the source
+            Ssrc = originalRtpPacket.Ssrc,                // Preserve original SSRC
             Marker = originalRtpPacket.Marker,            // Currently unused but still preserve it
             ExtensionProfile = RtpPacket.OpenFreqProfile,
             ExtensionData = metadataBytes,
@@ -323,10 +321,11 @@ public class AudioStreamServer
             _udpManager.RemoveClient(clientId);
             session.UdpClient.Close();
             session.UdpClient.Dispose();
-            
-            // Clean up RTP state
-            _receiverRtpStates.TryRemove(clientId, out _);
-            
+
+            // Remove all per-SSRC RTP states for this receiver
+            foreach (var key in _receiverRtpStates.Keys.Where(k => k.clientId == clientId).ToList())
+                _receiverRtpStates.TryRemove(key, out _);
+
             _logSessionRemoved(_logger, clientId, null);
         }
     }
@@ -339,18 +338,17 @@ public class AudioStreamServer
     /// <summary>
     /// Get RTP statistics for a receiver
     /// </summary>
-    public ReceiverRtpStats? GetReceiverRtpStats(string clientId)
+    public IEnumerable<ReceiverRtpStats> GetReceiverRtpStats(string clientId)
     {
-        if (_receiverRtpStates.TryGetValue(clientId, out var state))
-        {
-            return new ReceiverRtpStats
+        return _receiverRtpStates
+            .Where(kvp => kvp.Key.clientId == clientId)
+            .Select(kvp => new ReceiverRtpStats
             {
                 ClientId = clientId,
-                PacketsSent = state.PacketsSent,
-                CurrentSequence = state.NextSequence
-            };
-        }
-        return null;
+                Ssrc = kvp.Key.Ssrc,
+                PacketsSent = kvp.Value.PacketsSent,
+                CurrentSequence = kvp.Value.NextSequence
+            });
     }
 
     public void Stop()
@@ -385,6 +383,9 @@ public class ReceiverRtpState
 public class ReceiverRtpStats
 {
     public string ClientId { get; set; } = "";
+    
+    public uint Ssrc {get; set; }
+    
     public long PacketsSent { get; set; }
     public ushort CurrentSequence { get; set; }
 }
