@@ -20,7 +20,7 @@ public sealed class RtpJitterBufferPool : IDisposable
     /// <summary>
     /// How long a source must be silent before it is pruned from the pool.
     /// </summary>
-    public int SourceTimeoutMs { get; set; } = 5_000;
+    public int SourceTimeoutMs { get; set; } = 5 * 60_000;
 
     /// <summary>Fired when a new SSRC is seen for the first time.</summary>
     public event Action<uint>? SourceAdded;
