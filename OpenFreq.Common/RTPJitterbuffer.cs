@@ -317,7 +317,7 @@ public class RtpJitterBuffer
     private void AdjustPlayoutClock()
     {
         // _buffer is already locked by the caller (GetNextPacket)
-        int targetPackets = (int)Math.Round(_targetBufferMs / 20.0); // 20ms frames
+        int targetPackets = (int)Math.Round(_targetBufferMs / RtpAudioReceiver.PLAYOUT_INTERVAL_MS);
         int error = _buffer.Count - targetPackets;
 
         if (Math.Abs(error) <= 1)

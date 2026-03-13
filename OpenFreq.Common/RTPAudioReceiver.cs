@@ -42,7 +42,7 @@ public class RtpAudioReceiver : IDisposable
     private int _pruneCountdown = 50;
 
     private const int OPUS_FRAME_SAMPLES = 960; // 20ms at 48kHz (matches sender)
-    private const int PLAYOUT_INTERVAL_MS = 20;
+    public static int PLAYOUT_INTERVAL_MS = 20;
 
     public RtpAudioReceiver(ILoggerFactory loggerFactory, UdpClient udpClient, bool opusEnabled = true,
         int initialBufferMs = 150)
