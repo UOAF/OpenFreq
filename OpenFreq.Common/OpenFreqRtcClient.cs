@@ -13,9 +13,8 @@ public class OpenFreqRtcClient : IDisposable
 {
     // Audio configuration constants
     public const int SAMPLE_RATE = RadioPlayback.SampleRate;
-    public const int CHANNELS = 1;
     public const int FRAME_SIZE_MS = 20;
-    public const int OPUS_SAMPLES_PER_FRAME = SAMPLE_RATE / (1000 / FRAME_SIZE_MS) * CHANNELS;
+    public const int OPUS_SAMPLES_PER_FRAME = SAMPLE_RATE / (1000 / FRAME_SIZE_MS);
     public const int DEFAULT_PORT = 9987;
 
     // Events for UI integration
@@ -33,9 +32,6 @@ public class OpenFreqRtcClient : IDisposable
     private RtpAudioReceiver? _rtpReceiver;
     private RtpAudioSender? _rtpSender;
 
-    // set by the server
-    private bool _opusCompressionEnabled = true;
-
     // Connection state
     public readonly string ServerIp;
     private readonly string _password;
@@ -45,7 +41,7 @@ public class OpenFreqRtcClient : IDisposable
     private bool _isConnected;
     private bool _isAuthenticated;
     private CancellationTokenSource _cts = new();
-    private string clientId = Guid.NewGuid().ToString();
+    private readonly string clientId = Guid.NewGuid().ToString();
 
     // Transmission state
     private readonly Dictionary<int, bool> _frequencyTransmissionState = new();
@@ -118,12 +114,11 @@ public class OpenFreqRtcClient : IDisposable
                 logger:  _loggerFactory.CreateLogger<RtpAudioSender>(),
                 serverHost: ipPort.ipAddress,
                 serverPort: _audioPort,
-                opusEnabled: _opusCompressionEnabled
+                clid: clientId
             );
 
             _rtpReceiver = new RtpAudioReceiver(_loggerFactory,
                 udpClient: _rtpSender.UdpClient,
-                opusEnabled: _opusCompressionEnabled,
                 initialBufferMs: 150
             );
 
@@ -236,11 +231,10 @@ public class OpenFreqRtcClient : IDisposable
         }
 
         // Send final silent packet with endMarker
-        var silence = new byte[OPUS_SAMPLES_PER_FRAME * 2]; // 20ms silence, 16-bit PCM
+        var silence = new short[OPUS_SAMPLES_PER_FRAME]; // 20ms silence, 16-bit PCM
         
         _rtpSender?.SendAudio(
             audioData: silence,
-            clientId: clientId,
             frequencyTransmissions: [new FrequencyTransmission(frequencyKhz, 0, 0, new Vector3(), null, false, true)]
         );
         
@@ -254,7 +248,7 @@ public class OpenFreqRtcClient : IDisposable
     }
 
 
-    public void SendAudio(byte[] pcmData, List<(int frequencyKhz, double txPowerWatts, double ppm, Vector3? position, Vector3? velocity, AmbientNoiseType ambientNoiseType)> frequencies, bool in3d)
+    public void SendAudio(Memory<short> pcmData, List<(int frequencyKhz, double txPowerWatts, double ppm, Vector3? position, Vector3? velocity, AmbientNoiseType ambientNoiseType)> frequencies, bool in3d)
     {
         var frequencyTransmissions = new List<FrequencyTransmission>();
         foreach (var freq in frequencies)
@@ -276,7 +270,7 @@ public class OpenFreqRtcClient : IDisposable
                 _frequencyFirstPacketSent[freq.frequencyKhz] = true;
         }
         
-        _rtpSender?.SendAudio(pcmData, clientId, frequencyTransmissions);
+        _rtpSender?.SendAudio(pcmData, frequencyTransmissions);
     }
     
 
@@ -383,8 +377,6 @@ public class OpenFreqRtcClient : IDisposable
                         _myPeerId = success.PeerId;
                         _audioPort = success.AudioPort ?? 0;
                         _isAuthenticated = true;
-                        _opusCompressionEnabled = success.OpusCompressionEnabled;
-                        _logger.LogDebug("Opus compression enabled: " + _opusCompressionEnabled);
                         OnConnectionStateChanged(ConnectionState.Authenticated);
                         OnAuthenticated(_myPeerId, _audioPort);
                     }

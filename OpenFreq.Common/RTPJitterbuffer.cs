@@ -37,7 +37,7 @@ public class RtpJitterBuffer
     // Adaptive jitter buffer parameters
     private double _targetBufferMs = 60; // Start with 60ms
     private double _measuredJitterMs;
-    private const double MIN_BUFFER_MS = 30;
+    private const double MIN_BUFFER_MS = 20;
     private const double MAX_BUFFER_MS = 500;
         
     // Statistics

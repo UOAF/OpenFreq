@@ -30,7 +30,6 @@ public class RtpAudioReceiver : IDisposable
     private readonly ILogger<RtpAudioReceiver> _logger;
     private readonly UdpClient _udpClient;
     private readonly RtpJitterBufferPool _pool;
-    private readonly bool _opusEnabled;
     private readonly CancellationTokenSource _cts = new();
     private readonly Timer _playoutTimer;
 
@@ -44,20 +43,17 @@ public class RtpAudioReceiver : IDisposable
     private const int OPUS_FRAME_SAMPLES = 960; // 20ms at 48kHz (matches sender)
     public static int PLAYOUT_INTERVAL_MS = 20;
 
-    public RtpAudioReceiver(ILoggerFactory loggerFactory, UdpClient udpClient, bool opusEnabled = true,
-        int initialBufferMs = 150)
+    public RtpAudioReceiver(ILoggerFactory loggerFactory, UdpClient udpClient, int initialBufferMs = 150)
     {
         _logger = loggerFactory.CreateLogger<RtpAudioReceiver>();
-        _opusEnabled = opusEnabled;
 
-        _pool = new RtpJitterBufferPool(loggerFactory, opusEnabled, initialBufferMs);
+        _pool = new RtpJitterBufferPool(loggerFactory, initialBufferMs);
         _pool.SourceAdded += ssrc => _logger.LogInformation("Source joined:  SSRC={Ssrc:X8}", ssrc);
         _pool.SourceExpired += ssrc => _logger.LogInformation("Source expired: SSRC={Ssrc:X8}", ssrc);
 
         _udpClient = udpClient;
         var port = (_udpClient.Client.LocalEndPoint as IPEndPoint)!.Port;
         _logger.LogInformation("Started on port {Port}", port);
-        _logger.LogInformation("  Opus: {OpusEnabled}", _opusEnabled);
         _logger.LogInformation("  Initial buffer: {BufferMs}ms (adaptive, per-SSRC)", initialBufferMs);
 
         Task.Run(() => ReceiveLoop(), _cts.Token);
@@ -214,16 +210,9 @@ public class RtpAudioReceiver : IDisposable
             context.LastValidMetadata = metadata;
 
             byte[] decodedAudio;
-            if (_opusEnabled && context.OpusDecoder != null)
-            {
-                decodedAudio = DecodeOpus(packet.Payload, context.OpusDecoder, isLost: false, decodeFec: false);
-                if (decodedAudio.Length == 0)
-                    return;
-            }
-            else
-            {
-                decodedAudio = packet.Payload;
-            }
+            decodedAudio = DecodeOpus(packet.Payload, context.OpusDecoder, isLost: false, decodeFec: false);
+            if (decodedAudio.Length == 0)
+                return;
 
             #if DEBUG
             _logger.LogDebug($"Playing packet from {packet.Ssrc}: {packet.SequenceNumber}");
@@ -246,9 +235,6 @@ public class RtpAudioReceiver : IDisposable
     /// </summary>
     private void GenerateConcealmentAudio(ushort lostSequence, RtpPacket? nextPacket, RtpSourceContext context)
     {
-        if (!_opusEnabled || context.OpusDecoder == null)
-            return;
-
         try
         {
             byte[] concealmentAudio;

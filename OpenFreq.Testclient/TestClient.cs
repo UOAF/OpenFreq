@@ -121,11 +121,6 @@ public class TestClient
 
 public class TestClientWrapper : IDisposable
 {
-    const int CHANNELS = 1;
-    
-    private readonly Queue<byte> _audioBuffer = new();
-    private readonly int OPUS_FRAME_BYTES = 1920;
-
     private readonly OpenFreqRtcClient _client;
     private readonly List<int> _frequencies;
     private readonly Dictionary<int, bool> _isTransmitting = new();
@@ -176,7 +171,7 @@ public class TestClientWrapper : IDisposable
         }
 
         // Initialize playback stream
-        _playbackStream = Bass.CreateStream(OpenFreqRtcClient.SAMPLE_RATE, CHANNELS, BassFlags.Default, StreamProcedureType.Push);
+        _playbackStream = Bass.CreateStream(OpenFreqRtcClient.SAMPLE_RATE, 1, BassFlags.Default, StreamProcedureType.Push);
         if (_playbackStream == 0)
         {
             throw new Exception($"Failed to create playback stream: {Bass.LastError}");
@@ -246,7 +241,7 @@ public class TestClientWrapper : IDisposable
         Bass.CurrentRecordingDevice = 0;
 
         // Start recording with callback that sends via client
-        _recordHandle = Bass.RecordStart(OpenFreqRtcClient.SAMPLE_RATE, CHANNELS, BassFlags.RecordPause, RecordProcedure);
+        _recordHandle = Bass.RecordStart(OpenFreqRtcClient.SAMPLE_RATE, 1, BassFlags.RecordPause, RecordProcedure);
         if (_recordHandle == 0)
         {
             Console.WriteLine($"Failed to start recording: {Bass.LastError}");
@@ -293,41 +288,16 @@ public class TestClientWrapper : IDisposable
         if (!anyTransmitting)
             return true;
 
-        try
+        // Copy audio data to managed array
+        short[] audioData = new short[length / 2];
+        Marshal.Copy(buffer, audioData, 0, audioData.Length);
+        // Send complete frame to all transmitting frequencies
+        var transmitData = new List<(int frequencyKhz, double txPowerWatts, double ppm, Vector3? position, Vector3? velocity, AmbientNoiseType ambientNoiseType)>();
+        foreach (var frequency in _isTransmitting.Keys)
         {
-            // Copy audio data to managed array
-            byte[] audioData = new byte[length];
-            Marshal.Copy(buffer, audioData, 0, length);
-
-            // Add to buffer
-            foreach (byte b in audioData)
-            {
-                _audioBuffer.Enqueue(b);
-            }
-
-            // Process complete frames
-            while (_audioBuffer.Count >= OPUS_FRAME_BYTES)
-            {
-                // Extract exactly one frame
-                byte[] frameData = new byte[OPUS_FRAME_BYTES];
-                for (int i = 0; i < OPUS_FRAME_BYTES; i++)
-                {
-                    frameData[i] = _audioBuffer.Dequeue();
-                }
-
-                // Send complete frame to all transmitting frequencies
-                var transmitData = new List<(int frequencyKhz, double txPowerWatts, double ppm, Vector3? position, Vector3? velocity, AmbientNoiseType ambientNoiseType)>();
-                foreach (var frequency in _isTransmitting.Keys)
-                {
-                    transmitData.Add((frequency, 50, 0, new Vector3(), null, AmbientNoiseType.None));
-                }
-                _client.SendAudio(frameData, transmitData, false);
-            }
+            transmitData.Add((frequency, 50, 0, new Vector3(), null, AmbientNoiseType.None));
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error sending audio: {ex.Message}");
-        }
+        _client.SendAudio(audioData, transmitData, false);
 
         return true;
     }

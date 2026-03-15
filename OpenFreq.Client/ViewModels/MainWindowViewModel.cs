@@ -555,6 +555,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
             FalconRadioSharedMemoryServiceOnConnectionParametersChanged;
         _falconSharedMemoryService.FlyingStateChanged -= OnFlyingStateChanged;
 
+        await DisconnectAsync();
         ChannelList.Dispose();
         _openFreqService.Dispose();
         _hotkeyService.Dispose();

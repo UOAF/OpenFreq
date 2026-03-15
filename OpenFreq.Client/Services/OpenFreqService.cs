@@ -400,9 +400,9 @@ public class OpenFreqService : IOpenFreqService
 
             _recordHandle = Bass.RecordStart(
                 OpenFreqRtcClient.SAMPLE_RATE,
-                OpenFreqRtcClient.CHANNELS,
+                1,
                 BassFlags.RecordPause,
-                Period: 20,
+                Period: 5,
                 RecordProcedure);
 
             if (_recordHandle == 0)
@@ -540,7 +540,7 @@ public class OpenFreqService : IOpenFreqService
             // Calculate expected size for 20ms at 48kHz, mono, 16-bit
             // 48000 samples/sec ÷ 50 = 960 samples per 20ms
             // 960 samples × 2 bytes/sample × 1 channel = 1920 bytes
-            int expectedBytes = (OpenFreqRtcClient.SAMPLE_RATE / 50) * 2 * OpenFreqRtcClient.CHANNELS;
+            int expectedBytes = (OpenFreqRtcClient.SAMPLE_RATE / 50) * 2;
 
             // TODO: I dont think we need this anymore with the shorter dsp updates. Deactivated for now
             expectedBytes = 10000;
@@ -559,8 +559,8 @@ public class OpenFreqService : IOpenFreqService
             }
 
             // Copy audio data once
-            byte[] audioData = new byte[length];
-            Marshal.Copy(buffer, audioData, 0, length);
+            short[] audioData = new short[length / 2];
+            Marshal.Copy(buffer, audioData, 0, audioData.Length);
 
             // Send to ALL active frequencies
             var frequenciesData =
@@ -760,7 +760,7 @@ public class OpenFreqService : IOpenFreqService
         _playbackService?.StartPushStream(
             streamId,
             OpenFreqRtcClient.SAMPLE_RATE,
-            OpenFreqRtcClient.CHANNELS,
+            1,
             audioParams
         );
 
@@ -855,12 +855,12 @@ public class OpenFreqService : IOpenFreqService
                 if (!streamExists)
                 {
                     _logger.LogDebug(
-                        $"Creating new stream: {streamId}, SR={OpenFreqRtcClient.SAMPLE_RATE}, CH={OpenFreqRtcClient.CHANNELS}");
+                        $"Creating new stream: {streamId}, SR={OpenFreqRtcClient.SAMPLE_RATE}");
 
                     _playbackService?.StartPushStream(
                         streamId,
                         OpenFreqRtcClient.SAMPLE_RATE,
-                        OpenFreqRtcClient.CHANNELS,
+                        1,
                         audioParams);
                 }
                 else
@@ -879,9 +879,7 @@ public class OpenFreqService : IOpenFreqService
             }
             
             // Push audio data immediately
-            _playbackService?.PushAudioData(streamId, e.AudioData,
-                frequencyTransmission.BeginMarker,
-                frequencyTransmission.EndMarker, ambientNoiseType);
+            _playbackService?.PushAudioData(streamId, e.AudioData, ambientNoiseType);
         }
     }
 
