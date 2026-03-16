@@ -27,7 +27,7 @@ public sealed class RtpSourceContext : IDisposable
     // Used by the pool to prune sources that have gone silent
     public long LastActivityTicks { get; set; }
 
-    public RtpSourceContext(uint ssrc, ILoggerFactory loggerFactory, int initialBufferMs)
+    public RtpSourceContext(uint ssrc, ILoggerFactory loggerFactory, bool opusEnabled, int initialBufferMs)
     {
         Ssrc = ssrc;
         LastActivityTicks = Stopwatch.GetTimestamp();

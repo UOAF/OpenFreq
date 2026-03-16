@@ -12,6 +12,7 @@ public sealed class RtpJitterBufferPool : IDisposable
 {
     private readonly ILogger<RtpJitterBufferPool> _logger;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly bool _opusEnabled;
     private readonly int _initialBufferMs;
 
     private readonly ConcurrentDictionary<uint, RtpSourceContext> _sources = new();
@@ -27,10 +28,11 @@ public sealed class RtpJitterBufferPool : IDisposable
     /// <summary>Fired just before a stale source is removed.</summary>
     public event Action<uint>? SourceExpired;
 
-    public RtpJitterBufferPool(ILoggerFactory loggerFactory, int initialBufferMs)
+    public RtpJitterBufferPool(ILoggerFactory loggerFactory, bool opusEnabled, int initialBufferMs)
     {
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<RtpJitterBufferPool>();
+        _opusEnabled = opusEnabled;
         _initialBufferMs = initialBufferMs;
     }
 
@@ -43,7 +45,7 @@ public sealed class RtpJitterBufferPool : IDisposable
         var context = _sources.GetOrAdd(packet.Ssrc, ssrc =>
         {
             _logger.LogInformation("New RTP source: SSRC={Ssrc:X8}", ssrc);
-            var ctx = new RtpSourceContext(ssrc, _loggerFactory, _initialBufferMs);
+            var ctx = new RtpSourceContext(ssrc, _loggerFactory, _opusEnabled, _initialBufferMs);
             SourceAdded?.Invoke(ssrc);
             return ctx;
         });

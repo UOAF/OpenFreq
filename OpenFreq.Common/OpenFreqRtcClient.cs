@@ -32,6 +32,9 @@ public class OpenFreqRtcClient : IDisposable
     private RtpAudioReceiver? _rtpReceiver;
     private RtpAudioSender? _rtpSender;
 
+    // set by the server
+    private bool _opusCompressionEnabled = true;
+
     // Connection state
     public readonly string ServerIp;
     private readonly string _password;
@@ -114,11 +117,13 @@ public class OpenFreqRtcClient : IDisposable
                 logger:  _loggerFactory.CreateLogger<RtpAudioSender>(),
                 serverHost: ipPort.ipAddress,
                 serverPort: _audioPort,
-                clid: clientId
+                clid: clientId,
+                opusEnabled: _opusCompressionEnabled
             );
 
             _rtpReceiver = new RtpAudioReceiver(_loggerFactory,
                 udpClient: _rtpSender.UdpClient,
+                opusEnabled: _opusCompressionEnabled,
                 initialBufferMs: 150
             );
 
@@ -377,6 +382,8 @@ public class OpenFreqRtcClient : IDisposable
                         _myPeerId = success.PeerId;
                         _audioPort = success.AudioPort ?? 0;
                         _isAuthenticated = true;
+                        _opusCompressionEnabled = success.OpusCompressionEnabled;
+                        _logger.LogDebug("Opus compression enabled: " + _opusCompressionEnabled);
                         OnConnectionStateChanged(ConnectionState.Authenticated);
                         OnAuthenticated(_myPeerId, _audioPort);
                     }
