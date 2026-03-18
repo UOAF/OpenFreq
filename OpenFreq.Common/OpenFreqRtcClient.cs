@@ -497,7 +497,7 @@ public class OpenFreqRtcClient : IDisposable
     private void OnPeerTransmissionStateChanged(string peerId, int frequencyKhz, bool isTransmitting) =>
         PeerTransmissionStateChanged?.Invoke(this, new PeerTransmissionEventArgs(peerId, frequencyKhz, isTransmitting));
 
-    private void OnAudioDataReceived(string peerId, byte[] audioData, AudioPacketMetadata metadata) =>
+    private void OnAudioDataReceived(string peerId, Memory<short> audioData, AudioPacketMetadata metadata) =>
         AudioDataReceived?.Invoke(this, new AudioDataEventArgs(peerId, audioData, metadata));
 
     private void OnError(string errorMessage) =>
@@ -597,10 +597,10 @@ public class PeerTransmissionEventArgs : EventArgs
 public class AudioDataEventArgs : EventArgs
 {
     public string PeerId { get; }
-    public byte[] AudioData { get; }
+    public Memory<short> AudioData { get; }
     public AudioPacketMetadata Metadata { get; }
     
-    public AudioDataEventArgs(string peerId, byte[] audioData, AudioPacketMetadata metadata)
+    public AudioDataEventArgs(string peerId, Memory<short> audioData, AudioPacketMetadata metadata)
     {
         PeerId = peerId;
         AudioData = audioData;
