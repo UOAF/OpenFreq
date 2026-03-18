@@ -364,7 +364,7 @@ public class TestClientWrapper : IDisposable
             Console.WriteLine($"[BUFFER RESET] Was {bufferMs:F1}ms");
         }
     
-        Bass.StreamPutData(_playbackStream, e.AudioData, e.AudioData.Length);
+        Bass.StreamPutData(_playbackStream, e.AudioData.ToArray(), e.AudioData.Length);
     }
 
     private void OnError(object? sender, ErrorEventArgs errorEventArgs)
