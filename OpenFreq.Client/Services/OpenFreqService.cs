@@ -10,6 +10,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using FalconBmsDataService.Models;
 using FalconBmsDataService.Services;
 using FalconRadioService.Models;
+using FalconRadioService.Services;
 using ManagedBass;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Client.Models;
@@ -71,10 +72,12 @@ public class OpenFreqService : IOpenFreqService
     private const float SquelchLevelOn = 1f;
 
 
-    public OpenFreqService(IFalconSharedMemoryService falconSharedMemoryService, ILogger<OpenFreqService> logger,
+    public OpenFreqService(IFalconSharedMemoryService falconSharedMemoryService,
+        IFalconRadioSharedMemoryService falconRadioSharedMemoryService, ILogger<OpenFreqService> logger,
         ILoggerFactory loggerFactory, IAcmiClientService acmiClientService)
     {
         _falconSharedMemoryService = falconSharedMemoryService;
+        _falconRadioSharedMemoryService = falconRadioSharedMemoryService;
         _logger = logger;
         _loggerFactory = loggerFactory;
         _acmiClientService = acmiClientService;
@@ -116,8 +119,8 @@ public class OpenFreqService : IOpenFreqService
 
     private bool _isInitialized;
 
-    // Store own position for RF calculations
     private readonly IFalconSharedMemoryService _falconSharedMemoryService;
+    private readonly IFalconRadioSharedMemoryService _falconRadioSharedMemoryService;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<OpenFreqService> _logger;
 
@@ -127,7 +130,11 @@ public class OpenFreqService : IOpenFreqService
     public event EventHandler<string>? StatusMessageReceived;
     public event EventHandler<FrequencyConnectionStatusEventArgs>? FrequencyConnectionStatusChanged;
     public event EventHandler<FrequencyTransmissionStatusEventArgs>? FrequencyTransmissionStatusChanged;
+    public event EventHandler<FrequencyJoinedEventArgs>? FrequencyJoined;
+    public event EventHandler<PeerEventArgs>? PeerJoined;
+    public event EventHandler<PeerEventArgs>? PeerLeft;
     public event EventHandler<PeerActivityEventArgs>? PeerActivityReceived;
+    public event EventHandler<AllPeersStatusEventArgs>? AllPeersStatusChanged;
 
     public bool IsConnected => _client?.IsConnected ?? false;
     public bool IsAuthenticated => _client?.IsAuthenticated ?? false;
@@ -146,10 +153,15 @@ public class OpenFreqService : IOpenFreqService
             await Shutdown();
         }
 
+        var myDisplayName =
+            settings.OwnPositionMode == IOpenFreqService.Mode.BMS
+                ? _falconRadioSharedMemoryService.LogbookName
+                : settings.DisplayName;
+
         // Create client with server settings
         _logger.LogDebug("Creating new client");
         _client = new OpenFreqRtcClient(_loggerFactory,
-            settings.OpenFreqServerAddress, settings.OpenFreqPassword);
+            settings.OpenFreqServerAddress, settings.OpenFreqPassword, myDisplayName);
         _logger.LogDebug("Client created: {ClientHashCode}", _client.GetHashCode());
 
         // Subscribe to client events
@@ -162,6 +174,7 @@ public class OpenFreqService : IOpenFreqService
         _client.TransmissionStateChanged += OnClientTransmissionStatusChanged;
         _client.PeerTransmissionStateChanged += OnClientPeerTransmissionStatusChanged;
         _client.AudioDataReceived += OnClientAudioDataReceived;
+        _client.AllPeersStatusUpdateReceived += OnAllPeersStatusUpdateReceived;
         _client.ErrorOccurred += OnClientErrorOccurred;
 
         RecordingDeviceIndex = recordingDeviceIndex;
@@ -306,7 +319,7 @@ public class OpenFreqService : IOpenFreqService
         Status = IOpenFreqService.OpenFreqStatus.Disconnected;
     }
 
-    public bool FrequencyJoined(int frequencyKhz)
+    public bool IsFrequencyJoined(int frequencyKhz)
     {
         return _tunedFrequencies.ContainsKey(frequencyKhz);
     }
@@ -415,7 +428,7 @@ public class OpenFreqService : IOpenFreqService
             Bass.ChannelPlay(_recordHandle);
         }
 
-        await _client.StartTransmissionAsync(frequencyKhz);
+        await _client.StartTransmissionAsync(frequencyKhz, Apply3dAudioEffects);
         OnStatusMessage($"Transmitting on {frequencyKhz / 1000d:F3}");
     }
 
@@ -441,8 +454,14 @@ public class OpenFreqService : IOpenFreqService
             _recordHandle = 0;
         }
 
-        await _client.StopTransmissionAsync(frequencyKhz);
+        await _client.StopTransmissionAsync(frequencyKhz, Apply3dAudioEffects);
         OnStatusMessage($"Stopped transmitting on {frequencyKhz / 1000d:F3} MHz");
+    }
+
+    public async Task UpdateDisplayNameAsync(string newDisplayName)
+    {
+        if (_client is not { IsAuthenticated: true }) return;
+        await _client.SetDisplayNameAsync(newDisplayName);
     }
 
     public void SetVolume(int frequencyKhz, float volumeValue)
@@ -564,7 +583,8 @@ public class OpenFreqService : IOpenFreqService
 
             // Send to ALL active frequencies
             var frequenciesData =
-                new List<(int frequencyKhz, double txPowerWatts, double ppm, Vector3? position, Vector3? velocity, AmbientNoiseType ambientNoiseType)>();
+                new List<(int frequencyKhz, double txPowerWatts, double ppm, Vector3? position, Vector3? velocity,
+                    AmbientNoiseType ambientNoiseType)>();
 
             // List of frequencies that got disabled in the meantime
             var disabledFrequencies = new List<int>();
@@ -718,6 +738,7 @@ public class OpenFreqService : IOpenFreqService
     private void OnClientAuthenticated(object? sender, AuthenticationEventArgs e)
     {
         OnStatusMessage($"Authenticated - Peer ID: {e.PeerId}, Audio Port: {e.AudioPort}");
+        OnAllPeersStatusUpdateReceived(sender, new AllPeersStatusEventArgs(e.Peers));
     }
 
     private void OnClientFrequencyJoined(object? sender, FrequencyJoinedEventArgs e)
@@ -725,23 +746,23 @@ public class OpenFreqService : IOpenFreqService
         _playbackService?.TuneFrequency(e.FrequencyKhz);
         foreach (var peer in e.Peers)
         {
-            CreateAudioStreamForPeer(e.FrequencyKhz, peer);
+            CreateAudioStreamForPeer(e.FrequencyKhz, peer.Id);
         }
 
-        OnFrequencyConnectionStatusChanged(e.FrequencyKhz, Channel.ChannelConnectionStatus.Connected);
+        OnFrequencyConnectionStatusChanged(e.FrequencyKhz, Channel.ChannelConnectionStatus.Connected, e.Peers);
     }
 
     private void OnClientFrequencyLeft(object? sender, FrequencyLeftEventArgs e)
     {
         _playbackService?.UntuneFrequency(e.FrequencyKhz);
         _signalStrengthTracker.RemoveFrequency(e.FrequencyKhz);
-        OnFrequencyConnectionStatusChanged(e.FrequencyKhz, Channel.ChannelConnectionStatus.Disconnected);
+        OnFrequencyConnectionStatusChanged(e.FrequencyKhz, Channel.ChannelConnectionStatus.Disconnected, []);
     }
 
     private void OnClientPeerJoined(object? sender, PeerEventArgs e)
     {
         CreateAudioStreamForPeer(e.FrequencyKhz, e.PeerId);
-        OnPeerActivity($"Peer {e.PeerId[..Math.Min(8, e.PeerId.Length)]} joined {e.FrequencyKhz / 1000d:F3}");
+        PeerJoined?.Invoke(this, e);
     }
 
     private void CreateAudioStreamForPeer(int frequencyKhz, string peerId)
@@ -782,7 +803,7 @@ public class OpenFreqService : IOpenFreqService
             }
         }
 
-        OnPeerActivity($"Peer {e.PeerId[..Math.Min(8, e.PeerId.Length)]} left {e.FrequencyKhz / 1000d:F3}");
+        PeerLeft?.Invoke(this, e);
     }
 
     private void OnClientTransmissionStatusChanged(object? sender, TransmissionStateEventArgs e)
@@ -795,8 +816,10 @@ public class OpenFreqService : IOpenFreqService
 
     private void OnClientPeerTransmissionStatusChanged(object? sender, PeerTransmissionEventArgs e)
     {
-        var state = e.IsTransmitting ? "transmitting" : "stopped";
-        OnPeerActivity($"Peer {e.PeerId} {state} on {e.FrequencyKhz / 1000d:F3}");
+        OnPeerActivity(this,
+            new PeerActivityEventArgs(e.FrequencyKhz,
+                new PeerData(e.PeerId, e.PeerDisplayName,
+                    e.IsTransmitting ? PeerData.PeerStatus.Transmitting : PeerData.PeerStatus.Receiving), e.Is3d));
 
         OnFrequencyTransmissionStatusChanged(e.FrequencyKhz,
             e.IsTransmitting ? Channel.ChannelTransmissionStatus.Receiving : Channel.ChannelTransmissionStatus.Idle);
@@ -866,13 +889,13 @@ public class OpenFreqService : IOpenFreqService
             }
 
             var ambientNoiseType = Apply3dAudioEffects ? frequencyTransmission.AmbientNoiseType : AmbientNoiseType.None;
-            
+
             // Update signal strength tracking for 3D audio
             if (Apply3dAudioEffects)
             {
                 _signalStrengthTracker.UpdateSignalStrength(audioParams.RadioFrequencyKHz, audioParams);
             }
-            
+
             // Push audio data immediately
             _playbackService?.PushAudioData(streamId, e.AudioData,
                 frequencyTransmission.BeginMarker,
@@ -927,14 +950,14 @@ public class OpenFreqService : IOpenFreqService
             LastCalculated = now
         };
 
-        #if DEBUG
+#if DEBUG
         _logger.LogDebug("Calculated audio params {AudioParams}", audioParams);
-        #endif
+#endif
 
         return audioParams;
     }
-    
-    
+
+
     // Periodical Cache cleanup
     private async Task CleanupAudioParamsCacheAsync(CancellationToken cancellationToken)
     {
@@ -971,11 +994,12 @@ public class OpenFreqService : IOpenFreqService
     private void OnStatusMessage(string message) =>
         StatusMessageReceived?.Invoke(this, message);
 
-    private void OnFrequencyConnectionStatusChanged(int frequencyKhz, Channel.ChannelConnectionStatus connectionStatus)
+    private void OnFrequencyConnectionStatusChanged(int frequencyKhz, Channel.ChannelConnectionStatus connectionStatus,
+        List<ChannelStateMessage.Peer> peers)
     {
         _logger.LogDebug("Frequency {FrequencyKhz}: {Status}", frequencyKhz, connectionStatus);
         FrequencyConnectionStatusChanged?.Invoke(this,
-            new FrequencyConnectionStatusEventArgs(frequencyKhz, connectionStatus));
+            new FrequencyConnectionStatusEventArgs(frequencyKhz, connectionStatus, peers));
     }
 
     private void OnFrequencyTransmissionStatusChanged(int frequencyKhz,
@@ -986,8 +1010,11 @@ public class OpenFreqService : IOpenFreqService
             new FrequencyTransmissionStatusEventArgs(frequencyKhz, transmissionStatus));
     }
 
-    private void OnPeerActivity(string message) =>
-        PeerActivityReceived?.Invoke(this, new PeerActivityEventArgs(message));
+    private void OnPeerActivity(object? sender, PeerActivityEventArgs args) =>
+        PeerActivityReceived?.Invoke(this, args);
+
+    private void OnAllPeersStatusUpdateReceived(object? sender, AllPeersStatusEventArgs args) =>
+        AllPeersStatusChanged?.Invoke(this, args);
 
     public void Dispose()
     {
@@ -1028,11 +1055,15 @@ public class OpenFreqService : IOpenFreqService
 }
 
 // Event argument classes
-public class FrequencyConnectionStatusEventArgs(int frequencyKhz, Channel.ChannelConnectionStatus connectionStatus)
+public class FrequencyConnectionStatusEventArgs(
+    int frequencyKhz,
+    Channel.ChannelConnectionStatus connectionStatus,
+    List<ChannelStateMessage.Peer> peers)
     : EventArgs
 {
     public int FrequencyKhz { get; } = frequencyKhz;
     public Channel.ChannelConnectionStatus ConnectionStatus { get; } = connectionStatus;
+    public List<ChannelStateMessage.Peer> Peers = peers;
 }
 
 public class FrequencyTransmissionStatusEventArgs(
@@ -1043,9 +1074,11 @@ public class FrequencyTransmissionStatusEventArgs(
     public Channel.ChannelTransmissionStatus TransmissionStatus { get; } = transmissionStatus;
 }
 
-public class PeerActivityEventArgs(string message) : EventArgs
+public class PeerActivityEventArgs(int frequencyKhz, PeerData peerData, bool is3d) : EventArgs
 {
-    public string Message { get; } = message;
+    public int FrequencyKhz { get; } = frequencyKhz;
+    public PeerData PeerData { get; } = peerData;
+    public bool Is3d { get; } = is3d;
 }
 
 // AudioParams Cache

@@ -30,23 +30,23 @@ public class AudioStreamServer
     private readonly uint _serverSsrc = (uint)Random.Shared.Next();
 
     // High-performance logging delegates
-    private static readonly Action<ILogger, string, int, Exception?> _logAudioSessionCreated =
-        LoggerMessage.Define<string, int>(
+    private static readonly Action<ILogger, string, string, int, Exception?> LogAudioSessionCreated =
+        LoggerMessage.Define<string, string, int>(
             LogLevel.Information,
             new EventId(1, nameof(CreateAudioSession)),
-            "Created audio session for client {ClientId} on port {Port}");
+            "Created audio session for {DisplayName} ({ClientId}) on port {Port}");
 
-    private static readonly Action<ILogger, string, int, Exception?> _logTransmittingOnFrequencies =
-        LoggerMessage.Define<string, int>(
+    private static readonly Action<ILogger, string, string, int, Exception?> LogTransmittingOnFrequencies =
+        LoggerMessage.Define<string, string, int>(
             LogLevel.Debug,
             new EventId(2, nameof(ForwardAudioToChannel)),
-            "Client {ClientId} transmitting on {FrequencyCount} frequency(ies)");
+            "{DisplayName} ({ClientId}) transmitting on {FrequencyCount} frequency(ies)");
 
-    private static readonly Action<ILogger, string, Exception?> _logSessionRemoved =
-        LoggerMessage.Define<string>(
+    private static readonly Action<ILogger, string, string, Exception?> LogSessionRemoved =
+        LoggerMessage.Define<string, string>(
             LogLevel.Information,
             new EventId(4, nameof(RemoveSession)),
-            "Removed audio session for client {ClientId}");
+            "Removed audio session for {DisplayName} ({ClientId})");
 
     public AudioStreamServer(
         FrequencyChannelManager channelManager,
@@ -61,6 +61,15 @@ public class AudioStreamServer
         _udpManager = new UdpStreamManager(loggerFactory.CreateLogger<UdpStreamManager>());
         
         _logger.LogInformation("AudioStreamServer initialized as RTP translator (SSRC: 0x{Ssrc:X8})", _serverSsrc);
+    }
+
+    private string GetDisplayName(string clientId)
+    {
+        if (_clients.TryGetValue(clientId, out var session))
+        {
+            return !string.IsNullOrWhiteSpace(session.DisplayName) ? session.DisplayName : "Unnamed";
+        }
+        return "Unnamed";
     }
 
     public async Task<int> CreateAudioSession(string clientId)
@@ -111,7 +120,7 @@ public class AudioStreamServer
 
         _ = Task.Run(() => ReceiveAudioLoop(clientId, udpClient));
 
-        _logAudioSessionCreated(_logger, clientId, port, null);
+        LogAudioSessionCreated(_logger, GetDisplayName(clientId), clientId, port, null);
         return port;
     }
 
@@ -135,7 +144,8 @@ public class AudioStreamServer
                 if (rtpPacket == null || metadata == null || audioData == null)
                 {
                     if (_logger.IsEnabled(LogLevel.Warning))
-                        _logger.LogWarning("Client {ClientId} sent malformed RTP audio packet, skipping", clientId);
+                        _logger.LogWarning("{DisplayName} ({ClientId}) sent malformed RTP audio packet, skipping", 
+                            GetDisplayName(clientId), clientId);
                     continue;
                 }
 
@@ -159,15 +169,15 @@ public class AudioStreamServer
                         .ToList();
     
                     if (_logger.IsEnabled(LogLevel.Warning))
-                        _logger.LogWarning("Client {ClientId} attempted to transmit on unjoined frequencies: {Frequencies}", 
-                            clientId, string.Join(", ", invalidMhz));
+                        _logger.LogWarning("{DisplayName} ({ClientId}) attempted to transmit on unjoined frequencies: {Frequencies}", 
+                            GetDisplayName(clientId), clientId, string.Join(", ", invalidMhz));
                 }
 
                 if (validFrequencies.Count == 0)
                     continue;
 
                 if (_logger.IsEnabled(LogLevel.Debug))
-                    _logTransmittingOnFrequencies(_logger, clientId, validFrequencies.Count, null);
+                    LogTransmittingOnFrequencies(_logger, GetDisplayName(clientId), clientId, validFrequencies.Count, null);
                 
                 // Forward audio to all specified frequencies
                 // Each recipient gets their own RTP packet with unique sequence number
@@ -183,7 +193,8 @@ public class AudioStreamServer
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error in audio receive loop for client {ClientId}", clientId);
+            _logger.LogError(ex, "Error in audio receive loop for {DisplayName} ({ClientId})", 
+                GetDisplayName(clientId), clientId);
         }
     }
 
@@ -208,7 +219,8 @@ public class AudioStreamServer
             if (rtpPacket == null)
             {
                 if (_logger.IsEnabled(LogLevel.Warning))
-                    _logger.LogWarning("Failed to parse RTP header from client {ClientId}", clientId);
+                    _logger.LogWarning("Failed to parse RTP header from {DisplayName} ({ClientId})", 
+                        GetDisplayName(clientId), clientId);
                 return (null, null, null);
             }
 
@@ -221,7 +233,8 @@ public class AudioStreamServer
             if (metadata == null)
             {
                 if (_logger.IsEnabled(LogLevel.Warning))
-                    _logger.LogWarning("Failed to deserialize metadata from client {ClientId}", clientId);
+                    _logger.LogWarning("Failed to deserialize metadata from {DisplayName} ({ClientId})", 
+                        GetDisplayName(clientId), clientId);
                 return (null, null, null);
             }
 
@@ -229,7 +242,8 @@ public class AudioStreamServer
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error parsing RTP audio packet from client {ClientId}", clientId);
+            _logger.LogError(ex, "Error parsing RTP audio packet from {DisplayName} ({ClientId})", 
+                GetDisplayName(clientId), clientId);
             return (null, null, null);
         }
     }
@@ -310,7 +324,8 @@ public class AudioStreamServer
 
                 if (!sent && _logger.IsEnabled(LogLevel.Debug))
                 {
-                    _logger.LogDebug("RTP packet dropped for client {ClientId} due to congestion", clientId);
+                    _logger.LogDebug("RTP packet dropped for {DisplayName} ({ClientId}) due to congestion", 
+                        GetDisplayName(clientId), clientId);
                 }
             }
         }
@@ -327,7 +342,7 @@ public class AudioStreamServer
             // Clean up RTP state
             _receiverRtpStates.TryRemove(clientId, out _);
             
-            _logSessionRemoved(_logger, clientId, null);
+            LogSessionRemoved(_logger, GetDisplayName(clientId), clientId, null);
         }
     }
 

@@ -56,9 +56,9 @@
     </Window.Styles>
 
     <dialogHostAvalonia:DialogHost Identifier="MainDialogHost">
-        <!-- Side Drawer -->
-        <controls:NavigationDrawer Name="LeftDrawer"
-                                   LeftDrawerOpened="False">
+        <!-- Side Drawer LEFT (Settings) -->
+        <controls:NavigationDrawer Name="MainDrawer"
+                                   LeftDrawerOpened="{Binding SettingsDrawerOpened}">
             <controls:NavigationDrawer.LeftDrawerContent>
                 <!-- Settings Drawer -->
                 <DockPanel Width="320">
@@ -173,7 +173,7 @@
                                             SelectedChannel="{Binding Settings.BmsVhfAudioChannel}" />
                                     </StackPanel>
                                 </controls:Card>
-                                
+
                                 <controls:Card>
                                     <StackPanel Margin="16">
                                         <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
@@ -183,9 +183,9 @@
                                                                    Foreground="{DynamicResource PrimaryHueMidBrush}" />
                                             <TextBlock Text="BMS Squelch Hotkeys" Classes="SectionHeader" Margin="0" />
                                         </StackPanel>
-                                        
+
                                         <TextBlock Text="UHF Squelch Toggle" Classes="InputLabel" />
-                                        <Button 
+                                        <Button
                                             Command="{Binding BeginCaptureUhfSquelchHotkeyCommand}"
                                             BorderBrush="{DynamicResource MaterialDividerBrush}"
                                             BorderThickness="1"
@@ -193,20 +193,20 @@
                                             Padding="6,4"
                                             Margin="0,0,0,12"
                                             Classes="Flat">
-                                        <StackPanel Orientation="Horizontal" Spacing="4">
-                                            <avalonia:MaterialIcon Kind="KeyboardOutline"
-                                                                   Width="18" Height="18" />
-                                            <TextBlock Text="{Binding Settings.BmsUhfSquelchHotkeyDisplay}"
-                                                       Classes="Body2"
-                                                       FontWeight="SemiBold"
-                                                       VerticalAlignment="Center"
+                                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                                <avalonia:MaterialIcon Kind="KeyboardOutline"
+                                                                       Width="18" Height="18" />
+                                                <TextBlock Text="{Binding Settings.BmsUhfSquelchHotkeyDisplay}"
+                                                           Classes="Body2"
+                                                           FontWeight="SemiBold"
+                                                           VerticalAlignment="Center"
 
-                                                       FontFamily="Consolas,Courier New,monospace" />
-                                        </StackPanel>
-                                    </Button>
-                                        
+                                                           FontFamily="Consolas,Courier New,monospace" />
+                                            </StackPanel>
+                                        </Button>
+
                                         <TextBlock Text="VHF Squelch Toggle" Classes="InputLabel" />
-                                        <Button 
+                                        <Button
                                             Command="{Binding BeginCaptureVhfSquelchHotkeyCommand}"
                                             BorderBrush="{DynamicResource MaterialDividerBrush}"
                                             BorderThickness="1"
@@ -254,10 +254,6 @@
                                                  IsEnabled="{Binding !OpenFreqConnected}"
                                                  Margin="0,0,0,16" />
 
-                                        <!-- Separator -->
-                                        <Separator Margin="0,0,0,16"
-                                                   Background="{DynamicResource MaterialDividerBrush}" />
-
                                         <!-- Tacview Server -->
                                         <TextBlock Text="Tacview Server" Classes="InputLabel" />
                                         <TextBox Watermark="Address:Port"
@@ -267,6 +263,13 @@
                                         <TextBox Watermark="Password"
                                                  PasswordChar="*"
                                                  Text="{Binding Settings.TacviewServerPassword}"
+                                                 IsEnabled="{Binding !OpenFreqConnected}"
+                                                 Margin="0,0,0,16" />
+
+                                        <!-- Display Name -->
+                                        <TextBlock Text="Display Name" Classes="InputLabel" />
+                                        <TextBox Watermark="Display Name"
+                                                 Text="{Binding Settings.DisplayName}"
                                                  IsEnabled="{Binding !OpenFreqConnected}" />
                                     </StackPanel>
                                 </controls:Card>
@@ -382,7 +385,6 @@
                     </ScrollViewer>
                 </DockPanel>
             </controls:NavigationDrawer.LeftDrawerContent>
-
             <!-- Main Content -->
             <DockPanel>
                 <!-- Top Bar -->
@@ -393,7 +395,7 @@
                     <DockPanel>
                         <!-- Burger Menu Button -->
                         <Button Classes="BurgerButton Flat"
-                                Click="MenuButton_OnClick"
+                                Command="{Binding ToggleSettingsDrawerCommand}"
                                 DockPanel.Dock="Left"
                                 Margin="0,0,8,0">
                             <avalonia:MaterialIcon Kind="Menu" Width="24" Height="24" />
@@ -439,7 +441,6 @@
                             <RadioButton GroupName="3dMode"
                                          IsChecked="{Binding !Settings.Is3dMode}"
                                          ToolTip.Tip="Lobby Mode - Your voice will only be heard by other players in the Lobby without any effects.">
-                                
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <avalonia:MaterialIcon Kind="Account" Width="20" Height="20" />
                                     <TextBlock Text="Lobby" VerticalAlignment="Center" />
@@ -476,7 +477,7 @@
                                     Height="16"
                                     Background="{DynamicResource MaterialDividerBrush}"
                                     VerticalAlignment="Center"
-                                    IsVisible="{Binding Settings.ModeIsGci}"/>
+                                    IsVisible="{Binding Settings.ModeIsGci}" />
 
                             <!-- Tacview Server Status -->
                             <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding Settings.ModeIsGci}">
@@ -489,7 +490,7 @@
                                            Classes="StatusText" />
                             </StackPanel>
                         </StackPanel>
-                        
+
                     </DockPanel>
                 </controls:Card>
 
@@ -528,21 +529,165 @@
                            Opacity="0.7" />
 
                 <!-- Content Area - fills remaining space -->
-                <Grid>
-                    <ScrollViewer x:Name="ChannelGroupsScrollViewer">
-                        <views:ChannelCardListView DataContext="{Binding ChannelList}" />
-                    </ScrollViewer>
+                <Grid ColumnDefinitions="*,Auto">
+                    <!-- Column 0: Your existing content -->
+                    <Grid Grid.Column="0">
+                        <ScrollViewer x:Name="ChannelGroupsScrollViewer">
+                            <views:ChannelCardListView DataContext="{Binding ChannelList}" />
+                        </ScrollViewer>
 
-                    <!-- Floating Action Button -->
-                    <controls:FloatingButton Click="AddChannelGroupButton_OnClick"
-                                             IsVisible="{Binding Settings.ModeIsGci}"
-                                             HorizontalAlignment="Right"
-                                             VerticalAlignment="Bottom"
-                                             Margin="24">
-                        <controls:FloatingButton.Content>
-                            <avalonia:MaterialIcon Kind="Plus" Width="24" Height="24" />
-                        </controls:FloatingButton.Content>
-                    </controls:FloatingButton>
+                        <!-- Floating Action Button -->
+                        <controls:FloatingButton Click="AddChannelGroupButton_OnClick"
+                                                 IsVisible="{Binding Settings.ModeIsGci}"
+                                                 HorizontalAlignment="Right"
+                                                 VerticalAlignment="Bottom"
+                                                 Margin="24">
+                            <controls:FloatingButton.Content>
+                                <avalonia:MaterialIcon Kind="Plus" Width="24" Height="24" />
+                            </controls:FloatingButton.Content>
+                        </controls:FloatingButton>
+                    </Grid>
+
+                    <!-- Column 1: Participants Expander -->
+                    <Expander Grid.Column="1"
+                              Margin="0, 5"
+                              ExpandDirection="Right"
+                              IsExpanded="{Binding IsPeersPanelExpanded}"
+                              Background="{DynamicResource MaterialPaperBrush}"
+                              BorderBrush="{DynamicResource MaterialDividerBrush}"
+                              BorderThickness="1,1,0,1"
+                              IsVisible="{Binding OpenFreqConnected}">
+
+                        <!-- Collapsed Header -->
+                        <Expander.Header>
+                            <Button Cursor="Hand"
+                                    Classes="Flat"
+                                    Background="Transparent"
+                                    Padding="10"
+                                    HorizontalAlignment="Stretch"
+                                    VerticalAlignment="Stretch"
+                                    HorizontalContentAlignment="Center"
+                                    VerticalContentAlignment="Center"
+                                    Command="{Binding TogglePeersPanelCommand}">
+                                <Grid RowDefinitions="*,Auto">
+                                    <!-- Vertical content area -->
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding DistinctPeers, StringFormat='{}{0} Peers'}" 
+                                                   VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Grid>
+                            </Button>
+                        </Expander.Header>
+
+                                <!-- Vertical content area -->
+                        
+                        <!-- Expanded Content -->
+                        <DockPanel Width="280">
+                            <!-- Expanded Header -->
+                            <!-- Peers List -->
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding PeerList}"
+                                              Margin="0,8,0,8">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="0,0,0,16">
+                                                <!-- Frequency Header -->
+                                                <Border Padding="6,6,6,6"
+                                                        BorderThickness="0,0,0,0.5"
+                                                        Opacity="0.7">
+
+                                                    <Grid ColumnDefinitions="*,Auto" Margin="10,0">
+                                                        <StackPanel Grid.Column="0">
+
+                                                            <TextBlock
+                                                                Text="{Binding FrequencyMhzString, StringFormat='{}{0:F3} MHz'}"
+                                                                FontSize="13"
+                                                                FontWeight="Medium">
+
+                                                            </TextBlock>
+
+                                                            <TextBlock FontSize="10"
+                                                                       Opacity="0.6"
+                                                                       Margin="0,1,0,0">
+                                                                <Run Text="{Binding Peers.Count}" />
+                                                                <Run Text="clients" />
+                                                            </TextBlock>
+
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </Border>
+
+                                                <!-- Participant List -->
+                                                <ItemsControl ItemsSource="{Binding Peers}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border Padding="6,6,16,6"
+                                                                    BorderThickness="{Binding TransmitBorderThickness}">
+                                                                <!-- Highlight when transmitting -->
+                                                                <Border.Background>
+                                                                    <SolidColorBrush
+                                                                        Color="{Binding TransmitHighlightColor}" />
+                                                                </Border.Background>
+                                                                <Border.BorderBrush>
+                                                                    <SolidColorBrush
+                                                                        Color="{Binding TransmitBorderColor}" />
+                                                                </Border.BorderBrush>
+
+                                                                <Grid ColumnDefinitions="Auto,*,Auto">
+                                                                    <!-- Status Dot -->
+                                                                    <Ellipse Grid.Column="0"
+                                                                             Width="5" Height="5"
+                                                                             VerticalAlignment="Center"
+                                                                             Margin="10,0,8,0"
+                                                                             IsVisible="{Binding IsOwnUser}">
+                                                                        <Ellipse.Fill>
+                                                                            <SolidColorBrush Color="Green" />
+                                                                        </Ellipse.Fill>
+                                                                    </Ellipse>
+                                                                    
+                                                                    <Ellipse Grid.Column="0"
+                                                                             Width="5" Height="5"
+                                                                             VerticalAlignment="Center"
+                                                                             Margin="10,0,8,0"
+                                                                             IsVisible="{Binding !IsOwnUser}">
+                                                                        <Ellipse.Fill>
+                                                                            <SolidColorBrush Color="Transparent" />
+                                                                        </Ellipse.Fill>
+                                                                    </Ellipse>
+
+                                                                    <!-- Callsign -->
+                                                                    <TextBlock Grid.Column="1"
+                                                                               VerticalAlignment="Center"
+                                                                               Classes="Caption"
+                                                                               FontWeight="{Binding PeerFontWeight}"
+                                                                               Text="{Binding Name}"/>
+                                                                        
+                                                                    <!-- TX Badge (only when transmitting) -->
+                                                                    <Border Grid.Column="2"
+                                                                            Background="Gold"
+                                                                            CornerRadius="3"
+                                                                            Padding="4,2"
+                                                                            Margin="0,0,8,0"
+                                                                            VerticalAlignment="Center"
+                                                                            IsVisible="{Binding IsTransmitting}"
+                                                                            Opacity="0.2">
+                                                                        <TextBlock Text="TX"
+                                                                                FontSize="9"
+                                                                                FontWeight="Bold" />
+                                                                    </Border>
+                                                                </Grid>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </DockPanel>
+                    </Expander>
                 </Grid>
             </DockPanel>
         </controls:NavigationDrawer>

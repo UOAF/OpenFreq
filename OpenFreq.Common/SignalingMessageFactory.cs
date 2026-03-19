@@ -5,13 +5,13 @@ namespace OpenFreq.Common.Signaling;
 
 public static class SignalingMessageFactory
 {
-    public static SignalingMessage CreateAuthenticate(string password)
+    public static SignalingMessage CreateAuthenticate(string password, string? displayName)
     {
         return new SignalingMessage
         {
             Type = SignalingMessageTypes.Authenticate,
             Payload = JsonSerializer.SerializeToElement(
-                new AuthenticateMessage { Password = password }, 
+                new AuthenticateMessage { Password = password, DisplayName =  displayName }, 
                 OpenFreqJsonContext.Default.AuthenticateMessage)
         };
     }
@@ -38,7 +38,7 @@ public static class SignalingMessageFactory
         };
     }
 
-    public static SignalingMessage CreateTransmission(int frequencyKhz, bool transmitting)
+    public static SignalingMessage CreateTransmission(int frequencyKhz, bool transmitting, bool is3d)
     {
         return new SignalingMessage
         {
@@ -47,13 +47,14 @@ public static class SignalingMessageFactory
                 new AudioTransmissionMessage 
                 { 
                     FrequencyKhz = frequencyKhz, 
-                    Transmitting = transmitting 
+                    Transmitting = transmitting,
+                    Is3d = is3d
                 }, 
                 OpenFreqJsonContext.Default.AudioTransmissionMessage)
         };
     }
 
-    public static SignalingMessage CreateSuccess(string message, string? peerId = null, int? audioPort = null, bool opusEnabled = true)
+    public static SignalingMessage CreateSuccess(string message, Dictionary<int, List<PeerData>> peers, string? peerId = null, int? audioPort = null, bool opusEnabled = true)
     {
         return new SignalingMessage
         {
@@ -64,7 +65,8 @@ public static class SignalingMessageFactory
                     Message = message, 
                     PeerId = peerId, 
                     AudioPort = audioPort,
-                    OpusCompressionEnabled = opusEnabled
+                    OpusCompressionEnabled = opusEnabled,
+                    FrequenciesPeers = peers
                 }, 
                 OpenFreqJsonContext.Default.SuccessMessage)
         };
@@ -81,7 +83,7 @@ public static class SignalingMessageFactory
         };
     }
 
-    public static SignalingMessage CreatePeerJoined(string peerId, int frequencyKhz)
+    public static SignalingMessage CreatePeerJoined(string peerId, string? peerDisplayName, int frequencyKhz)
     {
         return new SignalingMessage
         {
@@ -90,6 +92,7 @@ public static class SignalingMessageFactory
                 new PeerJoinedMessage 
                 { 
                     PeerId = peerId, 
+                    PeerDisplayName = peerDisplayName ?? "Unnamed",
                     FrequencyKhz = frequencyKhz 
                 }, 
                 OpenFreqJsonContext.Default.PeerJoinedMessage)
@@ -111,7 +114,18 @@ public static class SignalingMessageFactory
         };
     }
 
-    public static SignalingMessage CreateTransmissionEvent(string peerId, int frequencyKhz, bool transmitting)
+    public static SignalingMessage CreateSetDisplayName(string displayName)
+    {
+        return new SignalingMessage
+        {
+            Type = SignalingMessageTypes.SetDisplayName,
+            Payload = JsonSerializer.SerializeToElement(
+                new DisplayNameMessage { DisplayName = displayName },
+                OpenFreqJsonContext.Default.DisplayNameMessage)
+        };
+    }
+
+    public static SignalingMessage CreateTransmissionEvent(string peerId, int frequencyKhz, bool transmitting, bool is3d)
     {
         return new SignalingMessage
         {
@@ -121,13 +135,14 @@ public static class SignalingMessageFactory
                 { 
                     PeerId = peerId, 
                     FrequencyKhz = frequencyKhz, 
-                    Transmitting = transmitting 
+                    Transmitting = transmitting,
+                    Is3d =  is3d
                 }, 
                 OpenFreqJsonContext.Default.TransmissionEventMessage)
         };
     }
 
-    public static SignalingMessage CreateChannelState(int frequencyKhz, List<string> peers)
+    public static SignalingMessage CreateChannelState(int frequencyKhz, List<ChannelStateMessage.Peer> peers)
     {
         return new SignalingMessage
         {
@@ -139,6 +154,20 @@ public static class SignalingMessageFactory
                     Peers = peers 
                 }, 
                 OpenFreqJsonContext.Default.ChannelStateMessage)
+        };
+    }
+
+    public static SignalingMessage CreateAllPeersStatusMessage(Dictionary<int, List<PeerData>> allPeersStatus)
+    {
+        return new SignalingMessage
+        {
+            Type = SignalingMessageTypes.AllPeersStatus,
+            Payload = JsonSerializer.SerializeToElement(
+                new AllPeersStatusMessage() 
+                { 
+                    FrequenciesPeers =  allPeersStatus
+                }, 
+                OpenFreqJsonContext.Default.AllPeersStatusMessage)
         };
     }
 

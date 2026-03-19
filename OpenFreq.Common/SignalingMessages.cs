@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace OpenFreq.Common.Signaling;
+namespace OpenFreq.Common;
 
 /// <summary>
 /// Base signaling message wrapper
@@ -19,6 +19,7 @@ public class SignalingMessage
 public class AuthenticateMessage
 {
     [JsonPropertyName("password")] public string? Password { get; set; }
+    [JsonPropertyName("displayName")] public string? DisplayName { get; set; }
 }
 
 /// <summary>
@@ -45,6 +46,8 @@ public class AudioTransmissionMessage
     [JsonPropertyName("frequency")] public int FrequencyKhz { get; set; }
 
     [JsonPropertyName("transmitting")] public bool Transmitting { get; set; }
+    
+    [JsonPropertyName("3d")] public bool Is3d { get; set; } 
 }
 
 /// <summary>
@@ -67,6 +70,9 @@ public class SuccessMessage
     [JsonPropertyName("audioPort")] public int? AudioPort { get; set; }
     
     [JsonPropertyName("opusCompression")] public bool OpusCompressionEnabled { get; set; }
+    
+    [JsonPropertyName("frequencies")] public Dictionary<int, List<PeerData>> FrequenciesPeers { get; set; } = [];
+
 }
 
 /// <summary>
@@ -75,6 +81,7 @@ public class SuccessMessage
 public class PeerJoinedMessage
 {
     [JsonPropertyName("peerId")] public string PeerId { get; set; } = string.Empty;
+    [JsonPropertyName("peerDisplayName")] public string PeerDisplayName { get; set; } = string.Empty;
 
     [JsonPropertyName("frequency")] public int FrequencyKhz { get; set; }
 }
@@ -95,10 +102,10 @@ public class PeerLeftMessage
 public class TransmissionEventMessage
 {
     [JsonPropertyName("peerId")] public string PeerId { get; set; } = string.Empty;
-
+    [JsonPropertyName("peerDisplayName")] public string PeerDisplayName { get; set; } = string.Empty;
     [JsonPropertyName("transmitting")] public bool Transmitting { get; set; }
-
     [JsonPropertyName("frequency")] public int FrequencyKhz { get; set; }
+    [JsonPropertyName("3d")] public bool Is3d { get; set; }
 }
 
 /// <summary>
@@ -108,5 +115,34 @@ public class ChannelStateMessage
 {
     [JsonPropertyName("frequency")] public int FrequencyKhz { get; set; }
 
-    [JsonPropertyName("peers")] public List<string> Peers { get; set; } = new();
+    [JsonPropertyName("peers")] public List<Peer> Peers { get; set; } = [];
+
+    public class Peer
+    {
+        [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
+        [JsonPropertyName("displayname")] public string DisplayName { get; set; } = string.Empty;
+
+        public Peer(string id, string displayName)
+        {
+            Id = id;
+            DisplayName = displayName;
+        }
+    }
+}
+
+/// <summary>
+/// Update display name
+/// </summary>
+public class DisplayNameMessage
+{
+    [JsonPropertyName("displayname")] public string DisplayName { get; set; }  = string.Empty;
+}
+
+
+/// <summary>
+/// Peer list has changed
+/// </summary>
+public class AllPeersStatusMessage
+{
+    [JsonPropertyName("frequencies")] public Dictionary<int, List<PeerData>> FrequenciesPeers { get; set; } = [];
 }

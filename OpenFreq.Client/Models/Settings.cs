@@ -34,4 +34,5 @@ public class OpenFreqSettings
     public int? MaximizedScreenY { get; set; }
     public int? MaximizedScreenWidth { get; set; }
     public int? MaximizedScreenHeight { get; set; }
+    public string DisplayName { get; set; }
 }

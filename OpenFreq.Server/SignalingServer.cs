@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Http.Json;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using OpenFreq.Common;
 using OpenFreq.Common.Signaling;
 using OpenFreqServer.Json;
 
@@ -26,50 +27,53 @@ public class SignalingServer
     private CancellationTokenSource _cts = new();
 
     // High-performance logging delegates
-    private static readonly Action<ILogger, int, Exception?> _logServerStarted =
+    private static readonly Action<ILogger, int, Exception?> LogServerStarted =
         LoggerMessage.Define<int>(
             LogLevel.Information,
             new EventId(1, nameof(StartAsync)),
             "OpenFreqServer listening on port {Port}");
 
-    private static readonly Action<ILogger, string, Exception?> _logClientConnected =
-        LoggerMessage.Define<string>(
+    private static readonly Action<ILogger, string, string, Exception?> LogClientConnected =
+        LoggerMessage.Define<string, string>(
             LogLevel.Information,
             new EventId(2, nameof(HandleWebSocketConnection)),
-            "Client {ClientId} connected");
+            "{DisplayName} ({ClientId}) connected");
 
-    private static readonly Action<ILogger, string, int, Exception?> _logClientAuthenticated =
-        LoggerMessage.Define<string, int>(
+    private static readonly Action<ILogger, string, string, int, Exception?> LogClientAuthenticated =
+        LoggerMessage.Define<string, string, int>(
             LogLevel.Information,
             new EventId(3, nameof(HandleAuthenticate)),
-            "Client {ClientId} authenticated, audio port {AudioPort}");
+            "{DisplayName} ({ClientId}) authenticated, audio port {AudioPort}");
 
-    private static readonly Action<ILogger, string, double, Exception?> _logClientJoinedFrequency =
-        LoggerMessage.Define<string, double>(
+    private static readonly Action<ILogger, string, string, double, Exception?> LogClientJoinedFrequency =
+        LoggerMessage.Define<string, string, double>(
             LogLevel.Information,
             new EventId(4, nameof(HandleJoinChannel)),
-            "Client {ClientId} joined frequency {Frequency:F3}");
+            "{DisplayName} ({ClientId}) joined frequency {Frequency:F3} MHz");
 
-    private static readonly Action<ILogger, string, double, Exception?> _logClientLeftFrequency =
-        LoggerMessage.Define<string, double>(
+    private static readonly Action<ILogger, string, string, double, Exception?> LogClientLeftFrequency =
+        LoggerMessage.Define<string, string, double>(
             LogLevel.Information,
             new EventId(5, nameof(LeaveCurrentChannel)),
-            "Client {ClientId} left frequency {Frequency:F3}");
+            "{DisplayName} ({ClientId}) left frequency {Frequency:F3} MHz");
 
-    private static readonly Action<ILogger, string, bool, double, int, Exception?> _logTransmissionState =
-        LoggerMessage.Define<string, bool, double, int>(
+    private static readonly Action<ILogger, string, string, bool, double, int, Exception?> LogTransmissionState =
+        LoggerMessage.Define<string, string, bool, double, int>(
             LogLevel.Information,
             new EventId(6, nameof(HandleTransmission)),
-            "Client {ClientId} transmission state: {IsTransmitting} on frequency {Frequency:F3}, broadcasting to {PeerCount} peer(s)");
+            "{DisplayName} ({ClientId}) transmission: {IsTransmitting} on {Frequency:F3} MHz, broadcasting to {PeerCount} peer(s)");
 
-    private static readonly Action<ILogger, string, Exception?> _logClientCleanedUp =
-        LoggerMessage.Define<string>(
+    private static readonly Action<ILogger, string, string, Exception?> LogClientCleanedUp =
+        LoggerMessage.Define<string, string>(
             LogLevel.Information,
             new EventId(7, nameof(CleanupClient)),
-            "Client {ClientId} cleaned up");
+            "{DisplayName} ({ClientId}) cleaned up");
 
     public ConcurrentDictionary<string, ClientSession> Clients => _clients;
     public FrequencyChannelManager ChannelManager => _channelManager;
+
+    private static string GetDisplayName(ClientSession session) =>
+        !string.IsNullOrWhiteSpace(session.DisplayName) ? session.DisplayName : "Unnamed";
 
     public SignalingServer(ServerConfig config, ILoggerFactory loggerFactory)
     {
@@ -80,7 +84,7 @@ public class SignalingServer
 
         // Build Kestrel application
         var builder = WebApplication.CreateBuilder();
-        
+
         // Configure Kestrel
         builder.WebHost.UseKestrel(options =>
         {
@@ -94,7 +98,7 @@ public class SignalingServer
             // Connection limits
             options.Limits.MaxConcurrentConnections = 1000;
             options.Limits.MaxConcurrentUpgradedConnections = 1000;
-            
+
             // WebSocket keep-alive
             options.Limits.KeepAliveTimeout = TimeSpan.FromMinutes(2);
             options.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(30);
@@ -111,7 +115,7 @@ public class SignalingServer
         });
 
         _app = builder.Build();
-        
+
         // Configure WebSocket options
         _app.UseWebSockets(new WebSocketOptions
         {
@@ -119,7 +123,7 @@ public class SignalingServer
             // Allow messages up to 64KB
             ReceiveBufferSize = 64 * 1024
         });
-        
+
         // WebSocket signaling endpoint
         _app.Map("/", async context =>
         {
@@ -134,13 +138,12 @@ public class SignalingServer
                 await context.Response.WriteAsync("WebSocket connection required");
             }
         });
-        
     }
 
     public async Task StartAsync()
     {
-        _logServerStarted(_logger, _config.WebSocketPort, null);
-    
+        LogServerStarted(_logger, _config.WebSocketPort, null);
+
         try
         {
             await _app!.StartAsync(_cts.Token);
@@ -162,16 +165,19 @@ public class SignalingServer
             var remoteIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
             _logger.LogDebug("Client {ClientId} connecting from {RemoteIp}", clientId, remoteIp);
 
-            var session = new ClientSession(clientId, webSocket);
+            var session = new ClientSession(clientId, string.Empty, webSocket);
             _clients[clientId] = session;
 
-            _logClientConnected(_logger, clientId, null);
+            LogClientConnected(_logger, GetDisplayName(session), clientId, null);
 
             await HandleClientMessages(session);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error in WebSocket connection for client {ClientId}", clientId);
+            var displayName = _clients.TryGetValue(clientId, out var session)
+                ? GetDisplayName(session)
+                : "Unnamed";
+            _logger.LogError(ex, "Error in WebSocket connection for {DisplayName} ({ClientId})", displayName, clientId);
         }
         finally
         {
@@ -212,16 +218,18 @@ public class SignalingServer
         catch (WebSocketException ex) when (ex.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely)
         {
             // Client disconnected abruptly - normal behavior
-            _logger.LogDebug("Client {ClientId} disconnected abruptly", session.Id);
+            _logger.LogDebug("{DisplayName} ({ClientId}) disconnected abruptly", GetDisplayName(session), session.Id);
         }
         catch (OperationCanceledException)
         {
             // Server shutting down
-            _logger.LogDebug("Client {ClientId} connection cancelled during shutdown", session.Id);
+            _logger.LogDebug("{DisplayName} ({ClientId}) connection cancelled during shutdown", GetDisplayName(session),
+                session.Id);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected error handling messages for client {ClientId}", session.Id);
+            _logger.LogError(ex, "Unexpected error handling messages for {DisplayName} ({ClientId})",
+                GetDisplayName(session), session.Id);
         }
     }
 
@@ -249,6 +257,9 @@ public class SignalingServer
                 case "transmission":
                     await HandleTransmission(session, message);
                     break;
+                case "set-display-name":
+                    await SetDisplayName(session, message);
+                    break;
 
                 default:
                     if (_logger.IsEnabled(LogLevel.Warning))
@@ -258,12 +269,13 @@ public class SignalingServer
         }
         catch (JsonException ex)
         {
-            _logger.LogWarning(ex, "Invalid JSON from client {ClientId}", session.Id);
+            _logger.LogWarning(ex, "Invalid JSON from {DisplayName} ({ClientId})", GetDisplayName(session), session.Id);
             await SendError(session, "Invalid message format");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error processing message from client {ClientId}", session.Id);
+            _logger.LogError(ex, "Error processing message from {DisplayName} ({ClientId})", GetDisplayName(session),
+                session.Id);
             await SendError(session, $"Server error processing message");
         }
     }
@@ -278,6 +290,8 @@ public class SignalingServer
             return;
         }
 
+        session.DisplayName = authMsg.DisplayName;
+
         if (string.IsNullOrEmpty(_config.ServerPassword) ||
             authMsg.Password == _config.ServerPassword)
         {
@@ -285,14 +299,14 @@ public class SignalingServer
 
             var audioPort = _audioServer.CreateAudioSession(session.Id).Result;
 
-            _logClientAuthenticated(_logger, session.Id, audioPort, null);
+            LogClientAuthenticated(_logger, GetDisplayName(session), session.Id, audioPort, null);
 
             await SendSuccess(session, "Authenticated", session.Id, audioPort, _config.EnableOpusCompression);
         }
         else
         {
             await SendError(session, "Authentication failed");
-            
+
             // Optional: Disconnect on auth failure
             await Task.Delay(1000); // Brief delay to prevent brute force
             if (session.WebSocket.State == WebSocketState.Open)
@@ -335,22 +349,37 @@ public class SignalingServer
             return;
         }
 
-        _channelManager.JoinChannel(joinMsg.FrequencyKhz, session.Id);
-        
+        _channelManager.JoinChannel(joinMsg.FrequencyKhz, session.Id, session.DisplayName ?? "Unnamed");
+
         session.CurrentFrequencies.TryAdd(joinMsg.FrequencyKhz, ClientSession.FrequencyClientStatus.Receiving);
 
-        var peers = _channelManager.GetClientsInChannel(joinMsg.FrequencyKhz)
-            .Where(id => id != session.Id)
-            .ToList();
+        List<ChannelStateMessage.Peer> peers = [];
+        // Iterate through all clients on this freq (except our own)
+        foreach (var clientId in _channelManager.GetClientsInChannel(joinMsg.FrequencyKhz))
+        {
+            if (clientId == session.Id) continue;
+
+            _clients.TryGetValue(clientId, out var clientSession);
+            if (clientSession == null) continue;
+            peers.Add(new ChannelStateMessage.Peer(
+                clientSession.Id,
+                clientSession.DisplayName ?? "Unnamed"
+            ));
+        }
 
         await SendChannelState(session, joinMsg.FrequencyKhz, peers);
 
         BroadcastToChannel(
             joinMsg.FrequencyKhz,
             session.Id,
-            SignalingMessageFactory.CreatePeerJoined(session.Id, joinMsg.FrequencyKhz));
+            SignalingMessageFactory.CreatePeerJoined(session.Id, session.DisplayName, joinMsg.FrequencyKhz));
 
-        _logClientJoinedFrequency(_logger, session.Id, joinMsg.FrequencyKhz/1000d, null);
+        LogClientJoinedFrequency(_logger, GetDisplayName(session), session.Id, joinMsg.FrequencyKhz / 1000d, null);
+
+        if (_config.BroadcastPeerUpdates)
+        {
+            BroadcastToAllChannels(SignalingMessageFactory.CreateAllPeersStatusMessage(_channelManager.GetAllChannelStates()));
+        }
     }
 
     private async Task HandleLeaveChannel(ClientSession session, SignalingMessage message)
@@ -367,20 +396,25 @@ public class SignalingServer
 
         var frequencyKhz = transmissionMsg.FrequencyKhz;
         _channelManager.LeaveChannel(frequencyKhz, session.Id);
-        
+
         BroadcastToChannel(
             frequencyKhz,
             session.Id,
             SignalingMessageFactory.CreatePeerLeft(session.Id, frequencyKhz));
 
         session.CurrentFrequencies.TryRemove(frequencyKhz, out var frequencyClientStatus);
-        _logClientLeftFrequency(_logger, session.Id, frequencyKhz/1000d, null);
+        LogClientLeftFrequency(_logger, GetDisplayName(session), session.Id, frequencyKhz / 1000d, null);
+        
+        if (_config.BroadcastPeerUpdates)
+        {
+            BroadcastToAllChannels(SignalingMessageFactory.CreateAllPeersStatusMessage(_channelManager.GetAllChannelStates()));
+        }
     }
 
     private async Task LeaveAllChannels(ClientSession session)
     {
         var frequencies = session.CurrentFrequencies.Keys.ToArray();
-        
+
         foreach (var frequency in frequencies)
         {
             _channelManager.LeaveChannel(frequency, session.Id);
@@ -391,7 +425,12 @@ public class SignalingServer
                 SignalingMessageFactory.CreatePeerLeft(session.Id, frequency));
 
             session.CurrentFrequencies.TryRemove(frequency, out var frequencyClientStatus);
-            _logClientLeftFrequency(_logger, session.Id, frequency/1000d, null);
+            LogClientLeftFrequency(_logger, GetDisplayName(session), session.Id, frequency / 1000d, null);
+        }
+
+        if (_config.BroadcastPeerUpdates)
+        {
+            BroadcastToAllChannels(SignalingMessageFactory.CreateAllPeersStatusMessage(_channelManager.GetAllChannelStates()));
         }
     }
 
@@ -419,8 +458,8 @@ public class SignalingServer
             .Where(id => id != session.Id)
             .ToArray();
 
-        _logTransmissionState(_logger, session.Id, transmissionMsg.Transmitting, 
-            transmissionMsg.FrequencyKhz/1000d, peersInChannel.Length, null);
+        LogTransmissionState(_logger, GetDisplayName(session), session.Id, transmissionMsg.Transmitting,
+            transmissionMsg.FrequencyKhz / 1000d, peersInChannel.Length, null);
 
         BroadcastToChannel(
             transmissionMsg.FrequencyKhz,
@@ -428,7 +467,49 @@ public class SignalingServer
             SignalingMessageFactory.CreateTransmissionEvent(
                 session.Id,
                 transmissionMsg.FrequencyKhz,
-                transmissionMsg.Transmitting));
+                transmissionMsg.Transmitting,
+                transmissionMsg.Is3d));
+    }
+
+    private async Task SetDisplayName(ClientSession session, SignalingMessage message)
+    {
+        var setDisplayNameMsg = SignalingMessageFactory.DeserializePayload<AuthenticateMessage>(message.Payload);
+
+        if (setDisplayNameMsg == null)
+        {
+            await SendError(session, "Invalid set display name message");
+            return;
+        }
+
+        session.DisplayName = setDisplayNameMsg.DisplayName;
+
+        if (_config.BroadcastPeerUpdates)
+        {
+            BroadcastToAllChannels(SignalingMessageFactory.CreateAllPeersStatusMessage(_channelManager.GetAllChannelStates()));
+        }
+    }
+
+    private void BroadcastToAllChannels(SignalingMessage message)
+    {
+        _clients.Values.ToList().ForEach(session =>
+            {
+                if (!session.IsAuthenticated) return;
+                _ = SendToClient(session, message)
+                    .ContinueWith(t =>
+                    {
+                        if (!t.IsFaulted || t.Exception == null) return;
+                        var ex = t.Exception.GetBaseException();
+                        _logger.LogError(ex,
+                            "Error broadcasting to {DisplayName} ({ClientId})",
+                            GetDisplayName(session), session.Id);
+                    }, TaskScheduler.Default);
+
+                if (_logger.IsEnabled(LogLevel.Debug))
+                    _logger.LogDebug(
+                        "Broadcasting {MessageType} to {DisplayName} ({ClientId})",
+                        message.Type, GetDisplayName(session), session.Id);
+            }
+        );
     }
 
     private void BroadcastToChannel(int frequencyKhz, string excludeClientId, SignalingMessage message)
@@ -446,13 +527,15 @@ public class SignalingServer
                     {
                         if (!t.IsFaulted || t.Exception == null) return;
                         var ex = t.Exception.GetBaseException();
-                        _logger.LogError(ex, "Error broadcasting to client {ClientId} in channel {Frequency/1000d:F3}", 
-                            clientId, frequencyKhz);
+                        _logger.LogError(ex,
+                            "Error broadcasting to {DisplayName} ({ClientId}) in channel {Frequency:F3} MHz",
+                            GetDisplayName(session), clientId, frequencyKhz / 1000d);
                     }, TaskScheduler.Default);
 
                 if (_logger.IsEnabled(LogLevel.Debug))
-                    _logger.LogDebug("Broadcasting {MessageType} to client {ClientId} in channel {Frequency/1000d:F3}", 
-                        message.Type, clientId, frequencyKhz);
+                    _logger.LogDebug(
+                        "Broadcasting {MessageType} to {DisplayName} ({ClientId}) in channel {Frequency:F3} MHz",
+                        message.Type, GetDisplayName(session), clientId, frequencyKhz / 1000d);
             }
         }
     }
@@ -476,12 +559,13 @@ public class SignalingServer
         await SendToClient(session, SignalingMessageFactory.CreateError(error));
     }
 
-    private async Task SendSuccess(ClientSession session, string message, string? peerId = null, int? audioPort = null, bool opusEnabled = true)
+    private async Task SendSuccess(ClientSession session, string message, string? peerId = null, int? audioPort = null,
+        bool opusEnabled = true)
     {
-        await SendToClient(session, SignalingMessageFactory.CreateSuccess(message, peerId, audioPort, opusEnabled));
+        await SendToClient(session, SignalingMessageFactory.CreateSuccess(message, _channelManager.GetAllChannelStates(), peerId, audioPort, opusEnabled));
     }
 
-    private async Task SendChannelState(ClientSession session, int frequencyKhz, List<string> peers)
+    private async Task SendChannelState(ClientSession session, int frequencyKhz, List<ChannelStateMessage.Peer> peers)
     {
         await SendToClient(session, SignalingMessageFactory.CreateChannelState(frequencyKhz, peers));
     }
@@ -512,25 +596,25 @@ public class SignalingServer
 
             session.WebSocket.Dispose();
 
-            _logClientCleanedUp(_logger, clientId, null);
+            LogClientCleanedUp(_logger, GetDisplayName(session), clientId, null);
         }
     }
 
     public async Task StopAsync()
     {
         _logger.LogInformation("Stopping signaling server...");
-    
+
         // Stop audio server first
         _audioServer.Stop();
-    
+
         // Cancel the CTS
         _cts.Cancel();
-    
+
         // Stop the web app
         if (_app != null)
         {
             using var shutdownCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        
+
             try
             {
                 await _app.StopAsync(shutdownCts.Token);
@@ -539,10 +623,10 @@ public class SignalingServer
             {
                 _logger.LogWarning("App shutdown timed out");
             }
-        
+
             await _app.DisposeAsync();
         }
-    
+
         _logger.LogInformation("Signaling server stopped");
     }
 }

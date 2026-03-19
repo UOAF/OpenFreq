@@ -1,5 +1,3 @@
-using FalconBmsDataService.Models;
-
 namespace OpenFreqClient.Models;
 
 public class Channel

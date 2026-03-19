@@ -11,10 +11,12 @@ public class ClientSession
     public ConcurrentDictionary<int, FrequencyClientStatus> CurrentFrequencies { get; set; } = new();
     public DateTime LastActivity { get; set; }
     public int AudioPort { get; set; }
+    public string? DisplayName {get; set;}
 
-    public ClientSession(string id, WebSocket webSocket)
+    public ClientSession(string id, string displayName, WebSocket webSocket)
     {
         Id = id;
+        DisplayName = displayName;
         WebSocket = webSocket;
         IsAuthenticated = false;
         LastActivity = DateTime.UtcNow;

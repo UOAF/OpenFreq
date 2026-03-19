@@ -46,9 +46,18 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
 
     [ObservableProperty] public partial SettingsViewModel Settings { get; set; }
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TotalChannels), nameof(DistinctPeers))]
+    public partial ObservableCollection<ChannelFrequencyPeerViewModel> PeerList { get; set; } = [];
+
+    public int TotalChannels => PeerList.Count;
+    public int DistinctPeers => PeerList.SelectMany(freq => freq.Peers).Distinct().Count();
+
     [ObservableProperty] public partial bool OpenFreqConnected { get; set; }
 
     [ObservableProperty] public partial bool TacviewConnected { get; set; }
+
+    [ObservableProperty] public partial bool IsPeersPanelExpanded { get; set; } = true;
 
     [ObservableProperty] public partial string StatusMessage { get; set; } = "Disconnected";
 
@@ -62,6 +71,8 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
     [NotifyPropertyChangedFor(nameof(TacviewStatusColor))]
     public partial AcmiConnectionStatus AcmiConnectionStatus { get; set; } = AcmiConnectionStatus.Disconnected;
 
+    [ObservableProperty] public partial bool SettingsDrawerOpened { get; set; } = true;
+    
     // Error handling properties
     [ObservableProperty] public partial bool HasError { get; set; }
 
@@ -119,6 +130,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         _openFreqService.ConnectionStateChanged += OnConnectionStateChanged;
         _openFreqService.StatusMessageReceived += OnStatusMessageReceived;
         _openFreqService.PeerActivityReceived += OnPeerActivityReceived;
+        _openFreqService.AllPeersStatusChanged += OnAllPeersChanged;
 
         // Falcon Radio Shared Memory
         _falconRadioSharedMemoryService.ConnectionParametersChanged +=
@@ -135,6 +147,27 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         _ = LoadConfigurationAsync();
 
         _openFreqService.SetOwnPositionMode(Settings.ConnectionMode);
+    }
+
+    private void OnAllPeersChanged(object? sender, AllPeersStatusEventArgs e)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            PeerList.Clear();
+            foreach (var frequency in e.AllPeers.Keys)
+            {
+                ObservableCollection<ChannelPeerViewModel> peers = [];
+                foreach (var peer in e.AllPeers[frequency])
+                {
+                    peers.Add(new ChannelPeerViewModel(peer.Id, peer.Name,
+                        peer.Status == PeerData.PeerStatus.Transmitting, peer.Id == _openFreqService.PeerId));
+                }
+
+                PeerList.Add(new ChannelFrequencyPeerViewModel(frequency, peers));
+            }
+
+            OnPropertyChanged(nameof(DistinctPeers));
+        });
     }
 
     private async void OnFalconSharedMemoryStateChanged(object? sender, ServiceStateChangedEventArgs e)
@@ -225,6 +258,12 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         {
             _falconRadioSharedMemoryService.RemoveClientStatus(ClientStatusFlags.Connected);
             _ = DisconnectAsync().Wait(TimeSpan.FromMilliseconds(500));
+        }
+
+        // Nickname changed - this is usually triggered AFTER a successful connection
+        if (e.OldParameters.Nickname != e.NewParameters.Nickname && e.NewParameters.ReadyToTransmit)
+        {
+            _openFreqService.UpdateDisplayNameAsync(e.NewParameters.Nickname);
         }
     }
 
@@ -364,14 +403,20 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         {
             PeerId = _openFreqService.PeerId ?? "";
             ClearError();
+           SettingsDrawerOpened = false;
         }
         else if (state == ConnectionState.Disconnected && OpenFreqConnected)
         {
             ShowError("Lost connection to server");
         }
     }
-    
-     
+
+    [RelayCommand]
+    private void ToggleSettingsDrawer()
+    {
+        SettingsDrawerOpened = !SettingsDrawerOpened;
+    }
+
     [RelayCommand]
     private async Task BeginCaptureUhfSquelchHotkeyAsync()
     {
@@ -391,7 +436,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
             IsCapturingHotkey = false;
         }
     }
-    
+
     [RelayCommand]
     private async Task BeginCaptureVhfSquelchHotkeyAsync()
     {
@@ -413,6 +458,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
     }
 
     public bool IsCapturingHotkey { get; set; }
+    
 
     private void OnStatusMessageReceived(object? sender, string message)
     {
@@ -429,9 +475,24 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         }
     }
 
+    [RelayCommand]
+    private void TogglePeersPanel()
+    {
+        IsPeersPanelExpanded = !IsPeersPanelExpanded;
+    }
+
     private void OnPeerActivityReceived(object? sender, PeerActivityEventArgs e)
     {
-        StatusMessage = e.Message;
+        // This isn't ideal performance-wise, but we don't have too many peers and there is no ObservableDictionary
+        foreach (var peer in PeerList
+                     .Where(f => f.FrequencyKhz == e.FrequencyKhz)
+                     .SelectMany(f => f.Peers)
+                     .Where(p => p.Id == e.PeerData.Id))
+        {
+            // Only show transmitting if the client is in the same mode as we are
+            peer.IsTransmitting =
+                (Settings.Is3dMode == e.Is3d) && e.PeerData.Status == PeerData.PeerStatus.Transmitting;
+        }
     }
 
 
@@ -445,6 +506,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
             Settings.OpenFreqServerAddress = config.Settings.OpenFreqServerAddress;
             Settings.OpenFreqPassword = config.Settings.OpenFreqPassword;
             Settings.ConnectionMode = config.Settings.OwnPositionMode;
+            Settings.DisplayName = config.Settings.DisplayName;
             Settings.InputDeviceName = config.Settings.InputDeviceName;
             Settings.OutputDeviceName = config.Settings.OutputDeviceName;
             Settings.HeightmapPath = config.Settings.HeightmapPath;
@@ -453,7 +515,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
             {
                 Settings.BmsVhfSquelchHotkey = vhfSquelchHotkey;
             }
-            
+
             if (Enum.TryParse<KeyCode>(config.Settings.BmsSquelchUhfHotkeyCode, out var uhfSquelchHotkey))
             {
                 Settings.BmsUhfSquelchHotkey = uhfSquelchHotkey;
@@ -530,8 +592,6 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         }
     }
 
-
-   
 
     [RelayCommand]
     private Task Debug()

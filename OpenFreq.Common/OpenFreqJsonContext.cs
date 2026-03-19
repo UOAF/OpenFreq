@@ -20,6 +20,8 @@ namespace OpenFreq.Common;
 [JsonSerializable(typeof(PeerLeftMessage))]
 [JsonSerializable(typeof(TransmissionEventMessage))]
 [JsonSerializable(typeof(ChannelStateMessage))]
+[JsonSerializable(typeof(DisplayNameMessage))]
+[JsonSerializable(typeof(AllPeersStatusMessage))]
 
 public partial class OpenFreqJsonContext : JsonSerializerContext
 {

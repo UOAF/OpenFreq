@@ -86,7 +86,7 @@ public class TestClient
         });
 
         // Create client
-        var client = new OpenFreqRtcClient(factory, serverIp, password);
+        var client = new OpenFreqRtcClient(factory, serverIp, password, "testclient");
         var testClient = new TestClientWrapper(client, frequencies);
 
         try
@@ -258,7 +258,7 @@ public class TestClientWrapper : IDisposable
         // Tell client to start transmission on all frequencies
         foreach (var frequency in _frequencies)
         {
-            await _client.StartTransmissionAsync(frequency);
+            await _client.StartTransmissionAsync(frequency, false);
             _isTransmitting[frequency] = true;
         }
     }
@@ -281,7 +281,7 @@ public class TestClientWrapper : IDisposable
         {
             if (_isTransmitting[frequency])
             {
-                await _client.StopTransmissionAsync(frequency);
+                await _client.StopTransmissionAsync(frequency, false);
                 _isTransmitting[frequency] = false;
             }
         }

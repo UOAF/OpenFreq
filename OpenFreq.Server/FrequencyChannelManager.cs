@@ -1,27 +1,36 @@
 using System.Collections.Concurrent;
+using OpenFreq.Common;
 
 namespace OpenFreq.Server;
 
 /// <summary>
+/// Manages frequency channels and tracks peer state for broadcasting
 /// </summary>
 public class FrequencyChannelManager
 {
-    private readonly ConcurrentDictionary<int, ConcurrentDictionary<string, byte>> _channels = new();
+    private readonly ConcurrentDictionary<int, ConcurrentDictionary<string, PeerData>> _channels = new();
 
-    public bool JoinChannel(int frequencyKhz, string clientId)
+    /// <summary>
+    /// Join a channel with initial peer data
+    /// </summary>
+    public bool JoinChannel(int frequencyKhz, string clientId, string displayName)
     {
-        var channelClients = _channels.GetOrAdd(frequencyKhz, _ => new ConcurrentDictionary<string, byte>());
-        return channelClients.TryAdd(clientId, 0);
+        var channelPeers = _channels.GetOrAdd(frequencyKhz, _ => new ConcurrentDictionary<string, PeerData>());
+        var peerData = new PeerData(clientId, displayName, PeerData.PeerStatus.Receiving);
+        return channelPeers.TryAdd(clientId, peerData);
     }
 
+    /// <summary>
+    /// Leave a specific channel
+    /// </summary>
     public bool LeaveChannel(int frequencyKhz, string clientId)
     {
-        if (_channels.TryGetValue(frequencyKhz, out var clients))
+        if (_channels.TryGetValue(frequencyKhz, out var peers))
         {
-            var removed = clients.TryRemove(clientId, out _);
+            var removed = peers.TryRemove(clientId, out _);
             
             // Clean up empty channels
-            if (clients.IsEmpty)
+            if (peers.IsEmpty)
             {
                 _channels.TryRemove(frequencyKhz, out _);
             }
@@ -32,6 +41,9 @@ public class FrequencyChannelManager
         return false;
     }
 
+    /// <summary>
+    /// Leave all channels for a client
+    /// </summary>
     public void LeaveAllChannels(string clientId)
     {
         // Use ToList() to avoid modification during enumeration
@@ -39,12 +51,12 @@ public class FrequencyChannelManager
 
         foreach (var frequency in frequencies)
         {
-            if (_channels.TryGetValue(frequency, out var clients))
+            if (_channels.TryGetValue(frequency, out var peers))
             {
-                if (clients.TryRemove(clientId, out _))
+                if (peers.TryRemove(clientId, out _))
                 {
                     // Clean up empty channels
-                    if (clients.IsEmpty)
+                    if (peers.IsEmpty)
                     {
                         _channels.TryRemove(frequency, out _);
                     }
@@ -52,21 +64,69 @@ public class FrequencyChannelManager
             }
         }
     }
+    
+    /// <summary>
+    /// Update the display name for a peer across all channels they're in
+    /// </summary>
+    public void UpdateDisplayName(string clientId, string newDisplayName)
+    {
+        foreach (var (frequency, peers) in _channels)
+        {
+            if (peers.TryGetValue(clientId, out var currentPeerData))
+            {
+                var updatedPeerData = new PeerData(
+                    currentPeerData.Id, 
+                    newDisplayName, 
+                    currentPeerData.Status);
+                
+                peers.TryUpdate(clientId, updatedPeerData, currentPeerData);
+            }
+        }
+    }
 
     /// <summary>
+    /// Get all client IDs in a channel (for backward compatibility)
     /// </summary>
     public string[] GetClientsInChannel(int frequencyKhz)
     {
-        if (_channels.TryGetValue(frequencyKhz, out var clients))
+        if (_channels.TryGetValue(frequencyKhz, out var peers))
         {
-            return clients.Keys.ToArray();
+            return peers.Keys.ToArray();
         }
 
         return Array.Empty<string>();
     }
 
     /// <summary>
-    /// Gets first channel for a client (for backward compatibility)
+    /// Get all peer data in a specific channel
+    /// </summary>
+    public List<PeerData> GetPeersInChannel(int frequencyKhz)
+    {
+        if (_channels.TryGetValue(frequencyKhz, out var peers))
+        {
+            return peers.Values.ToList();
+        }
+
+        return new List<PeerData>();
+    }
+
+    /// <summary>
+    /// Get the complete channel state across all frequencies
+    /// </summary>
+    public Dictionary<int, List<PeerData>> GetAllChannelStates()
+    {
+        var result = new Dictionary<int, List<PeerData>>();
+        
+        foreach (var (frequency, peers) in _channels)
+        {
+            result[frequency] = peers.Values.ToList();
+        }
+        
+        return result;
+    }
+
+    /// <summary>
+    /// Get first channel for a client (for backward compatibility)
     /// </summary>
     public double GetClientChannel(string clientId)
     {
@@ -82,7 +142,7 @@ public class FrequencyChannelManager
     }
 
     /// <summary>
-    /// Gets all channels a client is in
+    /// Get all channels a client is in
     /// </summary>
     public List<double> GetClientChannels(string clientId)
     {
@@ -100,12 +160,13 @@ public class FrequencyChannelManager
     }
 
     /// <summary>
+    /// Get the number of peers in a channel
     /// </summary>
     public int GetChannelCount(int frequencyKhz)
     {
-        if (_channels.TryGetValue(frequencyKhz, out var clients))
+        if (_channels.TryGetValue(frequencyKhz, out var peers))
         {
-            return clients.Count;
+            return peers.Count;
         }
 
         return 0;

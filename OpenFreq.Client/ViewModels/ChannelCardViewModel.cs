@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
@@ -27,7 +26,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     [NotifyPropertyChangedFor(nameof(FrequencyMhzString))]
     [NotifyPropertyChangedFor(nameof(Type))]
     public partial int FrequencyKhz { get; set; }
-
+    
     /// <summary>
     /// Frequency display string in MHz
     /// </summary>
@@ -71,12 +70,12 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial Channel.ChannelConnectionStatus ConnectionStatus { get; set; } =
         Channel.ChannelConnectionStatus.Disconnected;
-    
-    [ObservableProperty] 
-    public partial Channel.ChannelTransmissionStatus TransmissionStatus { get; set; } = Channel.ChannelTransmissionStatus.Idle;
 
     [ObservableProperty]
-    public partial bool IsEditing { get; set; }
+    public partial Channel.ChannelTransmissionStatus TransmissionStatus { get; set; } =
+        Channel.ChannelTransmissionStatus.Idle;
+
+    [ObservableProperty] public partial bool IsEditing { get; set; }
 
     [ObservableProperty] private bool _channelWasChanged;
 
@@ -91,10 +90,9 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     [ObservableProperty] public partial bool IsCapturingPttHotkey { get; set; }
 
     public string HotkeyDisplay => GetKeyDisplayName(PttHotKey);
-    
-    [ObservableProperty]
-    public partial KeyCode SquelchHotKey { get; set; } = KeyCode.VcUndefined;
-    
+
+    [ObservableProperty] public partial KeyCode SquelchHotKey { get; set; } = KeyCode.VcUndefined;
+
     // Reference to the data of the RadioStationGroup
     [ObservableProperty] public partial RadioStationData RadioStationData { get; set; }
 
@@ -108,7 +106,8 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     // Store original values when entering edit mode
     private int _originalFrequencyKhz;
     private KeyCode _originalBinding;
-    
+    private readonly IOpenFreqService _openFreqService;
+
 
     [RelayCommand]
     public void BmsLobby1Clicked()
@@ -129,11 +128,13 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     }
 
 
-    public ChannelCardViewModel(IHotkeyService hotkeyService, string name, int frequencyKhz, bool isInEditMode,
+    public ChannelCardViewModel(IOpenFreqService openFreqService, IHotkeyService hotkeyService, string name,
+        int frequencyKhz, bool isInEditMode,
         RadioStationData radioStationData,
         ChannelCardGroupViewModel parentChannelCardGroupViewModel, SettingsViewModel settings, bool isEditable = true,
         RadioType? bmsRadioType = null)
     {
+        _openFreqService = openFreqService;
         Name = name;
         FrequencyKhz = frequencyKhz;
         IsEditing = isInEditMode;
@@ -218,7 +219,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
             _hotkeyService.RegisterHotkey(IHotkeyService.HotkeyType.Ptt, newValue, Id);
         }
     }
-    
+
     partial void OnSquelchHotKeyChanging(KeyCode oldValue, KeyCode newValue)
     {
         // Unregister old binding
@@ -268,11 +269,11 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     {
         if (ConnectionStatus == Channel.ChannelConnectionStatus.Disconnected)
             return;
-        
+
         // Don't allow "click" transmissions in BMS 3d mode - rather use the comms switch
         if (Settings is { ModeIsGci: false, Is3dMode: true })
             return;
-        
+
         var mutedFrequencies = _parentChannelCardGroupViewModel.GetAllFrequenciesOfChannelGroup(Type);
         mutedFrequencies.Remove(FrequencyKhz);
         WeakReferenceMessenger.Default.Send(new StartTransmissionMessage(Id, FrequencyKhz, RadioStationData,
@@ -283,7 +284,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     {
         if (ConnectionStatus == Channel.ChannelConnectionStatus.Disconnected)
             return;
-        
+
         // Don't allow "click" transmissions in BMS 3d mode - rather use the comms switch
         if (Settings is { ModeIsGci: false, Is3dMode: true })
             return;

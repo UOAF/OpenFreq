@@ -28,17 +28,23 @@ public interface IOpenFreqService : IDisposable
     event EventHandler<string>? StatusMessageReceived;
     event EventHandler<FrequencyConnectionStatusEventArgs>? FrequencyConnectionStatusChanged;
     event EventHandler<FrequencyTransmissionStatusEventArgs>? FrequencyTransmissionStatusChanged;
+    
+    public event EventHandler<FrequencyJoinedEventArgs>? FrequencyJoined;
+    public event EventHandler<PeerEventArgs>? PeerJoined;
+    public event EventHandler<PeerEventArgs>? PeerLeft;
+    public event EventHandler<AllPeersStatusEventArgs>? AllPeersStatusChanged;
     event EventHandler<PeerActivityEventArgs>? PeerActivityReceived;
 
     // Methods
     Task Initialize(OpenFreqClient.Models.OpenFreqSettings settings, int recordingDeviceIndex, int playbackDeviceIndex);
     Task ConnectAsync();
     Task DisconnectAsync();
-    bool FrequencyJoined(int frequencyKhz);
+    bool IsFrequencyJoined(int frequencyKhz);
     Task JoinFrequencyAsync(int frequencyKhz, RadioStationData radioStationData);
     Task LeaveFrequencyAsync(int frequencyKhz);
     Task StartTransmissionAsync(int frequencyKhz, List<int> mutedFrequencies);
     Task StopTransmissionAsync(int frequencyKhz);
+    Task UpdateDisplayNameAsync(string newDisplayName);
 
     void SetVolume(int frequencyKhz, float volumeValue);
     void SetAudioChannel(int frequencyKhz, RadioPlayback.AudioChannel channel);

@@ -147,7 +147,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
     public ChannelCardViewModel CreateChannel(int frequencyKhz, string name, bool isInEditMode = true,
         RadioType? bmsRadioType = null)
     {
-        var channel = new ChannelCardViewModel(_hotkeyService, name, frequencyKhz, isInEditMode, RadioStationData, this,
+        var channel = new ChannelCardViewModel(_openFreqService, _hotkeyService, name, frequencyKhz, isInEditMode, RadioStationData, this,
             Settings);
         channel.Name = name;
         channel.FrequencyKhz = frequencyKhz;

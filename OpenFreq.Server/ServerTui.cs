@@ -1,9 +1,8 @@
 using System.Collections.Concurrent;
-using System.Net.Mime;
-using System.Reflection.Emit;
+using System.Text;
 using Microsoft.Extensions.Logging;
-using Serilog;
 using Terminal.Gui;
+using Attribute = Terminal.Gui.Attribute;
 using Label = Terminal.Gui.Label;
 
 namespace OpenFreq.Server;
@@ -39,18 +38,18 @@ public class TerminalGuiServer : IDisposable
 
     public void Start()
     {
-        Console.OutputEncoding = System.Text.Encoding.UTF8;
-        Terminal.Gui.Application.Init();
+        Console.OutputEncoding = Encoding.UTF8;
+        Application.Init();
 
         try
         {
             SetupUI();
             _updateTask = Task.Run(async () => await UpdateLoop());
-            Terminal.Gui.Application.Run();
+            Application.Run();
         }
         finally
         {
-            Terminal.Gui.Application.Shutdown();
+            Application.Shutdown();
         }
     }
 
@@ -82,25 +81,25 @@ public class TerminalGuiServer : IDisposable
         
         var schemeDefault = new ColorScheme
         {
-            Normal = Terminal.Gui.Attribute.Make(Color.Gray, Color.Black),
-            Focus = Terminal.Gui.Attribute.Make(Color.BrightCyan, Color.Black),
-            HotNormal = Terminal.Gui.Attribute.Make(Color.BrightYellow, Color.Black),
-            HotFocus = Terminal.Gui.Attribute.Make(Color.BrightYellow, Color.Black)
+            Normal = Attribute.Make(Color.Gray, Color.Black),
+            Focus = Attribute.Make(Color.BrightCyan, Color.Black),
+            HotNormal = Attribute.Make(Color.BrightYellow, Color.Black),
+            HotFocus = Attribute.Make(Color.BrightYellow, Color.Black)
         };
 
         var schemeHeader = new ColorScheme
         {
-            Normal = Terminal.Gui.Attribute.Make(Color.BrightYellow, Color.Black)
+            Normal = Attribute.Make(Color.BrightYellow, Color.Black)
         };
 
         var schemeFrame = new ColorScheme
         {
-            Normal = Terminal.Gui.Attribute.Make(Color.BrightCyan, Color.Black)
+            Normal = Attribute.Make(Color.BrightCyan, Color.Black)
         };
 
         var schemeStatus = new ColorScheme
         {
-            Normal = Terminal.Gui.Attribute.Make(Color.Black, Color.BrightGreen)
+            Normal = Attribute.Make(Color.Black, Color.BrightGreen)
         };
 
         // ──────────────────────────────────────────────
@@ -312,8 +311,8 @@ public class TerminalGuiServer : IDisposable
         var uptimeStr = $"{uptime.Days}d{uptime.Hours:D2}h{uptime.Minutes:D2}m{uptime.Seconds:D2}s";
 
         var color = _stats.TotalClients > 0
-            ? Terminal.Gui.Attribute.Make(Color.Black, Color.BrightGreen)
-            : Terminal.Gui.Attribute.Make(Color.Black, Color.BrightRed);
+            ? Attribute.Make(Color.Black, Color.BrightGreen)
+            : Attribute.Make(Color.Black, Color.BrightRed);
 
         _statusLabel.ColorScheme = new ColorScheme { Normal = color };
 
@@ -385,7 +384,7 @@ public class TerminalGuiServer : IDisposable
 
         _clientLines.Clear();
 
-        _clientLines.Add($"{"Client ID",-38} {"Frequency",-12} {"Port",6} {"Status",8} {"Activity",10}");
+        _clientLines.Add($"{"Display Name",-24} {"Client ID",-20} {"Frequency",-12} {"Port",6} {"Status",8} {"Activity",10}");
         _clientLines.Add(new string('─', 80));
 
         if (clients.Count == 0)
@@ -396,7 +395,14 @@ public class TerminalGuiServer : IDisposable
         {
             foreach (var client in clients)
             {
-                var shortId = client.Id.Length > 36 ? client.Id.Substring(0, 36) : client.Id;
+                var displayName = string.IsNullOrWhiteSpace(client.DisplayName) 
+                    ? "Unnamed" 
+                    : client.DisplayName;
+                var shortDisplayName = displayName.Length > 24 
+                    ? displayName.Substring(0, 21) + "..." 
+                    : displayName;
+                    
+                var shortId = client.Id.Length > 20 ? client.Id.Substring(0, 20) : client.Id;
                 var audioPort = client.AudioPort > 0 ? client.AudioPort.ToString() : "-";
                 var timeSinceActivity = (DateTime.UtcNow - client.LastActivity).TotalSeconds;
                 var activityStr = timeSinceActivity < 60
@@ -408,7 +414,7 @@ public class TerminalGuiServer : IDisposable
                 if (frequencies.Count == 0)
                 {
                     // No frequencies
-                    _clientLines.Add($"{shortId,-38} {"-",-12} {audioPort,6} {"● RX",8} {activityStr,10}");
+                    _clientLines.Add($"{shortDisplayName,-24} {shortId,-20} {"-",-12} {audioPort,6} {"● RX",8} {activityStr,10}");
                 }
                 else
                 {
@@ -418,14 +424,14 @@ public class TerminalGuiServer : IDisposable
                         ? "● TX"
                         : "● RX";
                     _clientLines.Add(
-                        $"{shortId,-38} {firstFreq.Key/1000d,-12:F3} {audioPort,6} {firstStatus,8} {activityStr,10}");
+                        $"{shortDisplayName,-24} {shortId,-20} {firstFreq.Key/1000d,-12:F3} {audioPort,6} {firstStatus,8} {activityStr,10}");
 
                     // Additional frequencies on subsequent lines
                     for (int i = 1; i < frequencies.Count; i++)
                     {
                         var freq = frequencies[i];
                         var status = freq.Value == ClientSession.FrequencyClientStatus.Transmitting ? "● TX" : "● RX";
-                        _clientLines.Add($"{"",-38} {freq.Key/1000d,-12:F3} {"-",6} {status,8} {"",10}");
+                        _clientLines.Add($"{"",-24} {"",-20} {freq.Key/1000d,-12:F3} {"-",6} {status,8} {"",10}");
                     }
                 }
             }

@@ -150,7 +150,8 @@ class Program
                     AudioBasePort = 10000,
                     MaxClientsPerChannel = 50,
                     MaxChannelsPerClient = 10,
-                    EnableOpusCompression = true
+                    EnableOpusCompression = true,
+                    BroadcastPeerUpdates = true
                 };
 
                 var json = Json.Instance.Serialize(defaultConfig);

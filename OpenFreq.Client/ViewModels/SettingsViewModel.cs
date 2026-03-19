@@ -28,7 +28,7 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsReadyToConnect))]
     public partial string OpenFreqServerAddress { get; set; } = string.Empty;
-
+    [ObservableProperty] public partial string DisplayName { get; set; } = "Joe Pilot";
     [ObservableProperty] public partial string OpenFreqPassword { get; set; } = string.Empty;
     [ObservableProperty] public partial ObservableCollection<string> PlaybackDeviceNames { get; set; } = [];
 
@@ -379,6 +379,7 @@ public partial class SettingsViewModel : ViewModelBase
             OwnPositionMode = ConnectionMode,
             TacviewServerAddress = TacviewServerAddress,
             TacviewServerPassword = TacviewServerPassword,
+            DisplayName = DisplayName,
             InputDeviceName = InputDeviceName,
             OutputDeviceName = OutputDeviceName,
             HeightmapPath = HeightmapPath,

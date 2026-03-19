@@ -3,7 +3,6 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
-using Material.Styles.Controls;
 using OpenFreqClient.Models;
 using OpenFreqClient.ViewModels;
 
@@ -41,15 +40,6 @@ public partial class MainWindow : Window
     {
         _viewModel?.ChannelList.CreateChannelGroup(
             new ChannelGroupData { Name = $"Channel Group #{_viewModel.ChannelList.AllChannelGroups.Count + 1}" }, true);
-    }
-
-    private void MenuButton_OnClick(object? sender, RoutedEventArgs e)
-    {
-        var drawer = this.FindControl<NavigationDrawer>("LeftDrawer");
-        if (drawer != null)
-        {
-            drawer.LeftDrawerOpened = !drawer.LeftDrawerOpened;
-        }
     }
 
     private async void HeightmapButton_OnClick(object? sender, RoutedEventArgs e)
