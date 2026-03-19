@@ -331,18 +331,17 @@ public class AudioStreamServer
 
     public void RemoveSession(string clientId)
     {
-        if (_sessions.TryRemove(clientId, out var session))
-        {
-            _udpManager.RemoveClient(clientId);
-            session.UdpClient.Close();
-            session.UdpClient.Dispose();
+        if (!_sessions.TryRemove(clientId, out var session)) return;
+        _clients.TryGetValue(clientId, out var client);
+        _udpManager.RemoveClient(clientId);
+        session.UdpClient.Close();
+        session.UdpClient.Dispose();
 
-            // Remove all per-SSRC RTP states for this receiver
-            foreach (var key in _receiverRtpStates.Keys.Where(k => k.clientId == clientId).ToList())
-                _receiverRtpStates.TryRemove(key, out _);
+        // Remove all per-SSRC RTP states for this receiver
+        foreach (var key in _receiverRtpStates.Keys.Where(k => k.clientId == clientId).ToList())
+            _receiverRtpStates.TryRemove(key, out _);
 
-            _logSessionRemoved(_logger, clientId, null);
-        }
+        _logger.LogInformation("Session removed for {DisplayName} ({ClientId})", client?.DisplayName ?? "Unnamed", clientId);
     }
 
     public ClientStreamStats? GetClientStats(string clientId)
