@@ -26,6 +26,7 @@ public class RtpJitterBuffer
         
     // State
     private ushort _nextExpectedSequence;
+    private bool _firstPacketPlayed; // true once _nextExpectedSequence has been seeded from real data
     private uint _baseTimestamp;
     private long _baseTimeTicks;
     private long _playoutStartTicks;
@@ -135,12 +136,6 @@ public class RtpJitterBuffer
         {
 
 
-            foreach (var kvp in _buffer.OrderBy(k => k.Key).Take(3))
-            {
-                var valuePlayoutTimestamp = kvp.Value.PlayoutTimestamp;
-                RtpPacket.TimestampDifference(playoutTimestamp, valuePlayoutTimestamp);
-            }
-
             // Find packets ready for playout
             var readyPackets = _buffer
                 .Where(kvp => RtpPacket.TimestampDifference(playoutTimestamp, kvp.Value.PlayoutTimestamp) >= 0)
@@ -156,8 +151,13 @@ public class RtpJitterBuffer
             nextPacket = readyPackets.First();
             _buffer.Remove(nextPacket.Key);
 
-            // Check if this is the expected sequence (loss detection)
-            if (nextPacket.Key != _nextExpectedSequence)
+            // Check if this is the expected sequence (loss detection).
+            // Skip the check on the first packet
+            if (!_firstPacketPlayed)
+            {
+                _firstPacketPlayed = true;
+            }
+            else if (nextPacket.Key != _nextExpectedSequence)
             {
                 var gap = RtpPacket.SequenceDifference(nextPacket.Key, _nextExpectedSequence);
                 if (gap > 0)
@@ -178,6 +178,9 @@ public class RtpJitterBuffer
 
             _nextExpectedSequence = (ushort)(nextPacket.Key + 1);
             _packetsPlayed++;
+
+            // Steer the playout clock towards the target buffer depth
+            AdjustPlayoutClock();
         }
 
         return nextPacket.Value.Packet;
@@ -253,19 +256,10 @@ public class RtpJitterBuffer
         double actualIntervalMs = (packet.ReceivedTicks - _lastPacketReceivedTicks) * 1000.0 / Stopwatch.Frequency;
         double expectedIntervalMs = expectedTimestampMs - _lastPacketTimestamp;
     
-        // Ignore abnormal timestamp deltas (first packet often has accumulated frames)
-        if (expectedIntervalMs > 150)
+        // Detect transmission gap (PTT released).
+        if (expectedIntervalMs > 500)
         {
-            _logger.LogWarning("Ignoring abnormal timestamp delta: {DeltaMs:F0}ms", expectedIntervalMs);
-            _lastPacketReceivedTicks = packet.ReceivedTicks;
-            _lastPacketTimestamp = expectedTimestampMs;
-            return;
-        }
-    
-        // Detect transmission gap (PTT released)
-        if (actualIntervalMs > 500 || expectedIntervalMs > 500)
-        {
-            _logger.LogInformation("Transmission gap detected ({IntervalMs:F0}ms), resetting jitter measurement", actualIntervalMs);
+            _logger.LogInformation("Transmission gap detected ({IntervalMs:F0}ms RTP delta), resetting jitter measurement", expectedIntervalMs);
             _jitterSamples.Clear();
             _measuredJitterMs = 0;
             _lastPacketReceivedTicks = packet.ReceivedTicks;
@@ -290,24 +284,52 @@ public class RtpJitterBuffer
     }
         
     /// <summary>
-    /// Adapt buffer size based on observed jitter
+    /// Adapt target buffer size based on observed jitter.
+    /// Uses asymmetric convergence: fast increase to protect against bursts,
+    /// slow decrease to avoid oscillation.
     /// </summary>
     private void AdaptBufferSize()
     {
         if (_jitterSamples.Count < 10)
             return;
-    
-        // Use 95th percentile instead of max (handles occasional spikes)
+
         var sortedJitter = _jitterSamples.OrderBy(x => x).ToList();
         int p95Index = (int)(sortedJitter.Count * 0.95);
         double jitter95 = sortedJitter[p95Index];
-    
-        // Target buffer = 4x p95 jitter, minimum 60ms
-        double targetBuffer = Math.Max(60, jitter95 * 4.0);
-    
-        // Adapt gradually (5% per adjustment = ~20 steps to converge)
+
+        // 2.5x p95 jitter is enough headroom for most conditions
+        double targetBuffer = Math.Max(MIN_BUFFER_MS, jitter95 * 2.5);
+
         double delta = targetBuffer - _targetBufferMs;
-        _targetBufferMs += delta * 0.05;
+        // Converge up quickly (protect against bursts), down slowly (avoid churn)
+        double rate = delta > 0 ? 0.15 : 0.03;
+        _targetBufferMs += delta * rate;
+        _targetBufferMs = Math.Clamp(_targetBufferMs, MIN_BUFFER_MS, MAX_BUFFER_MS);
+    }
+
+    /// <summary>
+    /// Nudges the playout clock to steer actual buffer depth towards the
+    /// target. Called each time a packet is dequeued so corrections are
+    /// applied incrementally rather than in a single jump.
+    /// Buffer deeper than target  → advance clock slightly (drain faster).
+    /// Buffer shallower than target → retard clock slightly (let it fill).
+    /// </summary>
+    private void AdjustPlayoutClock()
+    {
+        // _buffer is already locked by the caller (GetNextPacket)
+        int targetPackets = (int)Math.Round(_targetBufferMs / RtpAudioReceiver.PLAYOUT_INTERVAL_MS);
+        int error = _buffer.Count - targetPackets;
+
+        if (Math.Abs(error) <= 1)
+            return;
+
+        // 1ms nudge per dequeued packet
+        long nudgeTicks = (long)(0.001 * Stopwatch.Frequency);
+
+        if (error > 1)
+            _playoutStartTicks -= nudgeTicks; // clock advances → releases packets sooner
+        else
+            _playoutStartTicks += nudgeTicks; // clock retards → holds packets longer
     }
     
         
@@ -350,6 +372,7 @@ public class RtpJitterBuffer
             _buffer.Clear();
             _jitterSamples.Clear();
             _initialized = false;
+            _firstPacketPlayed = false;
             _baseTimeTicks = 0;
             _playoutStartTicks = 0;
             _lastPacketReceivedTicks = 0;
@@ -362,9 +385,7 @@ public class RtpJitterBuffer
         }
     }
         
-    /// <summary>
-    /// Get current buffer size in milliseconds
-    /// </summary>
+   
     public double GetBufferSizeMs() => _targetBufferMs;
         
     /// <summary>

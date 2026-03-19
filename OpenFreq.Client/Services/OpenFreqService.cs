@@ -732,6 +732,11 @@ public class OpenFreqService : IOpenFreqService
             _ => Status
         };
 
+        if (e.State == ConnectionState.Disconnected)
+        {
+            _tunedFrequencies.Clear();
+        }
+
         ConnectionStateChanged?.Invoke(this, e.State);
     }
 
@@ -835,13 +840,13 @@ public class OpenFreqService : IOpenFreqService
     {
         if (e.AudioData.Length == 0)
         {
-            _logger.LogWarning($"Audio data received with 0 size");
+            _logger.LogWarning("Audio data received with 0 size");
             return;
         }
 
         if (e.Metadata.Frequencies.Count == 0)
         {
-            _logger.LogWarning($"Audio data received without frequencies, dropping");
+            _logger.LogWarning("Audio data received without frequencies, dropping");
             return;
         }
 

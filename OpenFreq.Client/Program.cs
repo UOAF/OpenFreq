@@ -28,6 +28,19 @@ sealed class Program
             .MinimumLevel.Debug()
             .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
             .MinimumLevel.Override("System", LogEventLevel.Warning)
+            
+            
+            // OVERRIDES - Disables Debug Logs
+            // --------------------------------
+            // Outputs the Playback Buffer State
+            .MinimumLevel.Override("OpenFreqAudio.RadioPlayback", LogEventLevel.Warning)
+            
+            // Outputs the Physics Calculations
+            .MinimumLevel.Override("OpenFreqAudio.FastPathAudioSim", LogEventLevel.Warning)
+            
+            // Outputs the packet timings (playback queue)
+            .MinimumLevel.Override("OpenFreq.Common.RtpAudioReceiver", LogEventLevel.Warning)
+            
             .Enrich.FromLogContext()
             .Enrich.WithProperty("Application", "OpenFreqClient")
             .WriteTo.File(
@@ -36,7 +49,7 @@ sealed class Program
                 rollingInterval: RollingInterval.Day,
                 retainedFileCountLimit: 30,
                 shared: true)
-            .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}")
+            .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss.fff} {Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}")
             .CreateLogger();
 #else
         Log.Logger = new LoggerConfiguration()

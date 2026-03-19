@@ -6,11 +6,14 @@ using Concentus.Structs;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Common.Rtp;
 
+// This is to avoid issues in Linux where the Concentus Factory methods does not work currently.
+#pragma warning disable CS0618 // Type or member is obsolete
+
 namespace OpenFreq.Common;
 
 /// <summary>
-/// RTP audio receiver with adaptive jitter buffering.
-/// Handles network layer: RTP parsing, jitter buffer, packet reordering, Opus decoding.
+/// RTP audio receiver with per-SSRC adaptive jitter buffering. Each concurrent talker (SSRC) gets an
+/// independent jitter buffer and Opus decoder so their state never interferes.
 /// Outputs clean, ordered PCM audio ready for RadioPlayback.
 /// </summary>
 public class RtpAudioReceiver : IDisposable
@@ -26,93 +29,64 @@ public class RtpAudioReceiver : IDisposable
 
     private readonly ILogger<RtpAudioReceiver> _logger;
     private readonly UdpClient _udpClient;
-    private readonly RtpJitterBuffer _jitterBuffer;
-    private readonly OpusDecoder? _opusDecoder;
+    private readonly RtpJitterBufferPool _pool;
     private readonly bool _opusEnabled;
     private readonly CancellationTokenSource _cts = new();
     private readonly Timer _playoutTimer;
-    private readonly ILoggerFactory _loggerFactory;
-    
-    // Track expected sequence for loss detection
-    private ushort _lastSequenceReceived;
-    private bool _firstPacketReceived;
-    
-    // Track last valid metadata for PLC frequency reconstruction
-    private AudioPacketMetadata? _lastValidMetadata = null;
-    
-    // FEC statistics
-    private int _fecRecoveries = 0;
-    private int _plcRecoveries = 0;
-    
-    // Frame size must be exact for PLC/FEC to maintain proper decoder state
-    // Per Concentus docs: "frame_size needs to be exactly the duration of the audio that is missing,
-    // otherwise the decoder will not be in an optimal state to decode the next incoming packet"
+
+    // FEC statistics (aggregate across all sources)
+    private int _fecRecoveries;
+    private int _plcRecoveries;
+
+    // Prune stale sources every N ticks (20ms * 50 = 1s)
+    private int _pruneCountdown = 50;
+
     private const int OPUS_FRAME_SAMPLES = 960; // 20ms at 48kHz (matches sender)
-    private const int PLAYOUT_INTERVAL_MS = 20; // Check for ready packets every 20ms
-        
-    /// <summary>
-    /// Create RTP audio receiver with adaptive jitter buffer
-    /// </summary>
-    /// <param name="logger">Logger instance</param>
-    /// <param name="udpClient">Existing UDP client</param>
-    /// <param name="opusEnabled">Whether to decode Opus (true) or expect raw PCM (false)</param>
-    /// <param name="initialBufferMs">Initial jitter buffer size in milliseconds (will adapt)</param>
-    public RtpAudioReceiver(ILoggerFactory loggerFactory, UdpClient udpClient, bool opusEnabled = true, int initialBufferMs = 150)
+    public static int PLAYOUT_INTERVAL_MS = 20;
+
+    public RtpAudioReceiver(ILoggerFactory loggerFactory, UdpClient udpClient, bool opusEnabled = true,
+        int initialBufferMs = 150)
     {
-        _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<RtpAudioReceiver>();
         _opusEnabled = opusEnabled;
 
-        if (_opusEnabled)
-        {
-            #pragma warning disable CS0618 // Using the new factory method will not work in Linux!
-            _opusDecoder =  new OpusDecoder(OpenFreqRtcClient.SAMPLE_RATE, OpenFreqRtcClient.CHANNELS) as OpusDecoder;
-            #pragma warning restore CS0618 // Type or member is obsolete
-        }
+        _pool = new RtpJitterBufferPool(loggerFactory, opusEnabled, initialBufferMs);
+        _pool.SourceAdded += ssrc => _logger.LogInformation("Source joined:  SSRC={Ssrc:X8}", ssrc);
+        _pool.SourceExpired += ssrc => _logger.LogInformation("Source expired: SSRC={Ssrc:X8}", ssrc);
 
-        // Create jitter buffer
-        _jitterBuffer = new RtpJitterBuffer(loggerFactory.CreateLogger<RtpJitterBuffer>());
-        _jitterBuffer.SetTargetBufferSize(initialBufferMs);
-
-        // Reuse UDP Client
         _udpClient = udpClient;
         var port = (_udpClient.Client.LocalEndPoint as IPEndPoint)!.Port;
         _logger.LogInformation("Started on port {Port}", port);
         _logger.LogInformation("  Opus: {OpusEnabled}", _opusEnabled);
-        _logger.LogInformation("  Initial buffer: {BufferMs}ms (adaptive)", initialBufferMs);
+        _logger.LogInformation("  Initial buffer: {BufferMs}ms (adaptive, per-SSRC)", initialBufferMs);
 
-        // Start receiving task
         Task.Run(() => ReceiveLoop(), _cts.Token);
-            
-        // Start playout timer (pulls packets from jitter buffer)
         _playoutTimer = new Timer(PlayoutTimerCallback, null, 0, PLAYOUT_INTERVAL_MS);
 
         if (!_logger.IsEnabled(LogLevel.Debug))
         {
-            Task.Run(() =>
-            {
-                while (true)
+            Task.Run(async () =>
                 {
-                    var stats = GetStatistics();
-                    _logger.LogDebug("Network Stats");
-                    _logger.LogDebug("  Packets: received={Received}, lost={Lost} ({LossPercent:F1}%)",
-                        stats.received, stats.lost, stats.lossPercent);
-                    _logger.LogDebug("  Jitter: {JitterMs:F1}ms", stats.jitterMs);
-                    _logger.LogDebug("  Buffer size: {BufferMs:F0}ms (adaptive)", stats.bufferMs);
-                    _logger.LogDebug("  Buffered packets: {Buffered}", stats.buffered);
-                    Task.Delay(5000).Wait();
+                    while (true)
+                    {
+                        var stats = GetStatistics();
+                        _logger.LogDebug("Network Stats (aggregated)");
+                        _logger.LogDebug("  Packets: received={Received}, lost={Lost} ({LossPercent:F1}%)",
+                            stats.received, stats.lost, stats.lossPercent);
+                        _logger.LogDebug("  Jitter: {JitterMs:F1}ms (avg across sources)", stats.jitterMs);
+                        _logger.LogDebug("  Buffer size: {BufferMs:F0}ms (avg, adaptive)", stats.bufferMs);
+                        _logger.LogDebug("  Buffered packets: {Buffered}", stats.buffered);
+                        await Task.Delay(5000);
+                    }
                 }
-            });
+            );
         }
     }
 
-    /// <summary>
-    /// UDP receive loop - receives packets and adds to jitter buffer
-    /// </summary>
     private async Task ReceiveLoop()
     {
         _logger.LogInformation("Receive loop started");
-            
+
         while (!_cts.Token.IsCancellationRequested)
         {
             try
@@ -122,25 +96,21 @@ public class RtpAudioReceiver : IDisposable
             }
             catch (OperationCanceledException)
             {
-                break; // Expected during shutdown
+                break;
             }
             catch (Exception ex)
             {
                 ErrorOccurred?.Invoke(this, $"Receive error: {ex.Message}");
             }
         }
-            
+
         _logger.LogInformation("Receive loop stopped");
     }
 
-    /// <summary>
-    /// Process incoming UDP packet
-    /// </summary>
     private void ProcessIncomingPacket(byte[] data)
     {
         try
         {
-            // Parse RTP packet
             var rtpPacket = RtpPacket.Parse(data);
             if (rtpPacket == null)
             {
@@ -148,8 +118,8 @@ public class RtpAudioReceiver : IDisposable
                 return;
             }
 
-            // Add to jitter buffer (handles reordering, timing)
-            _jitterBuffer.AddPacket(rtpPacket);
+            // Pool demuxes by SSRC automatically
+            _pool.AddPacket(rtpPacket);
         }
         catch (Exception ex)
         {
@@ -158,59 +128,59 @@ public class RtpAudioReceiver : IDisposable
     }
 
     /// <summary>
-    /// Playout timer callback - pulls ready packets from jitter buffer
-    /// Rate-limited: processes one packet per 20ms tick to prevent bursts
+    /// Playout timer callback. Polls every active SSRC for a ready packet,
+    /// performing per-source FEC/PLC concealment independently.
     /// </summary>
     private void PlayoutTimerCallback(object? state)
     {
         try
         {
-            // Pull one ready packet per timer tick (prevents bursts that cause underruns)
-            if (_jitterBuffer.GetNextPacket() is { } packet)
+            // Prune sources that have gone silent
+            if (--_pruneCountdown <= 0)
             {
-                // Detect lost packets and generate concealment audio (FEC or PLC)
-                if (_firstPacketReceived)
+                _pool.PruneStale();
+                _pruneCountdown = 50;
+            }
+
+            foreach (var context in _pool.GetActiveSources())
+            {
+                // One packet per SSRC per 20ms tick — burst delivery is handled
+                // by AdjustPlayoutClock advancing the playout clock incrementally.
+                if (context.JitterBuffer.GetNextPacket() is { } packet)
                 {
-                    ushort expectedSeq = (ushort)(_lastSequenceReceived + 1);
-                    
-                    // Check for gap in sequence numbers
-                    if (packet.SequenceNumber != expectedSeq)
+
+                    // Loss detection and concealment — per-source sequence
+                    if (context.FirstPacketReceived)
                     {
-                        int gap = RtpPacket.SequenceDifference(packet.SequenceNumber, expectedSeq);
-                        
-                        if (gap > 0 && gap < 100) // Sanity check - only handle reasonable gaps
+                        ushort expectedSeq = (ushort)(context.LastSequenceReceived + 1);
+
+                        if (packet.SequenceNumber != expectedSeq)
                         {
-                            _logger.LogDebug("Detected {Gap} lost packets (seq {Start} to {End}), generating concealment", 
-                                gap, expectedSeq, packet.SequenceNumber - 1);
-                            
-                            // Generate concealment for each lost packet
-                            // The first lost packet can use FEC from current packet
-                            // Subsequent lost packets must use PLC (we only have one "next" packet)
-                            for (int i = 0; i < gap; i++)
+                            int gap = RtpPacket.SequenceDifference(packet.SequenceNumber, expectedSeq);
+
+                            if (gap > 0 && gap < 100)
                             {
-                                ushort lostSeq = (ushort)(expectedSeq + i);
-                                
-                                // Only the first lost packet gets FEC attempt (using current packet)
-                                // This is because current packet contains FEC for the previous (first lost) packet
-                                if (i == 0)
+                                _logger.LogDebug(
+                                    "SSRC={Ssrc:X8}: {Gap} lost packet(s) (seq {Start} to {End}), generating concealment",
+                                    context.Ssrc, gap, expectedSeq, packet.SequenceNumber - 1);
+
+                                for (int i = 0; i < gap; i++)
                                 {
-                                    GenerateConcealmentAudio(lostSeq, packet);  // Pass current packet for FEC
-                                }
-                                else
-                                {
-                                    GenerateConcealmentAudio(lostSeq, null);    // Subsequent: PLC only
+                                    ushort lostSeq = (ushort)(expectedSeq + i);
+                                    // Only the first lost packet can use FEC (next packet carries FEC for it)
+                                    GenerateConcealmentAudio(lostSeq, i == 0 ? packet : null, context);
                                 }
                             }
                         }
                     }
+                    else
+                    {
+                        context.FirstPacketReceived = true;
+                    }
+
+                    context.LastSequenceReceived = packet.SequenceNumber;
+                    ProcessReadyPacket(packet, context);
                 }
-                else
-                {
-                    _firstPacketReceived = true;
-                }
-                
-                _lastSequenceReceived = packet.SequenceNumber;
-                ProcessReadyPacket(packet);
             }
         }
         catch (Exception ex)
@@ -218,121 +188,17 @@ public class RtpAudioReceiver : IDisposable
             ErrorOccurred?.Invoke(this, $"Playout error: {ex.Message}");
         }
     }
-    
-    /// <summary>
-    /// Generate concealment audio for a lost packet (FEC preferred, PLC fallback)
-    /// </summary>
-    /// <param name="lostSequence">Sequence number of the lost packet</param>
-    /// <param name="nextPacket">The packet AFTER the lost one (contains FEC data for lost packet)</param>
-    private void GenerateConcealmentAudio(ushort lostSequence, RtpPacket? nextPacket)
-    {
-        if (!_opusEnabled || _opusDecoder == null)
-            return;
-            
-        try
-        {
-            byte[] concealmentAudio;
-            bool usedFec = false;
-            
-            // Try FEC if we have the next packet
-            // According to Concentus docs: "you will actually decode this packet twice, first with decode_fec TRUE and then again with FALSE"
-            if (nextPacket != null)
-            {
-                var nextPacketOpusData = ExtractOpusDataFromPacket(nextPacket);
-                
-                _logger.LogDebug("Loss recovery for seq {LostSeq}: have nextPacket (seq {NextSeq}), OpusData={Bytes} bytes", 
-                    lostSequence, nextPacket.SequenceNumber, nextPacketOpusData?.Length ?? 0);
-                
-                if (nextPacketOpusData != null && nextPacketOpusData.Length > 0)
-                {
-                    // Decode with decode_fec=TRUE to extract FEC data for the LOST packet
-                    // The nextPacket will be decoded AGAIN with decode_fec=FALSE in ProcessReadyPacket()
-                    concealmentAudio = DecodeOpus(nextPacketOpusData, isLost: false, decodeFec: true);
-                    
-                    if (concealmentAudio.Length > 0)
-                    {
-                        usedFec = true;
-                        _fecRecoveries++;
-                        _logger.LogInformation("✓ FEC: Recovered seq {LostSeq} using FEC from seq {NextSeq} ({Bytes} bytes)", 
-                            lostSequence, nextPacket.SequenceNumber, concealmentAudio.Length);
-                    }
-                    else
-                    {
-                        // FEC decode failed (no FEC data in packet, or decode error)
-                        _logger.LogDebug("  FEC decode returned 0 bytes, falling back to PLC");
-                        concealmentAudio = DecodeOpus([], isLost: true);
-                        _plcRecoveries++;
-                    }
-                }
-                else
-                {
-                    // Couldn't extract Opus data
-                    _logger.LogDebug("  Could not extract Opus data, using PLC");
-                    concealmentAudio = DecodeOpus([], isLost: true);
-                    _plcRecoveries++;
-                }
-            }
-            else
-            {
-                // No next packet available - use PLC
-                _logger.LogDebug("Loss recovery for seq {LostSeq}: no nextPacket, using PLC", lostSequence);
-                concealmentAudio = DecodeOpus([], isLost: true);
-                _plcRecoveries++;
-            }
-            
-            if (concealmentAudio.Length > 0)
-            {
-                // Reconstruct frequency list from last valid packet
-                var frequencies = new List<FrequencyTransmission>();
-                
-                if (_lastValidMetadata?.Frequencies != null)
-                {
-                    foreach (var freq in _lastValidMetadata.Frequencies)
-                    {
-                        frequencies.Add(new FrequencyTransmission(
-                            khz: freq.Khz,
-                            txPowerWatts: freq.TxPowerWatts,
-                            ppm: freq.Ppm,
-                            position: freq.Position,
-                            velocity: freq.Velocity,
-                            in3d: freq.In3d,
-                            ambientNoiseType: freq.AmbientNoiseType,
-                            beginMarker: false,
-                            endMarker: false
-                        ));
-                    }
-                }
-                
-                var metadata = new AudioPacketMetadata
-                {
-                    ClientId = _lastValidMetadata?.ClientId ?? (usedFec ? "FEC" : "PLC"),
-                    Frequencies = frequencies
-                };
-                
-                AudioReceived?.Invoke(this, new AudioReceivedEventArgs
-                {
-                    AudioData = concealmentAudio,
-                    Metadata = metadata
-                });
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to generate concealment audio for seq {LostSeq}", lostSequence);
-        }
-    }
 
     /// <summary>
-    /// Process packet that's ready for playout
+    /// Process a packet that is ready for playout, using the source's own Opus decoder.
     /// </summary>
-    private void ProcessReadyPacket(RtpPacket packet)
+    private void ProcessReadyPacket(RtpPacket packet, RtpSourceContext context)
     {
         try
         {
-            // Parse metadata from RTP header extension
             if (packet.ExtensionData is not { Length: > 0 })
             {
-                _logger.LogWarning("Missing RTP header extension metadata");
+                _logger.LogWarning("SSRC={Ssrc:X8}: missing RTP header extension metadata", context.Ssrc);
                 return;
             }
 
@@ -341,31 +207,28 @@ public class RtpAudioReceiver : IDisposable
 
             if (metadata == null)
             {
-                _logger.LogWarning("Failed to parse metadata");
+                _logger.LogWarning("SSRC={Ssrc:X8}: failed to parse metadata", context.Ssrc);
                 return;
             }
 
-            // Save metadata for PLC frequency reconstruction
-            _lastValidMetadata = metadata;
+            context.LastValidMetadata = metadata;
 
-            // Payload is pure audio data
-            var audioData = packet.Payload;
-
-            // Decode audio if Opus is enabled
             byte[] decodedAudio;
-            if (_opusEnabled && _opusDecoder != null)
+            if (_opusEnabled && context.OpusDecoder != null)
             {
-                decodedAudio = DecodeOpus(audioData, isLost: false, decodeFec: false);
+                decodedAudio = DecodeOpus(packet.Payload, context.OpusDecoder, isLost: false, decodeFec: false);
                 if (decodedAudio.Length == 0)
-                    return; // Decode failed
+                    return;
             }
             else
             {
-                // Raw PCM - use as-is
-                decodedAudio = audioData;
+                decodedAudio = packet.Payload;
             }
 
-            // Fire event with clean audio
+            #if DEBUG
+            _logger.LogDebug($"Playing packet from {packet.Ssrc}: {packet.SequenceNumber}");
+            #endif
+            
             AudioReceived?.Invoke(this, new AudioReceivedEventArgs
             {
                 AudioData = decodedAudio,
@@ -379,85 +242,149 @@ public class RtpAudioReceiver : IDisposable
     }
 
     /// <summary>
-    /// Decode Opus audio with PLC support
+    /// Generate FEC or PLC concealment audio for a lost packet within one source's context.
     /// </summary>
-    /// <param name="opusData">Opus-encoded data, or empty array for PLC</param>
-    /// <param name="isLost">True if this is a lost packet requiring PLC</param>
-    /// <param name="decodeFec">True to decode FEC data from this packet (for previous lost packet)</param>
-    private byte[] DecodeOpus(byte[] opusData, bool isLost = false, bool decodeFec = false)
+    private void GenerateConcealmentAudio(ushort lostSequence, RtpPacket? nextPacket, RtpSourceContext context)
     {
-        if (_opusDecoder == null)
-            return [];
+        if (!_opusEnabled || context.OpusDecoder == null)
+            return;
 
         try
         {
-            const int MAX_OPUS_FRAME_SAMPLES = 5760; // 120ms at 48kHz
-            short[] pcmSamples = new short[MAX_OPUS_FRAME_SAMPLES];
+            byte[] concealmentAudio;
+            bool usedFec = false;
 
-            int? samplesDecoded;
-            
-            if (isLost)
+            if (nextPacket != null)
             {
-                // Use Opus PLC for lost packets
-                samplesDecoded = _opusDecoder?.Decode(
-                    Array.Empty<byte>(),  // Empty array triggers PLC
-                    0, 
-                    0, 
-                    pcmSamples, 
-                    0, 
-                    OPUS_FRAME_SAMPLES,  // Must match exact frame duration for proper decoder state
-                    false
-                );
-                
-                if (samplesDecoded > 0)
+                var nextOpusData = ExtractOpusDataFromPacket(nextPacket);
+
+                _logger.LogDebug(
+                    "SSRC={Ssrc:X8}: loss recovery for seq {LostSeq}: nextPacket seq {NextSeq}, {Bytes} bytes",
+                    context.Ssrc, lostSequence, nextPacket.SequenceNumber, nextOpusData?.Length ?? 0);
+
+                if (nextOpusData is { Length: > 0 })
                 {
-                    _logger.LogDebug("Generated PLC audio: {Samples} samples", samplesDecoded);
+                    concealmentAudio = DecodeOpus(nextOpusData, context.OpusDecoder, isLost: false, decodeFec: true);
+
+                    if (concealmentAudio.Length > 0)
+                    {
+                        usedFec = true;
+                        Interlocked.Increment(ref _fecRecoveries);
+                        _logger.LogInformation(
+                            "SSRC={Ssrc:X8}: ✓ FEC recovered seq {LostSeq} from seq {NextSeq} ({Bytes} bytes)",
+                            context.Ssrc, lostSequence, nextPacket.SequenceNumber, concealmentAudio.Length);
+                    }
+                    else
+                    {
+                        _logger.LogDebug("SSRC={Ssrc:X8}: FEC returned 0 bytes, falling back to PLC", context.Ssrc);
+                        concealmentAudio = DecodeOpus([], context.OpusDecoder, isLost: true);
+                        Interlocked.Increment(ref _plcRecoveries);
+                    }
                 }
-            }
-            else if (decodeFec)
-            {
-                // Decode FEC data from this packet
-                samplesDecoded = _opusDecoder?.Decode(
-                    opusData, 
-                    0, 
-                    opusData.Length, 
-                    pcmSamples, 
-                    0, 
-                    OPUS_FRAME_SAMPLES,
-                    true 
-                );
-                
-                if (samplesDecoded > 0)
+                else
                 {
-                    _logger.LogDebug("FEC decode successful: {Samples} samples from {Bytes} bytes", 
-                        samplesDecoded, opusData.Length);
+                    _logger.LogDebug("SSRC={Ssrc:X8}: could not extract Opus data, using PLC", context.Ssrc);
+                    concealmentAudio = DecodeOpus([], context.OpusDecoder, isLost: true);
+                    Interlocked.Increment(ref _plcRecoveries);
                 }
             }
             else
             {
-                // Normal decode
-                samplesDecoded = _opusDecoder?.Decode(
-                    opusData, 
-                    0, 
-                    opusData.Length, 
-                    pcmSamples, 
-                    0, 
-                    MAX_OPUS_FRAME_SAMPLES, 
-                    false
-                );
+                _logger.LogDebug("SSRC={Ssrc:X8}: no nextPacket for seq {LostSeq}, using PLC", context.Ssrc,
+                    lostSequence);
+                concealmentAudio = DecodeOpus([], context.OpusDecoder, isLost: true);
+                Interlocked.Increment(ref _plcRecoveries);
+            }
+
+            if (concealmentAudio.Length == 0)
+                return;
+
+            var frequencies = new List<FrequencyTransmission>();
+            if (context.LastValidMetadata?.Frequencies != null)
+            {
+                foreach (var freq in context.LastValidMetadata.Frequencies)
+                {
+                    frequencies.Add(new FrequencyTransmission(
+                        khz: freq.Khz,
+                        txPowerWatts: freq.TxPowerWatts,
+                        ppm: freq.Ppm,
+                        position: freq.Position,
+                        velocity: freq.Velocity,
+                        in3d: freq.In3d,
+                        ambientNoiseType: freq.AmbientNoiseType,
+                        beginMarker: false,
+                        endMarker: false
+                    ));
+                }
+            }
+
+            var metadata = new AudioPacketMetadata
+            {
+                ClientId = context.LastValidMetadata?.ClientId ?? (usedFec ? "FEC" : "PLC"),
+                Frequencies = frequencies
+            };
+
+            AudioReceived?.Invoke(this, new AudioReceivedEventArgs
+            {
+                AudioData = concealmentAudio,
+                Metadata = metadata
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "SSRC={Ssrc:X8}: failed to generate concealment for seq {LostSeq}",
+                context.Ssrc, lostSequence);
+        }
+    }
+
+    /// <summary>
+    /// Decode Opus audio using the provided decoder instance (one per SSRC).
+    /// </summary>
+    private byte[] DecodeOpus(byte[] opusData, OpusDecoder decoder, bool isLost = false, bool decodeFec = false)
+    {
+        try
+        {
+            const int maxOpusFrameSamples = 5760; // 120ms at 48kHz
+            short[] pcmSamples = new short[maxOpusFrameSamples];
+
+            int? samplesDecoded;
+
+            if (isLost)
+            {
+                samplesDecoded = decoder.Decode(
+                    Array.Empty<byte>(), 0, 0,
+                    pcmSamples, 0, OPUS_FRAME_SAMPLES);
+
+                if (samplesDecoded > 0)
+                    _logger.LogDebug("Generated PLC audio: {Samples} samples", samplesDecoded);
+            }
+            else if (decodeFec)
+            {
+                samplesDecoded = decoder.Decode(
+                    opusData, 0, opusData.Length,
+                    pcmSamples, 0, OPUS_FRAME_SAMPLES,
+                    true);
+
+                if (samplesDecoded > 0)
+                    _logger.LogDebug("FEC decode: {Samples} samples from {Bytes} bytes", samplesDecoded,
+                        opusData.Length);
+            }
+            else
+            {
+                samplesDecoded = decoder.Decode(
+                    opusData, 0, opusData.Length,
+                    pcmSamples, 0, maxOpusFrameSamples);
             }
 
             if (samplesDecoded is null or <= 0)
             {
-                _logger.LogWarning("Opus decode failed for {ByteCount} bytes (isLost={IsLost}, decodeFec={DecodeFec})", 
+                _logger.LogWarning("Opus decode failed for {ByteCount} bytes (isLost={IsLost}, decodeFec={DecodeFec})",
                     opusData.Length, isLost, decodeFec);
                 return [];
             }
 
-            // Convert to byte array (16-bit PCM)
             var decodedAudio = new byte[samplesDecoded.Value * 2];
             Buffer.BlockCopy(pcmSamples, 0, decodedAudio, 0, decodedAudio.Length);
-                
             return decodedAudio;
         }
         catch (Exception ex)
@@ -466,27 +393,14 @@ public class RtpAudioReceiver : IDisposable
             return [];
         }
     }
-    
-    /// <summary>
-    /// Extract Opus-encoded audio data from RTP packet payload
-    /// </summary>
+
     private static byte[]? ExtractOpusDataFromPacket(RtpPacket packet)
-    {
-        return packet.Payload.Length > 0 ? packet.Payload : null;
-    }
+        => packet.Payload.Length > 0 ? packet.Payload : null;
 
-    /// <summary>
-    /// Get receiver statistics
-    /// </summary>
-    public (int received, int lost, int late, int duplicate, int played, 
+    public (int received, int lost, int late, int duplicate, int played,
         double lossPercent, double jitterMs, double bufferMs, int buffered) GetStatistics()
-    {
-        return _jitterBuffer.GetStatistics();
-    }
+        => _pool.GetStatistics();
 
-    /// <summary>
-    /// Print detailed statistics
-    /// </summary>
     public void PrintStatistics()
     {
         var stats = GetStatistics();
@@ -499,33 +413,36 @@ public class RtpAudioReceiver : IDisposable
         _logger.LogInformation("  Loss Recovery:");
         _logger.LogInformation("    FEC recoveries: {FecCount}", _fecRecoveries);
         _logger.LogInformation("    PLC recoveries: {PlcCount}", _plcRecoveries);
-        
+
         if (_fecRecoveries + _plcRecoveries > 0)
         {
             var fecPercent = 100.0 * _fecRecoveries / (_fecRecoveries + _plcRecoveries);
             _logger.LogInformation("    FEC success rate: {FecRate:F1}%", fecPercent);
         }
-        
-        _logger.LogInformation("  Measured jitter: {JitterMs:F1}ms", stats.jitterMs);
-        _logger.LogInformation("  Buffer size: {BufferMs:F0}ms (adaptive)", stats.bufferMs);
+
+        _logger.LogInformation("  Measured jitter: {JitterMs:F1}ms (avg)", stats.jitterMs);
+        _logger.LogInformation("  Buffer size: {BufferMs:F0}ms (avg, adaptive)", stats.bufferMs);
         _logger.LogInformation("  Currently buffered: {Buffered} packets", stats.buffered);
+
+        foreach (var s in _pool.GetPerSourceStatistics())
+        {
+            _logger.LogInformation(
+                "  SSRC={Ssrc:X8}: rx={Rx} lost={Lost} ({Loss:F1}%) jitter={Jitter:F1}ms buffer={Buffer:F0}ms buffered={Buffered}",
+                s.ssrc, s.received, s.lost, s.lossPercent, s.jitterMs, s.bufferMs, s.buffered);
+        }
+
         _logger.LogInformation("================================");
     }
 
-    /// <summary>
-    /// Set jitter buffer size manually (overrides adaptation temporarily)
-    /// </summary>
     public void SetJitterBufferSize(int milliseconds)
-    {
-        _jitterBuffer.SetTargetBufferSize(milliseconds);
-    }
+        => _pool.SetAllBufferSizes(milliseconds);
 
     public void Dispose()
     {
         _cts.Cancel();
-        _playoutTimer?.Dispose();
-        _opusDecoder?.Dispose();
+        _playoutTimer.Dispose();
         PrintStatistics();
+        _pool.Dispose();
         _logger.LogInformation("Disposed");
     }
 }
