@@ -17,7 +17,7 @@ public class RtpPacket
     public byte[]? ExtensionData { get; set; }
 
     // Payload (pure audio data)
-    public byte[] Payload { get; set; } = Array.Empty<byte>();
+    public byte[] Payload { get; set; } = [];
 
     public const int HEADER_SIZE = 12;
     public const ushort OpenFreqProfile = 0x4F46; // "OF" - OpenFreq

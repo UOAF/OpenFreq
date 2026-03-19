@@ -3,11 +3,12 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
-using Concentus;
 using Concentus.Enums;
 using Concentus.Structs;
 using Microsoft.Extensions.Logging;
+using OpenFreqAudio;
 using OpenFreq.Common.Rtp;
+using System.Runtime.InteropServices;
 
 namespace OpenFreq.Common;
 
@@ -20,43 +21,31 @@ public class RtpAudioSender : IDisposable
     private readonly ILogger<RtpAudioSender> _logger;
     private const int OPUS_FRAME_SIZE = OpenFreqRtcClient.OPUS_SAMPLES_PER_FRAME;
 
-    private readonly byte[]
-        _audioBuffer = new byte[OPUS_FRAME_SIZE * 2 * OpenFreqRtcClient.CHANNELS]; // x2 for 16-bit, channels
-
-    private int _bufferPosition = 0;
 
     private readonly UdpClient _udpClient;
     public UdpClient UdpClient => _udpClient;
     private readonly IPEndPoint _serverEndpoint;
-    private readonly OpusEncoder? _opusEncoder;
     private readonly bool _opusEnabled;
 
+#pragma warning disable CS0618 // Do not use the factory - it does not work with Linux
+    private readonly OpusEncoder _opusEncoder = new OpusEncoder(
+            OpenFreqRtcClient.SAMPLE_RATE,
+            1,
+            OpusApplication.OPUS_APPLICATION_RESTRICTED_LOWDELAY
+        );
+#pragma warning restore CS0618 // Type or member is obsolete
+
     // RTP state
-    private ushort _sequenceNumber = 0;
-    private uint _timestamp = 0;
+    private volatile List<FrequencyTransmission> _frequencies = [];
     private readonly uint _ssrc;
+    private readonly string _clientId;
     private const byte PAYLOAD_TYPE_OPUS = 96;
     private const byte PAYLOAD_TYPE_PCMU = 0;
 
-    // Queued audio data structure (raw PCM, not encoded yet)
-    private struct QueuedAudio
-    {
-        public byte[] PcmData;
-        public string ClientId;
-        public List<FrequencyTransmission> FrequencyTransmissions;
-        public uint Timestamp;
-        public ushort SequenceNumber;
-    }
+    // Sending Queue - now holds raw PCM data, encoding happens in the send thread
+    private readonly SyncRope<short> _sendQueue = new();
 
-    // Sending Queue - now holds raw PCM data, encoding happens in pacing timer
-    private readonly Queue<QueuedAudio> _sendQueue = new Queue<QueuedAudio>();
-
-    private System.Timers.Timer? _pacingTimer;
-    private readonly object _queueLock = new object();
-
-    // Reusable buffers to avoid allocations in pacing timer
-    private readonly byte[] _opusBuffer = new byte[4000];
-    private readonly short[] _pcmSamples = new short[OPUS_FRAME_SIZE * OpenFreqRtcClient.CHANNELS];
+    private readonly Thread? _sendThread;
 
     // Statistics
     private int _packetsSent = 0;
@@ -65,7 +54,7 @@ public class RtpAudioSender : IDisposable
     /// <summary>
     /// Create RTP audio sender
     /// </summary>
-    public RtpAudioSender(ILogger<RtpAudioSender> logger, string serverHost, int serverPort, bool opusEnabled = true)
+    public RtpAudioSender(ILogger<RtpAudioSender> logger, string serverHost, int serverPort, string clid, bool opusEnabled = true)
     {
         _logger = logger;
         _opusEnabled = opusEnabled;
@@ -74,6 +63,7 @@ public class RtpAudioSender : IDisposable
 
         // Generate unique SSRC (synchronization source identifier)
         _ssrc = (uint)Random.Shared.Next();
+        _clientId = clid;
 
         // Send empty RTP keepalive packet to register our port
         var keepalive = new RtpPacket
@@ -87,46 +77,14 @@ public class RtpAudioSender : IDisposable
         };
         _udpClient.Send(keepalive.ToBytes(), _serverEndpoint);
 
-        if (_opusEnabled)
-        {
-            try
-            {
-#pragma warning disable CS0618 // Do not use the factory - it does not work with Linux
-                _opusEncoder = new OpusEncoder(
-                    OpenFreqRtcClient.SAMPLE_RATE,
-                    OpenFreqRtcClient.CHANNELS,
-                    OpusApplication.OPUS_APPLICATION_RESTRICTED_LOWDELAY
-                );
-#pragma warning restore CS0618 // Type or member is obsolete
-            }
-            catch (OpusException ex)
-            {
-                // This is the Opus error code
-                _logger.LogError("Opus error: {OpusErrorCode}", ex.OpusErrorCode);
-                _logger.LogError("Message: {Message}", ex.Message);
-            }
+        _opusEncoder.Bitrate = 24000;
+        _opusEncoder.Complexity = 8;
+        _opusEncoder.SignalType = OpusSignal.OPUS_SIGNAL_VOICE;
+        _opusEncoder.UseInbandFEC = true;
+        _opusEncoder.PacketLossPercent = 15;
 
-            if (_opusEncoder == null)
-            {
-                _logger.LogError("Could not create OpusEncoder");
-                return;
-            }
-            else
-            {
-                _opusEncoder.Bitrate = 98000;
-                _opusEncoder.Complexity = 8;
-                _opusEncoder.SignalType = OpusSignal.OPUS_SIGNAL_MUSIC;
-                _opusEncoder.UseInbandFEC = true;
-                _opusEncoder.PacketLossPercent = 15;
-                _opusEncoder.ForceMode = OpusMode.MODE_SILK_ONLY;
-            }
-        }
-
-        // Start pacing timer - sends one packet every 10ms
-        _pacingTimer = new System.Timers.Timer(10); // 10ms interval
-        _pacingTimer.Elapsed += OnPacingTimerElapsed;
-        _pacingTimer.AutoReset = true;
-        _pacingTimer.Start();
+        _sendThread = new Thread(SendThreadProc);
+        _sendThread.Start();
 
         _logger.LogInformation("Initialized");
         _logger.LogInformation("  Server: {ServerHost}:{ServerPort}", serverHost, serverPort);
@@ -143,125 +101,47 @@ public class RtpAudioSender : IDisposable
     /// <param name="position">Aircraft position</param>
     /// <param name="frequencyTransmissions">List of FrequencyTransmissions</param>
     /// 
-    public void SendAudio(byte[] audioData, string clientId, List<FrequencyTransmission> frequencyTransmissions)
+    public void SendAudio(Memory<short> audioData, List<FrequencyTransmission> frequencyTransmissions)
     {
-        try
-        {
-            int offset = 0;
-            bool isFirstChunk = true;
-
-            // Process all incoming data in chunks
-            while (offset < audioData.Length)
-            {
-                int bytesToCopy = Math.Min(
-                    audioData.Length - offset,
-                    _audioBuffer.Length - _bufferPosition
-                );
-
-                Buffer.BlockCopy(audioData, offset, _audioBuffer, _bufferPosition, bytesToCopy);
-                _bufferPosition += bytesToCopy;
-                offset += bytesToCopy;
-
-                // If we have a complete frame, queue it
-                if (_bufferPosition >= _audioBuffer.Length)
-                {
-                    // First chunk uses original markers, subsequent chunks clear beginMarkers
-                    var markers = isFirstChunk
-                        ? frequencyTransmissions
-                        : frequencyTransmissions.Select(f => new FrequencyTransmission(f.Khz, f.TxPowerWatts, f.Ppm,
-                            f.Position, f.Velocity, false, f.BeginMarker, f.EndMarker, f.AmbientNoiseType)).ToList();
-
-                    QueueRawFrame(clientId, markers);
-                    isFirstChunk = false;
-                    _bufferPosition = 0;
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error in SendAudio");
-        }
+        _frequencies = frequencyTransmissions;
+        _sendQueue.Fill(audioData);
     }
 
-    private void QueueRawFrame(string clientId, List<FrequencyTransmission> frequencyTransmissions)
+    private void SendThreadProc()
     {
-        // Copy the buffer data (must copy since _audioBuffer will be reused)
-        var pcmCopy = new byte[_audioBuffer.Length];
-        Buffer.BlockCopy(_audioBuffer, 0, pcmCopy, 0, _audioBuffer.Length);
+        uint timestamp = 0;
+        ushort sequence = 0;
+        var drainbuf = new short[OPUS_FRAME_SIZE];
+        var encoded = new byte[OPUS_FRAME_SIZE * 2];
+        var encspan = new Memory<byte>();
 
-        var queued = new QueuedAudio
+        while (true)
         {
-            PcmData = pcmCopy,
-            ClientId = clientId,
-            FrequencyTransmissions = frequencyTransmissions,
-            Timestamp = _timestamp,
-            SequenceNumber = _sequenceNumber,
-        };
-
-        lock (_queueLock)
-        {
-            _sendQueue.Enqueue(queued);
-        }
-
-        // Update RTP state
-        _sequenceNumber++;
-        _timestamp += (uint)OPUS_FRAME_SIZE;
-        _packetsSent++;
-    }
-
-    private void OnPacingTimerElapsed(object? sender, System.Timers.ElapsedEventArgs e)
-    {
-        QueuedAudio? queued;
-
-        lock (_queueLock)
-        {
-            if (_sendQueue.Count == 0)
-                return;
-
-            queued = _sendQueue.Dequeue();
-        }
-
-        try
-        {
-            var queuedValue = queued.Value;
+            var dspan = new Memory<short>(drainbuf);
+            if (!_sendQueue.DrainExactly(dspan.Span)) return;
+            ushort nextSequence = (ushort)(sequence + dspan.Length);
 
             // Encode audio (happens here, not in audio callback)
-            byte[] encodedAudio;
-            if (_opusEnabled && _opusEncoder != null)
+            encspan = new Memory<byte>(encoded);
+            if (_opusEnabled)
             {
-                // Convert byte[] to short[] using reusable buffer
-                Buffer.BlockCopy(queuedValue.PcmData, 0, _pcmSamples, 0, queuedValue.PcmData.Length);
-
-                // Encode to Opus using reusable buffer
-                var opusBytes = _opusEncoder.Encode(
-                    _pcmSamples,
-                    0,
-                    OPUS_FRAME_SIZE, // Samples per channel
-                    _opusBuffer,
-                    0,
-                    _opusBuffer.Length
-                );
-
+                var opusBytes = _opusEncoder.Encode(dspan.Span, dspan.Length, encspan.Span, encspan.Length);
                 if (opusBytes <= 0)
                 {
-                    _logger.LogWarning("Opus encode failed");
-                    return;
+                    throw new Exception("Opus encode failed");
                 }
-
-                encodedAudio = new byte[opusBytes];
-                Array.Copy(_opusBuffer, encodedAudio, opusBytes);
+                encspan = encspan[..opusBytes];
             }
             else
             {
-                // Raw PCM
-                encodedAudio = queuedValue.PcmData;
+                MemoryMarshal.AsBytes(dspan.Span).CopyTo(encspan.Span);
             }
 
             // Build metadata
             var metadata = new AudioPacketMetadata
             {
-                ClientId = queuedValue.ClientId,
-                Frequencies = queuedValue.FrequencyTransmissions,
+                ClientId = _clientId,
+                Frequencies = _frequencies,
             };
 
             var metadataJson = JsonSerializer.Serialize(metadata, OpenFreqJsonContext.Default.AudioPacketMetadata);
@@ -272,21 +152,18 @@ public class RtpAudioSender : IDisposable
             {
                 Version = 2,
                 PayloadType = _opusEnabled ? PAYLOAD_TYPE_OPUS : PAYLOAD_TYPE_PCMU,
-                SequenceNumber = queuedValue.SequenceNumber,
-                Timestamp = queuedValue.Timestamp,
+                SequenceNumber = sequence,
+                Timestamp = timestamp,
                 Ssrc = _ssrc,
                 ExtensionProfile = RtpPacket.OpenFreqProfile,
                 ExtensionData = metadataBytes,
-                Payload = encodedAudio
+                Payload = encspan.ToArray()
             };
 
             // Send the packet
             var rtpBytes = rtpPacket.ToBytes();
             _udpClient.Send(rtpBytes, rtpBytes.Length, _serverEndpoint);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Pacing timer error");
+            sequence = nextSequence;
         }
     }
 
@@ -302,8 +179,8 @@ public class RtpAudioSender : IDisposable
 
     public void Dispose()
     {
-        _pacingTimer?.Stop();
-        _pacingTimer?.Dispose();
+        _sendQueue.Close(); // Sentinel kills the thread
+        _sendThread?.Join();
         _udpClient.Close();
         _udpClient.Dispose();
         _opusEncoder?.Dispose();

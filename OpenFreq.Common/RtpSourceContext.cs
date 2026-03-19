@@ -15,7 +15,7 @@ public sealed class RtpSourceContext : IDisposable
     public uint Ssrc { get; }
     
     public RtpJitterBuffer JitterBuffer { get; }
-    public OpusDecoder? OpusDecoder { get; }
+    public OpusDecoder OpusDecoder { get; }
     
     // Loss detection state
     public ushort LastSequenceReceived { get; set; }
@@ -35,12 +35,9 @@ public sealed class RtpSourceContext : IDisposable
         JitterBuffer = new RtpJitterBuffer(loggerFactory.CreateLogger<RtpJitterBuffer>());
         JitterBuffer.SetTargetBufferSize(initialBufferMs);
 
-        if (opusEnabled)
-        {
-            #pragma warning disable CS0618 // Using the new factory method will not work on Linux
-            OpusDecoder = new OpusDecoder(OpenFreqRtcClient.SAMPLE_RATE, OpenFreqRtcClient.CHANNELS);
-            #pragma warning restore CS0618
-        }
+        #pragma warning disable CS0618 // Using the new factory method will not work on Linux
+        OpusDecoder = new OpusDecoder(OpenFreqRtcClient.SAMPLE_RATE, 1);
+        #pragma warning restore CS0618
     }
 
     public void Dispose()

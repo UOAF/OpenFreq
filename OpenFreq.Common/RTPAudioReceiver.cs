@@ -246,9 +246,6 @@ public class RtpAudioReceiver : IDisposable
     /// </summary>
     private void GenerateConcealmentAudio(ushort lostSequence, RtpPacket? nextPacket, RtpSourceContext context)
     {
-        if (!_opusEnabled || context.OpusDecoder == null)
-            return;
-
         try
         {
             byte[] concealmentAudio;
