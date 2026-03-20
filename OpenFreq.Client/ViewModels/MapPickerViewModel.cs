@@ -2,6 +2,7 @@
 using System.Globalization;
 using System.Net.Http;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using BruTile.Predefined;
 using BruTile.Web;
@@ -249,21 +250,19 @@ public partial class MapPickerViewModel : ViewModelBase
     private bool CanConfirmPosition() => !IsTrackingMode;
 
     // Nominatim API response model
-    // ReSharper disable once ClassNeverInstantiated.Local
-    private class NominatimResult
+    public class NominatimResult
     {
-        
-        // ReSharper disable InconsistentNaming
-        // Names are equal to the JSON response!
-        private string lat { get; set; } = string.Empty;
-        private string lon { get; set; } = string.Empty;
+        [JsonPropertyName("lat")]
+        public string LatStr { get; set; } = string.Empty;
+        [JsonPropertyName("lon")]
+        public string LonStr { get; set; } = string.Empty;
         // ReSharper disable once UnusedMember.Local
-        public string display_name { get; set; } = string.Empty;
-        // ReSharper restore InconsistentNaming
+        [JsonPropertyName("display_name")]
+        public string DisplayName { get; set; } = string.Empty;
 
         // Helper properties to convert strings to doubles
-        public double Latitude => double.Parse(lat, CultureInfo.InvariantCulture);
-        public double Longitude => double.Parse(lon, CultureInfo.InvariantCulture);
+        public double Latitude => double.Parse(LatStr, CultureInfo.InvariantCulture);
+        public double Longitude => double.Parse(LonStr, CultureInfo.InvariantCulture);
     }
 
     private WritableLayer? CreateTheaterBoundsLayer()
