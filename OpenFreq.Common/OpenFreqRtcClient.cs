@@ -41,7 +41,6 @@ public class OpenFreqRtcClient : IDisposable
     private readonly string _password;
     private ClientWebSocket? _webSocket;
     private CancellationTokenSource _cts = new();
-    private readonly string clientId = Guid.NewGuid().ToString();
 
     // Transmission state
     private readonly Dictionary<int, bool> _frequencyTransmissionState = new();
@@ -115,12 +114,16 @@ public class OpenFreqRtcClient : IDisposable
                 throw new TimeoutException("Authentication timeout");
             }
 
+            if (string.IsNullOrEmpty(MyPeerId))
+            {
+                throw new Exception("No PeerId assigned by server, aborting");
+            }
             // Create RTP sender
             _rtpSender = new RtpAudioSender(
                 logger: _loggerFactory.CreateLogger<RtpAudioSender>(),
                 serverHost: ipPort.ipAddress,
                 serverPort: AudioPort,
-                clid: clientId,
+                clid: MyPeerId!,
                 opusEnabled: _opusCompressionEnabled
             );
 

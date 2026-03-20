@@ -297,7 +297,7 @@ public class SignalingServer
         {
             session.IsAuthenticated = true;
 
-            var audioPort = _audioServer.CreateAudioSession(session.Id).Result;
+            var audioPort = _audioServer.CreateAudioSession(session.Id);
 
             LogClientAuthenticated(_logger, GetDisplayName(session), session.Id, audioPort, null);
 

@@ -14,7 +14,7 @@ public class AudioPacketMetadata
     /// Frequencies being transmitted on with per-frequency markers
     /// </summary>
     [JsonPropertyName("frequencies")]
-    public List<FrequencyTransmission> Frequencies { get; set; } = new();
+    public List<FrequencyTransmission> Frequencies { get; set; } = [];
     
     /// <summary>
     /// Optional timestamp for debugging/monitoring
