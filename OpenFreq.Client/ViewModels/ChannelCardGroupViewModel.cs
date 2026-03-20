@@ -135,7 +135,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         if (e.Status == AcmiConnectionStatus.Connected)
         {
             IsAcmiConnected = true;
-            await UpdateTacviewCallsigns(new CancellationTokenSource().Token);
+            await UpdateTacviewCallsigns(_callsignUpdateCts?.Token ?? CancellationToken.None);
         }
         else
         {
@@ -422,13 +422,16 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
             var currentIds = currentAircraft.Select(a => a.ObjectId).ToHashSet();
 
             // Remove items no longer present
-            for (int i = TacviewFlightCallsigns.Count - 1; i >= 0; i--)
+            await Dispatcher.UIThread.InvokeAsync(() =>
             {
-                if (!currentIds.Contains(TacviewFlightCallsigns[i].ObjectId))
+                for (int i = TacviewFlightCallsigns.Count - 1; i >= 0; i--)
                 {
-                    TacviewFlightCallsigns.RemoveAt(i);
+                    if (!currentIds.Contains(TacviewFlightCallsigns[i].ObjectId))
+                    {
+                        TacviewFlightCallsigns.RemoveAt(i);
+                    }
                 }
-            }
+            });
 
             // Add new items
             var existingIds = TacviewFlightCallsigns.Select(a => a.ObjectId).ToHashSet();
@@ -436,7 +439,10 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
             {
                 if (aircraft.CallSign != string.Empty && !existingIds.Contains(aircraft.ObjectId))
                 {
-                    TacviewFlightCallsigns.Add(aircraft);
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        TacviewFlightCallsigns.Add(aircraft);
+                    });
                 }
             }
 
