@@ -290,6 +290,10 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
 
     private void OnBmsPttChanged(object? sender, RadioPttChangedEventArgs e)
     {
+        // Do NOT capture keys twice - for non-flying, we want to use the callbacks from our HotKey service
+        if (!_hotkeyService.PttKeysPaused ||_falconSharedMemoryService.IsFlying == false)
+            return;
+        
         if (FalconChannelGroup == null)
         {
             _logger.LogWarning("Ignoring PTT: no Falcon channel group");

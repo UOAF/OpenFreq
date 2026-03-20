@@ -18,6 +18,8 @@ public interface IHotkeyService : IDisposable, ILifecycleService
     void PausePttKeys();
     void ResumePttKeys();
     
+    bool PttKeysPaused { get; }
+    
     // Binding management
     void RegisterHotkey(HotkeyType type, KeyCode key, Guid channelId);
     void UnregisterHotkey(HotkeyType type, KeyCode key, Guid channelId);

@@ -10,12 +10,9 @@ namespace OpenFreqClient.Services;
 
 public class HotkeyService : IHotkeyService
 {
-    
-    
     private TaskPoolGlobalHook? _hook;
     private CancellationTokenSource? _cts;
     private Task? _hookTask;
-    private bool _pttPaused;
 
     private readonly Dictionary<KeyCode, List<Guid>> _pttBindings = new();
     private readonly Dictionary<KeyCode, List<Guid>> _squelchToggleBindings = new();
@@ -71,13 +68,15 @@ public class HotkeyService : IHotkeyService
 
     public void PausePttKeys()
     { 
-        _pttPaused = true;
+        PttKeysPaused = true;
     }
 
     public void ResumePttKeys()
     {
-        _pttPaused = false;
+        PttKeysPaused = false;
     }
+
+    public bool PttKeysPaused { get; private set; }
 
     public void RegisterHotkey(IHotkeyService.HotkeyType type, KeyCode key, Guid channelId)
     {
@@ -176,7 +175,7 @@ public class HotkeyService : IHotkeyService
         // We allow for arbitrary double binds, so just fire every valid event
         if (_pttBindings.TryGetValue(e.Data.KeyCode, out var pttBindingsList))
         {
-            if (!_pttPaused)
+            if (!PttKeysPaused)
                 HotkeyPressed?.Invoke(this, new HotkeyPressedEventArgs(IHotkeyService.HotkeyType.Ptt, pttBindingsList));
         }
         
@@ -192,7 +191,7 @@ public class HotkeyService : IHotkeyService
 
         if (_pttBindings.TryGetValue(e.Data.KeyCode, out var pttBinding))
         {
-            if (!_pttPaused)
+            if (!PttKeysPaused)
              HotkeyReleased?.Invoke(this, new HotkeyReleasedEventArgs(IHotkeyService.HotkeyType.Ptt, pttBinding));
         }
 
