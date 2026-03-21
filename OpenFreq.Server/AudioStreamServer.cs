@@ -254,6 +254,7 @@ public class AudioStreamServer
 
     /// <summary>
     /// Parses a UDP RTP audio packet with metadata in the header extension
+    /// Packet format: [12 bytes RTP header][4 bytes ext header][N bytes JSON metadata + padding][audio data]
     /// </summary>
     private (RtpPacket? rtpPacket, AudioPacketMetadata? metadata, byte[]? audioData) ParseRtpAudioPacket(
         byte[] packet,
@@ -261,7 +262,7 @@ public class AudioStreamServer
     {
         try
         {
-            if (packet.Length < 12)
+            if (packet.Length < RtpPacket.HEADER_SIZE)
             {
                 if (_logger.IsEnabled(LogLevel.Warning))
                     _logger.LogWarning("Packet too small: {Length} bytes", packet.Length);
@@ -521,13 +522,19 @@ public class AudioStreamServer
     }
 }
 
-// Supporting classes
+/// <summary>
+/// Per-receiver RTP state tracked by the server
+/// Each receiver gets their own continuous sequence of packets from the server
+/// </summary>
 public class ReceiverRtpState
 {
     public ushort NextSequence { get; set; }
     public long PacketsSent { get; set; }
 }
 
+/// <summary>
+/// RTP statistics for a receiver
+/// </summary>
 [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
 public class ReceiverRtpStats
 {
