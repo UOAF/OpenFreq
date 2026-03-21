@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using OpenFreq.Common;
 
-namespace OpenFreq.Server;
+namespace OpenFreqServer;
 
 /// <summary>
 /// Manages frequency channels and tracks peer state for broadcasting

@@ -96,11 +96,29 @@ public class RtpAudioReceiver : IDisposable
             }
             catch (OperationCanceledException)
             {
+                // Normal cancellation via CTS
+                break;
+            }
+            catch (ObjectDisposedException)
+            {
+                // Socket was disposed during shutdown - expected, don't care
+                break;
+            }
+            catch (SocketException ex) when (
+                ex.SocketErrorCode == SocketError.OperationAborted ||
+                ex.SocketErrorCode == SocketError.Interrupted ||
+                ex.SocketErrorCode == SocketError.Shutdown)
+            {
+                // Socket was closed/aborted during shutdown, don't care either
                 break;
             }
             catch (Exception ex)
             {
-                ErrorOccurred?.Invoke(this, $"Receive error: {ex.Message}");
+                // Actual unexpected error
+                if (!_cts.Token.IsCancellationRequested)
+                {
+                    ErrorOccurred?.Invoke(this, $"Receive error: {ex.Message}");
+                }
             }
         }
 

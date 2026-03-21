@@ -1,18 +1,17 @@
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Common;
 using OpenFreq.Common.Rtp;
-using OpenFreqServer.Json;
 
-namespace OpenFreq.Server;
+namespace OpenFreqServer;
 
 /// <summary>
-/// Audio stream server with RTP translation.
-/// Acts as RTP translator: parses incoming RTP from clients, rewrites RTP headers
-/// with per-receiver sequence numbers, and forwards to recipients.
+/// Audio stream server with RTP translation using a single shared UDP port.
+/// Demultiplexes incoming packets based on sender's remote endpoint.
 /// </summary>
 public class AudioStreamServer
 {
@@ -26,17 +25,22 @@ public class AudioStreamServer
     // Track sessions for each client
     private readonly ConcurrentDictionary<string, AudioStreamSession> _sessions = new();
 
-    // Per-receiver RTP state (unchanged)
+    // Per-receiver state: RTP sequence numbers + send backpressure
     private readonly ConcurrentDictionary<(string clientId, uint Ssrc), ReceiverRtpState> _receiverRtpStates = new();
+
+    // Per-client send stats and backpressure tracking
+    private readonly ConcurrentDictionary<string, ClientSendState> _sendStates = new();
 
     private readonly FrequencyChannelManager _channelManager;
     private readonly ConcurrentDictionary<string, ClientSession> _clients;
     private readonly ILogger<AudioStreamServer> _logger;
-    private readonly UdpStreamManager _udpManager;
     private CancellationTokenSource _cts = new();
 
-    // Single receive task for ALL clients
+    // Single receive task for all clients
     private Task? _receiveTask;
+
+    // Backpressure configuration
+    private const int MaxPendingSendsPerClient = 3;
 
     // High-performance logging delegates
     private static readonly Action<ILogger, string, string, Exception?> LogAudioSessionCreated =
@@ -51,17 +55,23 @@ public class AudioStreamServer
             new EventId(2, nameof(ForwardAudioToChannel)),
             "{DisplayName} ({ClientId}) transmitting on {FrequencyCount} frequency(ies)");
 
-    private static readonly Action<ILogger, string, string, Exception?> LogSessionRemoved =
-        LoggerMessage.Define<string, string>(
+    private static readonly Action<ILogger, string, string, int, int, Exception?> LogSessionRemoved =
+        LoggerMessage.Define<string, string, int, int>(
             LogLevel.Information,
             new EventId(4, nameof(RemoveSession)),
-            "Removed audio session for {DisplayName} ({ClientId})");
+            "Removed session for {DisplayName} ({ClientId}) - Sent: {Sent}, Dropped: {Dropped}");
 
     private static readonly Action<ILogger, string, string, string, Exception?> LogEndpointMapped =
         LoggerMessage.Define<string, string, string>(
             LogLevel.Debug,
             new EventId(5, nameof(ReceiveAudioLoop)),
             "Mapped endpoint {Endpoint} to {DisplayName} ({ClientId})");
+
+    private static readonly Action<ILogger, string, int, Exception?> LogPacketsDropped =
+        LoggerMessage.Define<string, int>(
+            LogLevel.Warning,
+            new EventId(6, nameof(SendPacketAsync)),
+            "Dropped {DroppedCount} packets for {ClientId} due to send backpressure");
 
     public AudioStreamServer(
         FrequencyChannelManager channelManager,
@@ -73,13 +83,17 @@ public class AudioStreamServer
         _clients = clients;
         _logger = loggerFactory.CreateLogger<AudioStreamServer>();
         _audioPort = audioPort;
-        _udpManager = new UdpStreamManager(loggerFactory.CreateLogger<UdpStreamManager>());
 
-        // Create SINGLE shared UDP client
+        // Create single shared UDP client
         _udpClient = new UdpClient(_audioPort);
 
-        // Start SINGLE receive loop for all clients
-        _receiveTask = Task.Run(() => ReceiveAudioLoop());
+        // Configure socket
+        _udpClient.Client.SendBufferSize = 8192; // Small buffer to prevent queuing
+        _udpClient.Client.ReceiveBufferSize = 65535;
+        _udpClient.DontFragment = true;
+
+        // Start single receive loop for all clients
+        _receiveTask = Task.Run(ReceiveAudioLoop);
 
         _logger.LogInformation("AudioStreamServer initialized on UDP port {Port}", _audioPort);
     }
@@ -92,7 +106,6 @@ public class AudioStreamServer
             return !string.IsNullOrWhiteSpace(session.DisplayName) ? session.DisplayName : "Unnamed";
         }
 
-        // unknown clientId
         return "Unnamed";
     }
 
@@ -104,14 +117,19 @@ public class AudioStreamServer
         var session = new AudioStreamSession
         {
             ClientId = clientId,
-            Port = _audioPort // Same port for everyone
+            Port = _audioPort
         };
 
         _sessions[clientId] = session;
 
+        // Initialize send state for backpressure tracking
+        _sendStates[clientId] = new ClientSendState
+        {
+            ClientId = clientId
+        };
+
         LogAudioSessionCreated(_logger, GetDisplayName(clientId), clientId, null);
 
-        // Return the shared port to the client
         return _audioPort;
     }
 
@@ -127,22 +145,20 @@ public class AudioStreamServer
             {
                 var result = await _udpClient.ReceiveAsync(_cts.Token);
                 var remoteEndpoint = result.RemoteEndPoint;
-                
-                // Figure out which client sent this packet
+
                 // Check if we already know this endpoint
                 if (_endpointToClient.TryGetValue(remoteEndpoint, out var clientId))
                 {
                     // Verify client still exists
                     if (!_sessions.ContainsKey(clientId))
                     {
-                        // Stale mapping - remove and re-learn from metadata
                         _endpointToClient.TryRemove(remoteEndpoint, out _);
                         clientId = null;
                     }
                 }
 
                 // Parse packet
-                var (rtpPacket, metadata, audioData) = ParseRtpAudioPacket(result.Buffer, clientId ?? "unknown");
+                var (rtpPacket, metadata, audioData) = ParseRtpAudioPacket(result.Buffer, clientId);
 
                 // Skip keepalive/malformed packets
                 if (rtpPacket == null || metadata == null || audioData == null)
@@ -151,7 +167,10 @@ public class AudioStreamServer
                 // Use metadata to identify/remap
                 if (clientId == null)
                 {
-                    if (!string.IsNullOrEmpty(metadata.ClientId) && _sessions.ContainsKey(metadata.ClientId))
+                    if (!string.IsNullOrEmpty(metadata.ClientId) &&
+                        _sessions.ContainsKey(metadata.ClientId) &&
+                        _clients.TryGetValue(metadata.ClientId, out var claimedClient) &&
+                        claimedClient.IsAuthenticated)
                     {
                         clientId = metadata.ClientId;
                         _endpointToClient[remoteEndpoint] = clientId;
@@ -161,19 +180,18 @@ public class AudioStreamServer
                     }
                     else
                     {
-                        // Unknown/unauthorized sender
                         if (_logger.IsEnabled(LogLevel.Debug))
-                            _logger.LogDebug("Received packet from unknown client {ClientId} at {Endpoint}",
+                            _logger.LogDebug("Received packet from unauthenticated client {ClientId} at {Endpoint}",
                                 metadata.ClientId, remoteEndpoint);
                         continue;
                     }
                 }
 
-                // Verify the packet's metadata matches the mapped clientId
+                // Verify metadata matches mapped clientId
                 if (metadata.ClientId != clientId)
                 {
                     _logger.LogWarning(
-                        "Endpoint {Endpoint} mapped to {MappedClient} but packet claims {ClaimedClient} - possible spoofing",
+                        "Endpoint {Endpoint} mapped to {MappedClient} but packet claims {ClaimedClient}",
                         remoteEndpoint, clientId, metadata.ClientId);
                     continue;
                 }
@@ -214,8 +232,8 @@ public class AudioStreamServer
                     continue;
 
                 if (_logger.IsEnabled(LogLevel.Debug))
-                    LogTransmittingOnFrequencies(_logger, GetDisplayName(clientId), clientId, validFrequencies.Count,
-                        null);
+                    LogTransmittingOnFrequencies(_logger, GetDisplayName(clientId), clientId,
+                        validFrequencies.Count, null);
 
                 // Forward audio to all specified frequencies
                 foreach (var frequency in validFrequencies)
@@ -239,11 +257,11 @@ public class AudioStreamServer
     /// </summary>
     private (RtpPacket? rtpPacket, AudioPacketMetadata? metadata, byte[]? audioData) ParseRtpAudioPacket(
         byte[] packet,
-        string clientId)
+        string? clientId)
     {
         try
         {
-            if (packet.Length < RtpPacket.HEADER_SIZE)
+            if (packet.Length < 12)
             {
                 if (_logger.IsEnabled(LogLevel.Warning))
                     _logger.LogWarning("Packet too small: {Length} bytes", packet.Length);
@@ -255,7 +273,7 @@ public class AudioStreamServer
             {
                 if (_logger.IsEnabled(LogLevel.Warning))
                     _logger.LogWarning("Failed to parse RTP header from {DisplayName} ({ClientId})",
-                        GetDisplayName(clientId), clientId);
+                        GetDisplayName(clientId), clientId ?? "unknown");
                 return (null, null, null);
             }
 
@@ -264,20 +282,17 @@ public class AudioStreamServer
                 return (null, null, null);
 
             var metadataJson = Encoding.UTF8.GetString(rtpPacket.ExtensionData).TrimEnd('\0');
-            var metadata = Json.Instance.Deserialize<AudioPacketMetadata>(metadataJson);
-            
+            var metadata = Json.Json.Instance.Deserialize<AudioPacketMetadata>(metadataJson);
             if (metadata != null) return (rtpPacket, metadata, rtpPacket.Payload);
-            
             if (_logger.IsEnabled(LogLevel.Warning))
                 _logger.LogWarning("Failed to deserialize metadata from {DisplayName} ({ClientId})",
-                    GetDisplayName(clientId), clientId);
+                    GetDisplayName(clientId), clientId ?? "unknown");
             return (null, null, null);
-
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error parsing RTP audio packet from {DisplayName} ({ClientId})",
-                GetDisplayName(clientId), clientId);
+                GetDisplayName(clientId), clientId ?? "unknown");
             return (null, null, null);
         }
     }
@@ -292,6 +307,7 @@ public class AudioStreamServer
         byte[] audioData)
     {
         var senderSsrc = originalRtpPacket.Ssrc;
+
         // Get or create RTP state for this receiver
         var rtpState = _receiverRtpStates.GetOrAdd((receiverClientId, senderSsrc), _ => new ReceiverRtpState
         {
@@ -301,18 +317,18 @@ public class AudioStreamServer
 
         // Stamp server send time into metadata
         metadata.ServerSendTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        var metadataJson = Json.Instance.Serialize(metadata);
+        var metadataJson = Json.Json.Instance.Serialize(metadata);
         var metadataBytes = Encoding.UTF8.GetBytes(metadataJson);
 
         // Create new RTP packet with server's sequence number
         var rtpPacket = new RtpPacket
         {
             Version = 2,
-            PayloadType = originalRtpPacket.PayloadType, // Preserve payload type (Opus/PCM)
-            SequenceNumber = rtpState.NextSequence, // SERVER's sequence for this receiver
-            Timestamp = originalRtpPacket.Timestamp, // Preserve original timestamp for jitter calc
-            Ssrc = originalRtpPacket.Ssrc, // Preserve original SSRC
-            Marker = originalRtpPacket.Marker, // Currently unused but still preserve it
+            PayloadType = originalRtpPacket.PayloadType,
+            SequenceNumber = rtpState.NextSequence,
+            Timestamp = originalRtpPacket.Timestamp,
+            Ssrc = originalRtpPacket.Ssrc,
+            Marker = originalRtpPacket.Marker,
             ExtensionProfile = RtpPacket.OpenFreqProfile,
             ExtensionData = metadataBytes,
             Payload = audioData
@@ -327,7 +343,6 @@ public class AudioStreamServer
 
     /// <summary>
     /// Forward audio to all clients in a channel
-    /// Uses the single shared UDP client to send to multiple endpoints
     /// </summary>
     private void ForwardAudioToChannel(
         int frequencyKhz,
@@ -349,11 +364,8 @@ public class AudioStreamServer
                 // Create RTP packet with receiver-specific sequence number
                 var rtpPacket = CreateRtpAudioPacket(clientId, originalRtpPacket, metadata, audioData);
 
-                var sent = _udpManager.SendPacketAsync(
-                    clientId,
-                    _udpClient,
-                    rtpPacket,
-                    targetSession.RemoteEndPoint);
+                // Send with backpressure control
+                var sent = SendPacketAsync(clientId, rtpPacket, targetSession.RemoteEndPoint);
 
                 if (!sent && _logger.IsEnabled(LogLevel.Debug))
                 {
@@ -364,12 +376,81 @@ public class AudioStreamServer
         }
     }
 
+    /// <summary>
+    /// Send packet with backpressure control
+    /// Returns false if packet was dropped due to congestion
+    /// </summary>
+    private bool SendPacketAsync(string clientId, byte[] packet, IPEndPoint remoteEndPoint)
+    {
+        if (!_sendStates.TryGetValue(clientId, out var state))
+            return false;
+
+        // Check if we're already sending too many packets
+        var pendingSends = Interlocked.Increment(ref state.PendingSends);
+
+        if (pendingSends > MaxPendingSendsPerClient)
+        {
+            // Drop packet to prevent buffer buildup
+            Interlocked.Decrement(ref state.PendingSends);
+            var dropped = Interlocked.Increment(ref state.DroppedPackets);
+
+            // Log every 10 drops
+            if (dropped % 10 == 0)
+            {
+                LogPacketsDropped(_logger, clientId, dropped, null);
+            }
+
+            return false;
+        }
+
+        // Send without blocking caller
+        _ = SendWithBackpressureAsync(state, packet, remoteEndPoint);
+
+        return true;
+    }
+
+    /// <summary>
+    /// Async send with timeout
+    /// </summary>
+    private async Task SendWithBackpressureAsync(
+        ClientSendState state,
+        byte[] packet,
+        IPEndPoint remoteEndPoint)
+    {
+        try
+        {
+            // Be rather aggressive - 10ms to send per client, otherwise this will block other clients
+            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(10));
+
+            await _udpClient.SendAsync(packet, packet.Length, remoteEndPoint)
+                .WaitAsync(cts.Token);
+
+            state.LastSendTime = DateTime.UtcNow;
+            Interlocked.Increment(ref state.SentPackets);
+        }
+        catch (OperationCanceledException)
+        {
+            Interlocked.Increment(ref state.DroppedPackets);
+
+            if (_logger.IsEnabled(LogLevel.Debug))
+                _logger.LogDebug("Send timeout for client {ClientId}", state.ClientId);
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsEnabled(LogLevel.Debug))
+                _logger.LogDebug(ex, "Send error for client {ClientId}", state.ClientId);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref state.PendingSends);
+        }
+    }
+
     public void RemoveSession(string clientId)
     {
         if (!_sessions.TryRemove(clientId, out _)) return;
 
         _clients.TryGetValue(clientId, out var client);
-        _udpManager.RemoveClient(clientId);
 
         // Remove endpoint mapping
         var staleEndpoints = _endpointToClient
@@ -380,17 +461,33 @@ public class AudioStreamServer
         foreach (var endpoint in staleEndpoints)
             _endpointToClient.TryRemove(endpoint, out _);
 
-        // Remove all per-SSRC RTP states for this receiver
+        // Remove RTP states
         foreach (var key in _receiverRtpStates.Keys.Where(k => k.clientId == clientId).ToList())
             _receiverRtpStates.TryRemove(key, out _);
 
-        _logger.LogInformation("Session removed for {DisplayName} ({ClientId})",
-            client?.DisplayName ?? "Unnamed", clientId);
+        // Remove send state and log stats
+        if (_sendStates.TryRemove(clientId, out var sendState))
+        {
+            LogSessionRemoved(_logger, client?.DisplayName ?? "Unnamed", clientId, sendState.SentPackets,
+                sendState.DroppedPackets, null);
+        }
     }
 
     public ClientStreamStats? GetClientStats(string clientId)
     {
-        return _udpManager.GetStats(clientId);
+        if (_sendStates.TryGetValue(clientId, out var state))
+        {
+            return new ClientStreamStats
+            {
+                ClientId = clientId,
+                SentPackets = state.SentPackets,
+                DroppedPackets = state.DroppedPackets,
+                PendingSends = state.PendingSends,
+                LastSendTime = state.LastSendTime
+            };
+        }
+
+        return null;
     }
 
     public IEnumerable<ReceiverRtpStats> GetReceiverRtpStats(string clientId)
@@ -410,26 +507,28 @@ public class AudioStreamServer
     {
         _cts.Cancel();
 
-        // Wait for receive task to finish
+        // Wait for receive task
         _receiveTask?.Wait(TimeSpan.FromSeconds(2));
 
-        // Close the SINGLE shared UDP client
+        // Close shared UDP client
         _udpClient.Close();
         _udpClient.Dispose();
 
         _sessions.Clear();
         _endpointToClient.Clear();
         _receiverRtpStates.Clear();
+        _sendStates.Clear();
     }
 }
 
-// Unchanged classes below
+// Supporting classes
 public class ReceiverRtpState
 {
     public ushort NextSequence { get; set; }
     public long PacketsSent { get; set; }
 }
 
+[SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
 public class ReceiverRtpStats
 {
     public string ClientId { get; set; } = "";
@@ -438,10 +537,33 @@ public class ReceiverRtpStats
     public ushort CurrentSequence { get; set; }
 }
 
+[SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
 public class AudioStreamSession
 {
     public string ClientId { get; set; } = string.Empty;
     public int Port { get; set; }
     public IPEndPoint? RemoteEndPoint { get; set; }
     public DateTime LastReceived { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Per-client send state for backpressure tracking
+/// </summary>
+internal class ClientSendState
+{
+    public string ClientId { get; set; } = string.Empty;
+    public int PendingSends;
+    public int SentPackets;
+    public int DroppedPackets;
+    public DateTime LastSendTime = DateTime.UtcNow;
+}
+
+[SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
+public class ClientStreamStats
+{
+    public string ClientId { get; set; } = string.Empty;
+    public int SentPackets { get; set; }
+    public int DroppedPackets { get; set; }
+    public int PendingSends { get; set; }
+    public DateTime LastSendTime { get; set; }
 }

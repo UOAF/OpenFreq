@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace OpenFreq.Server;
+namespace OpenFreqServer;
 
 public class ServerConfig
 {
@@ -10,8 +10,8 @@ public class ServerConfig
     [JsonPropertyName("websocketPort")]
     public int WebSocketPort { get; set; } = 9987;
 
-    [JsonPropertyName("audioBasePort")]
-    public int AudioBasePort { get; set; } = 9988;
+    [JsonPropertyName("audioPort")]
+    public int AudioPort { get; set; } = 9988;
 
     [JsonPropertyName("maxClientsPerChannel")]
     public int MaxClientsPerChannel { get; set; } = 50;

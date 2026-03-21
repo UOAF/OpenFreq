@@ -65,7 +65,17 @@ public class RtpAudioSender : IDisposable
         _ssrc = (uint)Random.Shared.Next();
         _clientId = clid;
 
-        // Send empty RTP keepalive packet to register our port
+        // Build metadata with clientId for keepalive
+        var metadata = new AudioPacketMetadata
+        {
+            ClientId = _clientId,
+            Frequencies = []  // Empty frequency list
+        };
+
+        var metadataJson = JsonSerializer.Serialize(metadata, OpenFreqJsonContext.Default.AudioPacketMetadata);
+        var metadataBytes = Encoding.UTF8.GetBytes(metadataJson);
+
+        // Send keepalive packet with metadata to register our endpoint
         var keepalive = new RtpPacket
         {
             Version = 2,
@@ -73,7 +83,9 @@ public class RtpAudioSender : IDisposable
             SequenceNumber = 0,
             Timestamp = 0,
             Ssrc = _ssrc,
-            Payload = [] // Empty payload
+            ExtensionProfile = RtpPacket.OpenFreqProfile,
+            ExtensionData = metadataBytes,
+            Payload = []  // Empty audio payload
         };
         _udpClient.Send(keepalive.ToBytes(), _serverEndpoint);
 

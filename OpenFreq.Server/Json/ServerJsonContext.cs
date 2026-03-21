@@ -1,7 +1,6 @@
 ﻿using System.Text.Json.Serialization;
 using OpenFreq.Common;
 using OpenFreq.Common.Signaling;
-using OpenFreq.Server;
 
 namespace OpenFreqServer.Json;
 

@@ -1,29 +1,18 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 
-namespace OpenFreq.Server;
+namespace OpenFreqServer;
 
 public class TuiLogMessage
 {
-    public DateTime Timestamp { get; set; }
-    public LogLevel Level { get; set; }
-    public string Message { get; set; } = string.Empty;
-    public string? Category { get; set; }
+    public DateTime Timestamp { get; init; }
+    public LogLevel Level { get; init; }
+    public string Message { get; init; } = string.Empty;
 }
 
-public class TuiLogger : ILogger
+public class TuiLogger(ConcurrentQueue<TuiLogMessage> logMessages, int maxMessages = 100)
+    : ILogger
 {
-    private readonly string _categoryName;
-    private readonly ConcurrentQueue<TuiLogMessage> _logMessages;
-    private readonly int _maxMessages;
-
-    public TuiLogger(string categoryName, ConcurrentQueue<TuiLogMessage> logMessages, int maxMessages = 100)
-    {
-        _categoryName = categoryName;
-        _logMessages = logMessages;
-        _maxMessages = maxMessages;
-    }
-
     public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
 
     public bool IsEnabled(LogLevel logLevel) => logLevel != LogLevel.None;
@@ -39,36 +28,27 @@ public class TuiLogger : ILogger
             message += $" | Exception: {exception.Message}";
         }
 
-        _logMessages.Enqueue(new TuiLogMessage
+        logMessages.Enqueue(new TuiLogMessage
         {
             Timestamp = DateTime.UtcNow,
             Level = logLevel,
-            Message = message,
-            Category = _categoryName
+            Message = message
         });
 
         // Keep only the last N messages
-        while (_logMessages.Count > _maxMessages)
+        while (logMessages.Count > maxMessages)
         {
-            _logMessages.TryDequeue(out _);
+            logMessages.TryDequeue(out _);
         }
     }
 }
 
-public class TuiLoggerProvider : ILoggerProvider
+public class TuiLoggerProvider(ConcurrentQueue<TuiLogMessage> logMessages, int maxMessages = 100)
+    : ILoggerProvider
 {
-    private readonly ConcurrentQueue<TuiLogMessage> _logMessages;
-    private readonly int _maxMessages;
-
-    public TuiLoggerProvider(ConcurrentQueue<TuiLogMessage> logMessages, int maxMessages = 100)
-    {
-        _logMessages = logMessages;
-        _maxMessages = maxMessages;
-    }
-
     public ILogger CreateLogger(string categoryName)
     {
-        return new TuiLogger(categoryName, _logMessages, _maxMessages);
+        return new TuiLogger(logMessages, maxMessages);
     }
 
     public void Dispose() { }

@@ -5,7 +5,7 @@ using Terminal.Gui;
 using Attribute = Terminal.Gui.Attribute;
 using Label = Terminal.Gui.Label;
 
-namespace OpenFreq.Server;
+namespace OpenFreqServer;
 
 public class TerminalGuiServer : IDisposable
 {
@@ -24,16 +24,12 @@ public class TerminalGuiServer : IDisposable
     private List<string> _frequencyLines = new();
     private List<string> _clientLines = new();
     private List<string> _logLines = new();
-
-    private SignalingServer? _server;
-
-    public TerminalGuiServer(ServerConfig config, ServerStats stats, ConcurrentQueue<TuiLogMessage> logMessages,
-        SignalingServer server)
+    
+    public TerminalGuiServer(ServerConfig config, ServerStats stats, ConcurrentQueue<TuiLogMessage> logMessages)
     {
         _config = config;
         _stats = stats;
         _logMessages = logMessages;
-        _server = server;
     }
 
     public void Start()
@@ -43,7 +39,7 @@ public class TerminalGuiServer : IDisposable
 
         try
         {
-            SetupUI();
+            SetupUi();
             _updateTask = Task.Run(async () => await UpdateLoop());
             Application.Run();
         }
@@ -70,7 +66,7 @@ public class TerminalGuiServer : IDisposable
         Application.RequestStop();
     }
 
-    private void SetupUI()
+    private void SetupUi()
     {
         var top = Application.Top;
 
@@ -318,7 +314,7 @@ public class TerminalGuiServer : IDisposable
 
         _statusLabel.Text =
             $"● OpenFreq Server | Up: {uptimeStr} | " +
-            $"WS:{_config.WebSocketPort} | Clients: {_stats.AuthenticatedClients}/{_stats.TotalClients} | " +
+            $"Ports: {_config.WebSocketPort} (ws://) {_config.AudioPort} (Audio) | Clients: {_stats.AuthenticatedClients} | " +
             $"TX: {_stats.ActiveTransmissions} | " +
             $"Auth:{(!string.IsNullOrEmpty(_config.ServerPassword) ? " Yes" : " No")} | " +
             $"Opus:{(_config.EnableOpusCompression ? " Yes" : " No")} | " +
@@ -384,7 +380,7 @@ public class TerminalGuiServer : IDisposable
 
         _clientLines.Clear();
 
-        _clientLines.Add($"{"Display Name",-24} {"Client ID",-20} {"Frequency",-12} {"Port",6} {"Status",8} {"Activity",10}");
+        _clientLines.Add($"{"Display Name",-24} {"Client ID",-20} {"Frequency",-12} {"Status",8} {"Activity",10}");
         _clientLines.Add(new string('─', 80));
 
         if (clients.Count == 0)
@@ -403,7 +399,6 @@ public class TerminalGuiServer : IDisposable
                     : displayName;
                     
                 var shortId = client.Id.Length > 20 ? client.Id.Substring(0, 20) : client.Id;
-                var audioPort = client.AudioPort > 0 ? client.AudioPort.ToString() : "-";
                 var timeSinceActivity = (DateTime.UtcNow - client.LastActivity).TotalSeconds;
                 var activityStr = timeSinceActivity < 60
                     ? $"{timeSinceActivity:F0}s ago"
@@ -414,7 +409,7 @@ public class TerminalGuiServer : IDisposable
                 if (frequencies.Count == 0)
                 {
                     // No frequencies
-                    _clientLines.Add($"{shortDisplayName,-24} {shortId,-20} {"-",-12} {audioPort,6} {"● RX",8} {activityStr,10}");
+                    _clientLines.Add($"{shortDisplayName,-24} {shortId,-20} {"-",-12} {"● RX",8} {activityStr,10}");
                 }
                 else
                 {
@@ -424,14 +419,14 @@ public class TerminalGuiServer : IDisposable
                         ? "● TX"
                         : "● RX";
                     _clientLines.Add(
-                        $"{shortDisplayName,-24} {shortId,-20} {firstFreq.Key/1000d,-12:F3} {audioPort,6} {firstStatus,8} {activityStr,10}");
+                        $"{shortDisplayName,-24} {shortId,-20} {firstFreq.Key/1000d,-12:F3} {firstStatus,8} {activityStr,10}");
 
                     // Additional frequencies on subsequent lines
                     for (int i = 1; i < frequencies.Count; i++)
                     {
                         var freq = frequencies[i];
                         var status = freq.Value == ClientSession.FrequencyClientStatus.Transmitting ? "● TX" : "● RX";
-                        _clientLines.Add($"{"",-24} {"",-20} {freq.Key/1000d,-12:F3} {"-",6} {status,8} {"",10}");
+                        _clientLines.Add($"{"",-24} {"",-20} {freq.Key/1000d,-12:F3} {status,8} {"",10}");
                     }
                 }
             }

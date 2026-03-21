@@ -1,10 +1,9 @@
 using System.Collections.Concurrent;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using OpenFreq.Server;
-using OpenFreqServer.Json;
 using Serilog;
 using Serilog.Events;
+
+namespace OpenFreqServer;
 
 class Program
 {
@@ -73,7 +72,7 @@ class Program
                     .AddFilter("Microsoft", LogLevel.Warning)
                     .AddFilter("System", LogLevel.Warning)
                     .AddFilter("OpenFreq", LogLevel.Debug)
-                    .AddProvider(new TuiLoggerProvider(logMessages, 100))
+                    .AddProvider(new TuiLoggerProvider(logMessages))
                     .AddSerilog(Log.Logger);
             });
 
@@ -81,11 +80,11 @@ class Program
 
             // Create stats tracker and Terminal.Gui TUI
             var stats = new ServerStats(server.Clients, server.ChannelManager);
-            using var tui = new TerminalGuiServer(config, stats, logMessages, server);
+            using var tui = new TerminalGuiServer(config, stats, logMessages);
 
             // Setup graceful shutdown
             var shutdownCts = new CancellationTokenSource();
-            Console.CancelKeyPress += (sender, e) =>
+            Console.CancelKeyPress += (_, e) =>
             {
                 if (!shutdownCts.IsCancellationRequested)
                 {
@@ -147,14 +146,14 @@ class Program
                 {
                     ServerPassword = "",
                     WebSocketPort = 9987,
-                    AudioBasePort = 10000,
+                    AudioPort = 9988,
                     MaxClientsPerChannel = 50,
                     MaxChannelsPerClient = 10,
                     EnableOpusCompression = true,
                     BroadcastPeerUpdates = true
                 };
 
-                var json = Json.Instance.Serialize(defaultConfig);
+                var json = Json.Json.Instance.Serialize(defaultConfig);
 
                 File.WriteAllText(configPath, json);
                 Log.Information("Default configuration created at: {ConfigPath}", configPath);
@@ -162,7 +161,7 @@ class Program
             }
 
             var configJson = File.ReadAllText(configPath);
-            var config = Json.Instance.Deserialize<ServerConfig>(configJson);
+            var config = Json.Json.Instance.Deserialize<ServerConfig>(configJson);
 
             if (config == null)
             {
