@@ -113,15 +113,17 @@ public class FrequencyChannelManager
     /// <summary>
     /// Get the complete channel state across all frequencies
     /// </summary>
-    public Dictionary<int, List<PeerData>> GetAllChannelStates()
+    public SortedDictionary<int, List<PeerData>> GetAllChannelStates()
     {
-        var result = new Dictionary<int, List<PeerData>>();
-        
+        var result = new SortedDictionary<int, List<PeerData>>();
+    
         foreach (var (frequency, peers) in _channels)
         {
-            result[frequency] = peers.Values.ToList();
+            result[frequency] = peers.Values
+                .OrderBy(p => p.Name)
+                .ToList();
         }
-        
+    
         return result;
     }
 

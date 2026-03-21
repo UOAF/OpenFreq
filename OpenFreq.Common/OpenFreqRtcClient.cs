@@ -505,7 +505,7 @@ public class OpenFreqRtcClient : IDisposable
     private void OnConnectionStateChanged(ConnectionState state) =>
         ConnectionStateChanged?.Invoke(this, new ConnectionStateChangedEventArgs(state));
 
-    private void OnAuthenticated(string peerId, Dictionary<int, List<PeerData>> peers, int audioPort) =>
+    private void OnAuthenticated(string peerId, SortedDictionary<int, List<PeerData>> peers, int audioPort) =>
         Authenticated?.Invoke(this, new AuthenticationEventArgs(peerId, peers, audioPort));
 
     private void OnFrequencyJoined(int frequencyKhz, List<ChannelStateMessage.Peer> peers) =>
@@ -531,7 +531,7 @@ public class OpenFreqRtcClient : IDisposable
     private void OnAudioDataReceived(string peerId, byte[] audioData, AudioPacketMetadata metadata) =>
         AudioDataReceived?.Invoke(this, new AudioDataEventArgs(peerId, audioData, metadata));
 
-    private void OnAllPeersStatusReceived(Dictionary<int, List<PeerData>> allPeersStatus) =>
+    private void OnAllPeersStatusReceived(SortedDictionary<int, List<PeerData>> allPeersStatus) =>
         AllPeersStatusUpdateReceived?.Invoke(this, new AllPeersStatusEventArgs(allPeersStatus));
 
 
@@ -572,9 +572,9 @@ public class AuthenticationEventArgs : EventArgs
     public string PeerId { get; }
     public int AudioPort { get; }
     
-    public Dictionary<int, List<PeerData>> Peers { get; }
+    public SortedDictionary<int, List<PeerData>> Peers { get; }
 
-    public AuthenticationEventArgs(string peerId, Dictionary<int, List<PeerData>> peers, int audioPort)
+    public AuthenticationEventArgs(string peerId, SortedDictionary<int, List<PeerData>> peers, int audioPort)
     {
         PeerId = peerId;
         Peers = peers;
@@ -656,9 +656,9 @@ public class AudioDataEventArgs : EventArgs
 
 public class AllPeersStatusEventArgs : EventArgs
 {
-    public Dictionary<int, List<PeerData>> AllPeers { get; }
+    public SortedDictionary<int, List<PeerData>> AllPeers { get; }
 
-    public AllPeersStatusEventArgs(Dictionary<int, List<PeerData>> allPeers)
+    public AllPeersStatusEventArgs(SortedDictionary<int, List<PeerData>> allPeers)
     {
         AllPeers = allPeers;
     }

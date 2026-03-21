@@ -54,7 +54,7 @@ public static class SignalingMessageFactory
         };
     }
 
-    public static SignalingMessage CreateSuccess(string message, Dictionary<int, List<PeerData>> peers, string? peerId = null, int? audioPort = null, bool opusEnabled = true)
+    public static SignalingMessage CreateSuccess(string message, SortedDictionary<int, List<PeerData>> peers, string? peerId = null, int? audioPort = null, bool opusEnabled = true)
     {
         return new SignalingMessage
         {
@@ -157,7 +157,7 @@ public static class SignalingMessageFactory
         };
     }
 
-    public static SignalingMessage CreateAllPeersStatusMessage(Dictionary<int, List<PeerData>> allPeersStatus)
+    public static SignalingMessage CreateAllPeersStatusMessage(SortedDictionary<int, List<PeerData>> allPeersStatus)
     {
         return new SignalingMessage
         {

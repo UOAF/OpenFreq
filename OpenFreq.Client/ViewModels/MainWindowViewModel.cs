@@ -131,6 +131,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         _openFreqService.StatusMessageReceived += OnStatusMessageReceived;
         _openFreqService.PeerActivityReceived += OnPeerActivityReceived;
         _openFreqService.AllPeersStatusChanged += OnAllPeersChanged;
+        _openFreqService.FrequencyTransmissionStatusChanged += OnFrequencyTransmissionStatusChanged;
 
         // Falcon Radio Shared Memory
         _falconRadioSharedMemoryService.ConnectionParametersChanged +=
@@ -494,7 +495,21 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
                 (Settings.Is3dMode == e.Is3d) && e.PeerData.Status == PeerData.PeerStatus.Transmitting;
         }
     }
-
+    
+    private void OnFrequencyTransmissionStatusChanged(object? sender, FrequencyTransmissionStatusEventArgs e)
+    {
+        // Only interested in channels we are transmitting or idling in
+        if (e.TransmissionStatus == Channel.ChannelTransmissionStatus.Receiving) return;
+        
+        // This isn't ideal performance-wise, but we don't have too many peers and there is no ObservableDictionary
+        foreach (var peer in PeerList
+                     .Where(f => f.FrequencyKhz == e.FrequencyKhz)
+                     .SelectMany(f => f.Peers)
+                     .Where(p => p.Id == _openFreqService.PeerId))
+        {
+            peer.IsTransmitting = e.TransmissionStatus == Channel.ChannelTransmissionStatus.Transmitting;
+        }
+    }
 
     private async Task LoadConfigurationAsync()
     {
@@ -610,6 +625,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         _openFreqService.ConnectionStateChanged -= OnConnectionStateChanged;
         _openFreqService.StatusMessageReceived -= OnStatusMessageReceived;
         _openFreqService.PeerActivityReceived -= OnPeerActivityReceived;
+        _openFreqService.FrequencyTransmissionStatusChanged += OnFrequencyTransmissionStatusChanged;
 
         _falconRadioSharedMemoryService.ConnectionParametersChanged -=
             FalconRadioSharedMemoryServiceOnConnectionParametersChanged;

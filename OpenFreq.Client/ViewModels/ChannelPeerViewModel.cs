@@ -24,8 +24,6 @@ public partial class ChannelPeerViewModel : ViewModelBase
     public partial bool IsTransmitting { get; set; } = false;
     
     public bool IsOwnUser { get; set; }
-
-    [ObservableProperty] public partial float ReceivedSnrDb { get; set; }
     
     public Color TransmitHighlightColor => IsTransmitting
         ? Color.FromArgb(20, 255, 193, 7)

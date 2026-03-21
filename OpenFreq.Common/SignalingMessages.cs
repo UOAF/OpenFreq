@@ -71,7 +71,7 @@ public class SuccessMessage
     
     [JsonPropertyName("opusCompression")] public bool OpusCompressionEnabled { get; set; }
     
-    [JsonPropertyName("frequencies")] public Dictionary<int, List<PeerData>> FrequenciesPeers { get; set; } = [];
+    [JsonPropertyName("frequencies")] public SortedDictionary<int, List<PeerData>> FrequenciesPeers { get; set; } = [];
 
 }
 
@@ -144,5 +144,5 @@ public class DisplayNameMessage
 /// </summary>
 public class AllPeersStatusMessage
 {
-    [JsonPropertyName("frequencies")] public Dictionary<int, List<PeerData>> FrequenciesPeers { get; set; } = [];
+    [JsonPropertyName("frequencies")] public SortedDictionary<int, List<PeerData>> FrequenciesPeers { get; set; } = [];
 }
