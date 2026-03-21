@@ -86,10 +86,6 @@ public class AudioStreamServer
 
         // Create single shared UDP client
         _udpClient = new UdpClient(_audioPort);
-
-        // Configure socket
-        _udpClient.Client.SendBufferSize = 8192; // Small buffer to prevent queuing
-        _udpClient.Client.ReceiveBufferSize = 65535;
         _udpClient.DontFragment = true;
 
         // Start single receive loop for all clients

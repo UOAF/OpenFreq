@@ -65,7 +65,6 @@ public class RtpAudioSender : IDisposable
         _ssrc = (uint)Random.Shared.Next();
         _clientId = clid;
 
-        // Build metadata with clientId for keepalive
         var metadata = new AudioPacketMetadata
         {
             ClientId = _clientId,
@@ -75,7 +74,7 @@ public class RtpAudioSender : IDisposable
         var metadataJson = JsonSerializer.Serialize(metadata, OpenFreqJsonContext.Default.AudioPacketMetadata);
         var metadataBytes = Encoding.UTF8.GetBytes(metadataJson);
 
-        // Send keepalive packet with metadata to register our endpoint
+        // Send single packet with silence to register our endpoint
         var keepalive = new RtpPacket
         {
             Version = 2,
