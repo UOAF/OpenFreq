@@ -24,6 +24,8 @@ public class SignalingServer
     private readonly ILogger<SignalingServer> _logger;
     private CancellationTokenSource _cts = new();
 
+    private const double WebsocketTimeoutMillis = 1000;
+
     // High-performance logging delegates
     private static readonly Action<ILogger, int, Exception?> LogServerStarted =
         LoggerMessage.Define<int>(
@@ -527,23 +529,40 @@ public class SignalingServer
 
     private async Task SendToClient(ClientSession session, SignalingMessage message)
     {
+        if (session.IsDisposed)
+            return;
+        
+        if (session.WebSocket.State != WebSocketState.Open)
+        {
+            await CleanupClient(session.Id);
+            return;
+        }
+
+        await session.SendLock.WaitAsync();
         try
         {
-            if (session.WebSocket.State == WebSocketState.Open)
-            {
-                var json = Json.Json.Instance.Serialize(message);
-                var buffer = Encoding.UTF8.GetBytes(json);
-                await session.WebSocket.SendAsync(
-                    new ArraySegment<byte>(buffer),
-                    WebSocketMessageType.Text,
-                    true,
-                    CancellationToken.None);
-            }
+            if (session.WebSocket.State != WebSocketState.Open)
+                return;
+
+            var json = Json.Json.Instance.Serialize(message);
+            var buffer = Encoding.UTF8.GetBytes(json);
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(WebsocketTimeoutMillis));
+
+            await session.WebSocket.SendAsync(
+                new ArraySegment<byte>(buffer),
+                WebSocketMessageType.Text,
+                true,
+                cts.Token);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is OperationCanceledException or WebSocketException)
         {
-            _logger.LogError(ex, "Error sending to {DisplayName} ({ClientId})",
-                GetDisplayName(session), session.Id);
+            _logger.LogWarning(ex, "WebSocket error for {ClientId}", session.Id);
+            await CleanupClient(session.Id);
+        }
+        finally
+        {
+            session.SendLock.Release();
         }
     }
 
@@ -570,7 +589,7 @@ public class SignalingServer
         if (_clients.TryRemove(clientId, out var session))
         {
             await LeaveAllChannels(session);
-
+        
             _channelManager.LeaveAllChannels(clientId);
             _audioServer.RemoveSession(clientId);
 
@@ -585,11 +604,11 @@ public class SignalingServer
                 }
                 catch (WebSocketException)
                 {
-                    // Already closed, ignore
+                    // Already closed, don't care
                 }
             }
 
-            session.WebSocket.Dispose();
+            session.Dispose();
 
             LogClientCleanedUp(_logger, GetDisplayName(session), clientId, null);
         }
@@ -604,6 +623,7 @@ public class SignalingServer
 
         // Cancel the CTS
         _cts.Cancel();
+        _cts.Dispose();
 
         // Stop the web app
         if (_app != null)
