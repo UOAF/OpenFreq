@@ -44,7 +44,6 @@ public class OpenFreqRtcClient : IDisposable
 
     // Transmission state
     private readonly Dictionary<int, bool> _frequencyTransmissionState = new();
-    private readonly Dictionary<int, bool> _frequencyFirstPacketSent = new();
     private readonly Dictionary<int, HashSet<string>> _frequencyPeers = new();
 
     private readonly ILogger<OpenFreqRtcClient> _logger;
@@ -196,7 +195,6 @@ public class OpenFreqRtcClient : IDisposable
 
         _frequencyPeers.Remove(frequencyKhz);
         _frequencyTransmissionState.Remove(frequencyKhz);
-        _frequencyFirstPacketSent.Remove(frequencyKhz); // Clean up tracking state
         OnFrequencyLeft(frequencyKhz);
     }
 
@@ -216,7 +214,6 @@ public class OpenFreqRtcClient : IDisposable
         }
 
         _frequencyTransmissionState[frequencyKhz] = true;
-        _frequencyFirstPacketSent[frequencyKhz] = false; // Mark that we need to send startMarker
 
         await SendMessageAsync(SignalingMessageFactory.CreateTransmission(frequencyKhz, true, is3d));
         OnTransmissionStateChanged(frequencyKhz, true);
@@ -240,18 +237,7 @@ public class OpenFreqRtcClient : IDisposable
             return;
         }
 
-        // Send final silent packet with endMarker
-        var silence = new short[OPUS_SAMPLES_PER_FRAME]; // 20ms silence, 16-bit PCM
-        
-        _rtpSender?.SendAudio(
-            audioData: silence,
-            frequencyTransmissions: [new FrequencyTransmission(frequencyKhz, 0, 0, new Vector3(), null, false, true)]
-        );
-
-        _logger.LogInformation("Sent end marker for frequency {Frequency:F3}", frequencyKhz / 1000d);
-
         _frequencyTransmissionState[frequencyKhz] = false;
-        _frequencyFirstPacketSent.Remove(frequencyKhz); // Clean up tracking state
 
         await SendMessageAsync(SignalingMessageFactory.CreateTransmission(frequencyKhz, false, is3d));
         OnTransmissionStateChanged(frequencyKhz, false);
@@ -275,7 +261,6 @@ public class OpenFreqRtcClient : IDisposable
         var frequencyTransmissions = new List<FrequencyTransmission>();
         foreach (var freq in frequencies)
         {
-            bool needsBeginMarker = _frequencyFirstPacketSent.TryGetValue(freq.frequencyKhz, out var sent) && !sent;
             frequencyTransmissions.Add(new FrequencyTransmission(
                 khz: freq.frequencyKhz,
                 txPowerWatts: freq.txPowerWatts,
@@ -283,13 +268,8 @@ public class OpenFreqRtcClient : IDisposable
                 position: freq.position,
                 velocity: freq.velocity,
                 ambientNoiseType: freq.ambientNoiseType,
-                in3d: in3d,
-                beginMarker: needsBeginMarker,
-                endMarker: false
+                in3d: in3d
             ));
-
-            if (needsBeginMarker)
-                _frequencyFirstPacketSent[freq.frequencyKhz] = true;
         }
         
         _rtpSender?.SendAudio(pcmData, frequencyTransmissions);

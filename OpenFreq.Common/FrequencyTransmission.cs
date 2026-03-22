@@ -15,18 +15,6 @@ public class FrequencyTransmission
     public int Khz { get; set; }
     [JsonPropertyName("txpower")]
     public double TxPowerWatts { get; set; }
-    
-    /// <summary>
-    /// True if this is the first packet of a transmission on this frequency
-    /// </summary>
-    [JsonPropertyName("begin")]
-    public bool BeginMarker { get; set; }
-    
-    /// <summary>
-    /// True if this is the last packet of a transmission on this frequency
-    /// </summary>
-    [JsonPropertyName("end")]
-    public bool EndMarker { get; set; }
 
     [JsonPropertyName("position")]
     public Vector3? Position { get; set; }
@@ -47,25 +35,15 @@ public class FrequencyTransmission
     {
     }
 
-    public FrequencyTransmission(int khz, double txPowerWatts, double ppm, Vector3? position, Vector3? velocity, bool in3d, bool beginMarker = false,
-        bool endMarker = false, AmbientNoiseType ambientNoiseType = AmbientNoiseType.None)
+    public FrequencyTransmission(int khz, double txPowerWatts, double ppm, Vector3? position, Vector3? velocity, bool in3d,
+        AmbientNoiseType ambientNoiseType = AmbientNoiseType.None)
     {
         Khz = khz;
         TxPowerWatts = txPowerWatts;
         Ppm = ppm;
-        BeginMarker = beginMarker;
-        EndMarker = endMarker;
         Position = position;
         Velocity = velocity;
         In3d = in3d;
         AmbientNoiseType = ambientNoiseType;
-    }
-
-    public override string ToString()
-    {
-        var markers = "";
-        if (BeginMarker) markers += "BEGIN ";
-        if (EndMarker) markers += "END ";
-        return $"{Khz/1000d:F3} MHz {(markers.Length > 0 ? $"[{markers.Trim()}]" : "")}";
     }
 }
