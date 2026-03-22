@@ -255,7 +255,13 @@ public class OpenFreqRtcClient : IDisposable
         
         await SendMessageAsync(SignalingMessageFactory.CreateSetDisplayName(displayName));
     }
-    
+
+    /// <see cref="RtpAudioSender.MarkTransmitStartTime"/>
+    public void MarkTransmitStartTime()
+    {
+        _rtpSender!.MarkTransmitStartTime();
+    }
+
     public void SendAudio(Memory<short> pcmData, List<(int frequencyKhz, double txPowerWatts, double ppm, Vector3? position, Vector3? velocity, AmbientNoiseType ambientNoiseType)> frequencies, bool in3d)
     {
         var frequencyTransmissions = new List<FrequencyTransmission>();
