@@ -1,4 +1,4 @@
-﻿namespace OpenFreq.Common.Rtp;
+namespace OpenFreq.Common.Rtp;
 
 public class RtpPacket
 {
@@ -9,6 +9,9 @@ public class RtpPacket
     public bool Marker { get; set; }  // Standard RTP marker bit (currently unused)
     public byte PayloadType { get; set; }
     public ushort SequenceNumber { get; set; }
+    /// <summary>
+    /// Timestamp since the start of the stream in samples
+    /// </summary>
     public uint Timestamp { get; set; }
     public uint Ssrc { get; set; }
 

@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -36,6 +36,7 @@ public class RtpAudioSender : IDisposable
 #pragma warning restore CS0618 // Type or member is obsolete
 
     // RTP state
+    private volatile uint _timestamp = 0;
     private volatile List<FrequencyTransmission> _frequencies = [];
     private readonly uint _ssrc;
     private readonly string _clientId;
@@ -103,6 +104,21 @@ public class RtpAudioSender : IDisposable
         _logger.LogInformation("  SSRC: 0x{Ssrc:X8}", _ssrc);
     }
 
+    /// <summary>
+    /// Call on the start of a new transmission to clear any stale samples
+    /// and to ensure packet timestamps reflect the gap.
+    /// </summary>
+    public void MarkTransmitStartTime()
+    {
+        _sendQueue.Clear();
+        var now = Stopwatch.GetTimestamp();
+        var dt = now - _startTimeTicks;
+        // Loses some precision for large dt - if timestamps are wonky,
+        // consider (double)((decimal)dt / Stopwatch.Frequency)
+        double dtSeconds = (double)dt / Stopwatch.Frequency;
+        double dtSamples = dtSeconds * OpenFreqRtcClient.SAMPLE_RATE;
+        _timestamp = (uint)(dtSamples % uint.MaxValue);
+    }
 
     /// <summary>
     /// Send audio packet with metadata
@@ -120,7 +136,6 @@ public class RtpAudioSender : IDisposable
 
     private void SendThreadProc()
     {
-        uint timestamp = 0;
         ushort sequence = 0;
         var drainbuf = new short[OPUS_FRAME_SIZE];
         var encoded = new byte[OPUS_FRAME_SIZE * 2];
@@ -130,7 +145,6 @@ public class RtpAudioSender : IDisposable
         {
             var dspan = new Memory<short>(drainbuf);
             if (!_sendQueue.DrainExactly(dspan.Span)) return;
-            ushort nextSequence = (ushort)(sequence + dspan.Length);
 
             // Encode audio (happens here, not in audio callback)
             encspan = new Memory<byte>(encoded);
@@ -164,7 +178,7 @@ public class RtpAudioSender : IDisposable
                 Version = 2,
                 PayloadType = _opusEnabled ? PAYLOAD_TYPE_OPUS : PAYLOAD_TYPE_PCMU,
                 SequenceNumber = sequence,
-                Timestamp = timestamp,
+                Timestamp = _timestamp,
                 Ssrc = _ssrc,
                 ExtensionProfile = RtpPacket.OpenFreqProfile,
                 ExtensionData = metadataBytes,
@@ -174,7 +188,8 @@ public class RtpAudioSender : IDisposable
             // Send the packet
             var rtpBytes = rtpPacket.ToBytes();
             _udpClient.Send(rtpBytes, rtpBytes.Length, _serverEndpoint);
-            sequence = nextSequence;
+            _timestamp += OPUS_FRAME_SIZE;
+            sequence++;
         }
     }
 

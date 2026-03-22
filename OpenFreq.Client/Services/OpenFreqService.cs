@@ -424,7 +424,7 @@ public class OpenFreqService : IOpenFreqService
                 OnStatusMessage($"Failed to start recording: {Bass.LastError}");
                 return;
             }
-
+            _client.MarkTransmitStartTime();
             Bass.ChannelPlay(_recordHandle);
         }
 
