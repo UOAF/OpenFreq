@@ -15,8 +15,13 @@ namespace OpenFreqServer;
 /// </summary>
 public class AudioStreamServer
 {
+    // Static stop-flag
+    private volatile bool _stopping;
+
     // Single shared UDP client for all clients
     private readonly UdpClient _udpClient;
+    private readonly Lock _udpSendLock = new();
+
     private readonly int _audioPort;
 
     // Map remote endpoint -> clientId (learned from first packet)
@@ -27,9 +32,6 @@ public class AudioStreamServer
 
     // Per-receiver state: RTP sequence numbers + send backpressure
     private readonly ConcurrentDictionary<(string clientId, uint Ssrc), ReceiverRtpState> _receiverRtpStates = new();
-
-    // Per-client send stats and backpressure tracking
-    private readonly ConcurrentDictionary<string, ClientSendState> _sendStates = new();
 
     private readonly FrequencyChannelManager _channelManager;
     private readonly ConcurrentDictionary<string, ClientSession> _clients;
@@ -67,11 +69,6 @@ public class AudioStreamServer
             new EventId(5, nameof(ReceiveAudioLoop)),
             "Mapped endpoint {Endpoint} to {DisplayName} ({ClientId})");
 
-    private static readonly Action<ILogger, string, int, Exception?> LogPacketsDropped =
-        LoggerMessage.Define<string, int>(
-            LogLevel.Warning,
-            new EventId(6, nameof(SendPacketAsync)),
-            "Dropped {DroppedCount} packets for {ClientId} due to send backpressure");
 
     public AudioStreamServer(
         FrequencyChannelManager channelManager,
@@ -118,12 +115,6 @@ public class AudioStreamServer
 
         _sessions[clientId] = session;
 
-        // Initialize send state for backpressure tracking
-        _sendStates[clientId] = new ClientSendState
-        {
-            ClientId = clientId
-        };
-
         LogAudioSessionCreated(_logger, GetDisplayName(clientId), clientId, null);
 
         return _audioPort;
@@ -140,6 +131,9 @@ public class AudioStreamServer
             while (!_cts.Token.IsCancellationRequested)
             {
                 var result = await _udpClient.ReceiveAsync(_cts.Token);
+                // We are actually stopping, bail out
+                if (_stopping) break;
+                
                 var remoteEndpoint = result.RemoteEndPoint;
 
                 // Check if we already know this endpoint
@@ -355,91 +349,38 @@ public class AudioStreamServer
             if (clientId == sourceClientId)
                 continue;
 
-            if (_sessions.TryGetValue(clientId, out var targetSession) &&
-                targetSession.RemoteEndPoint != null)
-            {
-                // Create RTP packet with receiver-specific sequence number
-                var rtpPacket = CreateRtpAudioPacket(clientId, originalRtpPacket, metadata, audioData);
+            if (!_sessions.TryGetValue(clientId, out var targetSession) ||
+                targetSession.RemoteEndPoint == null) continue;
 
-                // Send with backpressure control
-                var sent = SendPacketAsync(clientId, rtpPacket, targetSession.RemoteEndPoint);
+            // Create RTP packet with receiver-specific sequence number
+            var rtpPacket = CreateRtpAudioPacket(clientId, originalRtpPacket, metadata, audioData);
 
-                if (!sent && _logger.IsEnabled(LogLevel.Debug))
-                {
-                    _logger.LogDebug("RTP packet dropped for {DisplayName} ({ClientId}) due to congestion",
-                        GetDisplayName(clientId), clientId);
-                }
-            }
+            // Just send our packets out ASAP
+            SendPacket(rtpPacket, targetSession.RemoteEndPoint);
         }
     }
 
-    /// <summary>
-    /// Send packet with backpressure control
-    /// Returns false if packet was dropped due to congestion
-    /// </summary>
-    private bool SendPacketAsync(string clientId, byte[] packet, IPEndPoint remoteEndPoint)
+    private void SendPacket(byte[] packet, IPEndPoint remoteEndPoint)
     {
-        if (!_sendStates.TryGetValue(clientId, out var state))
-            return false;
-
-        // Check if we're already sending too many packets
-        var pendingSends = Interlocked.Increment(ref state.PendingSends);
-
-        if (pendingSends > MaxPendingSendsPerClient)
-        {
-            // Drop packet to prevent buffer buildup
-            Interlocked.Decrement(ref state.PendingSends);
-            var dropped = Interlocked.Increment(ref state.DroppedPackets);
-
-            // Log every 10 drops
-            if (dropped % 10 == 0)
-            {
-                LogPacketsDropped(_logger, clientId, dropped, null);
-            }
-
-            return false;
-        }
-
-        // Send without blocking caller
-        _ = SendWithBackpressureAsync(state, packet, remoteEndPoint);
-
-        return true;
-    }
-
-    /// <summary>
-    /// Async send with timeout
-    /// </summary>
-    private async Task SendWithBackpressureAsync(
-        ClientSendState state,
-        byte[] packet,
-        IPEndPoint remoteEndPoint)
-    {
+        if (_stopping) return;  
         try
         {
-            // Be rather aggressive - 10ms to send per client, otherwise this will block other clients
-            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(10));
-
-            await _udpClient.SendAsync(packet, packet.Length, remoteEndPoint)
-                .WaitAsync(cts.Token);
-
-            state.LastSendTime = DateTime.UtcNow;
-            Interlocked.Increment(ref state.SentPackets);
+            // UdpClient is not thread-safe, so...
+            lock (_udpSendLock)
+            {
+                _udpClient.Send(packet, packet.Length, remoteEndPoint);
+            }
         }
-        catch (OperationCanceledException)
+        catch (SocketException ex)
         {
-            Interlocked.Increment(ref state.DroppedPackets);
-
+            // We don't care for network exceptions - let's just assume that FEC and PLC help us
             if (_logger.IsEnabled(LogLevel.Debug))
-                _logger.LogDebug("Send timeout for client {ClientId}", state.ClientId);
+                _logger.LogDebug(ex, "Network send failed to {Endpoint}: {ErrorCode}",
+                    remoteEndPoint, ex.SocketErrorCode);
         }
-        catch (Exception ex)
+        catch (ObjectDisposedException)
         {
-            if (_logger.IsEnabled(LogLevel.Debug))
-                _logger.LogDebug(ex, "Send error for client {ClientId}", state.ClientId);
-        }
-        finally
-        {
-            Interlocked.Decrement(ref state.PendingSends);
+            // Can happen during Dispose(), don't care
         }
     }
 
@@ -461,60 +402,36 @@ public class AudioStreamServer
         // Remove RTP states
         foreach (var key in _receiverRtpStates.Keys.Where(k => k.clientId == clientId).ToList())
             _receiverRtpStates.TryRemove(key, out _);
-
-        // Remove send state and log stats
-        if (_sendStates.TryRemove(clientId, out var sendState))
-        {
-            LogSessionRemoved(_logger, client?.DisplayName ?? "Unnamed", clientId, sendState.SentPackets,
-                sendState.DroppedPackets, null);
-        }
-    }
-
-    public ClientStreamStats? GetClientStats(string clientId)
-    {
-        if (_sendStates.TryGetValue(clientId, out var state))
-        {
-            return new ClientStreamStats
-            {
-                ClientId = clientId,
-                SentPackets = state.SentPackets,
-                DroppedPackets = state.DroppedPackets,
-                PendingSends = state.PendingSends,
-                LastSendTime = state.LastSendTime
-            };
-        }
-
-        return null;
-    }
-
-    public IEnumerable<ReceiverRtpStats> GetReceiverRtpStats(string clientId)
-    {
-        return _receiverRtpStates
-            .Where(kvp => kvp.Key.clientId == clientId)
-            .Select(kvp => new ReceiverRtpStats
-            {
-                ClientId = clientId,
-                Ssrc = kvp.Key.Ssrc,
-                PacketsSent = kvp.Value.PacketsSent,
-                CurrentSequence = kvp.Value.NextSequence
-            });
     }
 
     public void Stop()
     {
+        if (_stopping) return;
+        _stopping = true;
+
+        // Cancel receive loop
         _cts.Cancel();
 
-        // Wait for receive task
-        _receiveTask?.Wait(TimeSpan.FromSeconds(2));
+        try
+        {
+            // Give the _receiveTask some more time to shut down properly
+            _receiveTask?.Wait();
+        }
+        catch (AggregateException ex) when (ex.InnerException is OperationCanceledException)
+        {
+            // Expected due to ReceiveAsync being cancelled
+        }
 
-        // Close shared UDP client
-        _udpClient.Close();
-        _udpClient.Dispose();
+        lock (_udpSendLock)
+        {
+            _udpClient.Dispose();
+        }
+
+        _cts.Dispose();
 
         _sessions.Clear();
         _endpointToClient.Clear();
         _receiverRtpStates.Clear();
-        _sendStates.Clear();
     }
 }
 
@@ -547,18 +464,6 @@ public class AudioStreamSession
     public int Port { get; set; }
     public IPEndPoint? RemoteEndPoint { get; set; }
     public DateTime LastReceived { get; set; } = DateTime.UtcNow;
-}
-
-/// <summary>
-/// Per-client send state for backpressure tracking
-/// </summary>
-internal class ClientSendState
-{
-    public string ClientId { get; set; } = string.Empty;
-    public int PendingSends;
-    public int SentPackets;
-    public int DroppedPackets;
-    public DateTime LastSendTime = DateTime.UtcNow;
 }
 
 [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]

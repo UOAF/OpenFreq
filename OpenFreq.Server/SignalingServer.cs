@@ -302,7 +302,7 @@ public class SignalingServer
         {
             await SendError(session, "Authentication failed");
 
-            // Optional: Disconnect on auth failure
+            // Disconnect on auth failure
             await Task.Delay(1000); // Brief delay to prevent brute force
             if (session.WebSocket.State == WebSocketState.Open)
             {
