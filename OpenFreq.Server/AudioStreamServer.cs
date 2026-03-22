@@ -150,7 +150,7 @@ public class AudioStreamServer
                 // Parse packet
                 var (rtpPacket, metadata, audioData) = ParseRtpAudioPacket(result.Buffer, clientId);
 
-                // Skip keepalive/malformed packets
+                // Skip malformed packets
                 if (rtpPacket == null || metadata == null || audioData == null)
                     continue;
 
