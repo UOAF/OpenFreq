@@ -130,7 +130,6 @@ public class RtpAudioSender : IDisposable
         {
             var dspan = new Memory<short>(drainbuf);
             if (!_sendQueue.DrainExactly(dspan.Span)) return;
-            ushort nextSequence = (ushort)(sequence + dspan.Length);
 
             // Encode audio (happens here, not in audio callback)
             encspan = new Memory<byte>(encoded);
@@ -174,7 +173,8 @@ public class RtpAudioSender : IDisposable
             // Send the packet
             var rtpBytes = rtpPacket.ToBytes();
             _udpClient.Send(rtpBytes, rtpBytes.Length, _serverEndpoint);
-            sequence = nextSequence;
+            timestamp += OPUS_FRAME_SIZE;
+            sequence++;
         }
     }
 
