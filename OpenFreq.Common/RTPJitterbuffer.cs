@@ -16,7 +16,6 @@ public class RtpJitterBuffer
     {
         public required RtpPacket Packet { get; set; }
         public long ReceivedTicks { get; set; }
-        public uint PlayoutTimestamp { get; set; }
     }
         
     private readonly SortedDictionary<ushort, BufferedPacket> _buffer = new();
@@ -91,8 +90,7 @@ public class RtpJitterBuffer
             var bufferedPacket = new BufferedPacket
             {
                 Packet = packet,
-                ReceivedTicks = Stopwatch.GetTimestamp(),
-                PlayoutTimestamp = packet.Timestamp
+                ReceivedTicks = Stopwatch.GetTimestamp()
             };
 
             // Add to buffer
@@ -138,7 +136,7 @@ public class RtpJitterBuffer
 
             // Find packets ready for playout
             var readyPackets = _buffer
-                .Where(kvp => RtpPacket.TimestampDifference(playoutTimestamp, kvp.Value.PlayoutTimestamp) >= 0)
+                .Where(kvp => RtpPacket.TimestampDifference(playoutTimestamp, kvp.Value.Packet.Timestamp) >= 0)
                 .OrderBy(kvp => kvp.Key)
                 .ToList();
 
@@ -211,7 +209,7 @@ public class RtpJitterBuffer
         {
             // Find packets ready for playout
             var readyPackets = _buffer
-                .Where(kvp => RtpPacket.TimestampDifference(playoutTimestamp, kvp.Value.PlayoutTimestamp) >= 0)
+                .Where(kvp => RtpPacket.TimestampDifference(playoutTimestamp, kvp.Value.Packet.Timestamp) >= 0)
                 .OrderBy(kvp => kvp.Key)
                 .ToList();
 
