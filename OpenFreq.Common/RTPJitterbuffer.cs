@@ -17,22 +17,32 @@ public class RtpJitterBuffer
         public required RtpPacket Packet { get; set; }
         public long ReceivedTicks { get; set; }
     }
-        
+    /// <summary>
+    /// Sorts packets based on their (extended) sequence number
+    /// </summary>
     private readonly SortedDictionary<ushort, BufferedPacket> _buffer = new();
     private readonly Queue<double> _jitterSamples = new(50);
-    private readonly int _sampleRate;
     private readonly int _maxBufferPackets;
         
-    // State
-    private ushort _nextExpectedSequence;
-    private bool _firstPacketPlayed; // true once _nextExpectedSequence has been seeded from real data
+    /// <summary>
+    /// Once we've played a packet, the next expected one. Used to detect missing ones.
+    /// </summary>
+    private ushort? _nextExpectedSequence;
+    /// <summary>
+    /// Starting (extended) timestamp from the first packet
+    /// </summary>
     private uint _baseTimestamp;
+    /// <summary>
+    /// Local monotonic time when the first packet arrived.
+    /// Jitter is a comparison to the base timestamp
+    /// </summary>
     private long _baseTimeTicks;
-    private long _playoutStartTicks;
+    /// <summary>
+    /// Local monotonic time when the last packet arrived.
+    /// </summary>
     private long _lastPacketReceivedTicks;
-    private double _lastPacketTimestamp;
-    private bool _initialized;
-        
+    private long _lastPacketTimestamp;
+
     // Adaptive jitter buffer parameters
     private double _targetBufferMs = 60; // Start with 60ms
     private double _measuredJitterMs;
@@ -49,7 +59,6 @@ public class RtpJitterBuffer
     public RtpJitterBuffer(ILogger<RtpJitterBuffer> logger, int sampleRate = OpenFreqRtcClient.SAMPLE_RATE, int maxBufferPackets = 200)
     {
         _logger = logger;
-        _sampleRate = sampleRate;
         _packetsLate = 0;
         _maxBufferPackets = maxBufferPackets;
     }
@@ -59,18 +68,16 @@ public class RtpJitterBuffer
     /// </summary>
     public void AddPacket(RtpPacket packet)
     {
-        _packetsReceived++;
     
         // Initialize on first packet
-        if (!_initialized)
+        if (_packetsReceived == 0)
         {
             _baseTimestamp = packet.Timestamp;
             _baseTimeTicks = Stopwatch.GetTimestamp();
-            _playoutStartTicks = _baseTimeTicks + (long)(_targetBufferMs / 1000.0 * Stopwatch.Frequency);
-            _initialized = true;
 
             _logger.LogInformation("Initialized: buffer={BufferMs}ms", _targetBufferMs);
         }
+        _packetsReceived++;
 
         lock (_buffer)
         {
@@ -85,7 +92,6 @@ public class RtpJitterBuffer
 
             // Calculate playout time
             long timestampDiff = RtpPacket.TimestampDifference(packet.Timestamp, _baseTimestamp);
-            double timestampMs = (timestampDiff * 1000.0) / _sampleRate;
 
             var bufferedPacket = new BufferedPacket
             {
@@ -96,7 +102,7 @@ public class RtpJitterBuffer
             // Add to buffer
             _buffer[packet.SequenceNumber] = bufferedPacket;
 
-            MeasureJitter(bufferedPacket, timestampMs);
+            MeasureJitter(bufferedPacket.ReceivedTicks, timestampDiff);
 
             // Adapt buffer size
             AdaptBufferSize();
@@ -116,18 +122,17 @@ public class RtpJitterBuffer
     /// </summary>
     public RtpPacket? GetNextPacket()
     {
-        if (!_initialized || _buffer.Count == 0)
+        if (_packetsReceived == 0 || _buffer.Count == 0)
             return null;
-        
+
         var nowTicks = Stopwatch.GetTimestamp();
+        var elapsedTicks = nowTicks - _baseTimeTicks;
 
-        if (nowTicks < _playoutStartTicks)
-            return null;
-
-        var elapsedTicks = nowTicks - _playoutStartTicks;
-
-        // Calculate which timestamp we should be playing now
-        uint playoutTimestamp = _baseTimestamp + (uint)((double)elapsedTicks * _sampleRate / Stopwatch.Frequency);
+        // The playout position is "where the sender was _targetBufferMs ago".
+        // When _targetBufferMs changes (via AdaptBufferSize), this adjusts immediately.
+        long elapsedSamples = (long)((double)elapsedTicks * OpenFreqRtcClient.SAMPLE_RATE / Stopwatch.Frequency);
+        long bufferDelaySamples = (long)(_targetBufferMs / 1000.0 * OpenFreqRtcClient.SAMPLE_RATE);
+        uint playoutTimestamp = _baseTimestamp + (uint)(elapsedSamples - bufferDelaySamples);
 
         KeyValuePair<ushort, BufferedPacket> nextPacket;
         lock (_buffer)
@@ -137,7 +142,6 @@ public class RtpJitterBuffer
             // Find packets ready for playout
             var readyPackets = _buffer
                 .Where(kvp => RtpPacket.TimestampDifference(playoutTimestamp, kvp.Value.Packet.Timestamp) >= 0)
-                .OrderBy(kvp => kvp.Key)
                 .ToList();
 
             if (readyPackets.Count == 0)
@@ -151,124 +155,66 @@ public class RtpJitterBuffer
 
             // Check if this is the expected sequence (loss detection).
             // Skip the check on the first packet
-            if (!_firstPacketPlayed)
+            if (_nextExpectedSequence.HasValue)
             {
-                _firstPacketPlayed = true;
-            }
-            else if (nextPacket.Key != _nextExpectedSequence)
-            {
-                var gap = RtpPacket.SequenceDifference(nextPacket.Key, _nextExpectedSequence);
+                var nextExpected = _nextExpectedSequence.Value;
+                var gap = RtpPacket.SequenceDifference(nextPacket.Key, nextExpected);
                 if (gap > 0)
                 {
                     // Skipped packets (loss)
                     _packetsLost += gap;
                     _logger.LogWarning("Packet loss: {Gap} packets (seq {ExpectedSeq} to {LastSeq})", 
-                        gap, _nextExpectedSequence, nextPacket.Key - 1);
+                        gap, nextExpected, nextPacket.Key - 1);
                 }
                 else
                 {
                     // Late packet
                     _packetsLate++;
                     _logger.LogWarning("Late packet seq {SequenceNumber} (expected {ExpectedSequence})", 
-                        nextPacket.Key, _nextExpectedSequence);
+                        nextPacket.Key, nextExpected);
                 }
             }
 
             _nextExpectedSequence = (ushort)(nextPacket.Key + 1);
             _packetsPlayed++;
 
-            // Steer the playout clock towards the target buffer depth
-            AdjustPlayoutClock();
         }
 
         return nextPacket.Value.Packet;
-    }
-    
-    /// <summary>
-    /// Peek at the next packet that would be returned, without removing it
-    /// Used for FEC decoding when checking if packet N+1 exists
-    /// </summary>
-    public RtpPacket? PeekNextPacket()
-    {
-        if (!_initialized || _buffer.Count == 0)
-            return null;
-        
-        var nowTicks = Stopwatch.GetTimestamp();
-
-        if (nowTicks < _playoutStartTicks)
-        {
-            return null;
-        }
-
-        var elapsedTicks = nowTicks - _playoutStartTicks;
-
-        // Calculate which timestamp we should be playing now
-        uint playoutTimestamp = _baseTimestamp + (uint)((double)elapsedTicks * _sampleRate / Stopwatch.Frequency);
-
-        lock (_buffer)
-        {
-            // Find packets ready for playout
-            var readyPackets = _buffer
-                .Where(kvp => RtpPacket.TimestampDifference(playoutTimestamp, kvp.Value.Packet.Timestamp) >= 0)
-                .OrderBy(kvp => kvp.Key)
-                .ToList();
-
-            if (readyPackets.Count == 0)
-            {
-                return null;
-            }
-
-            // Return the packet without removing it
-            return readyPackets.First().Value.Packet;
-        }
-    }
-    
-    /// <summary>
-    /// Try to get a specific packet by sequence number (for FEC)
-    /// </summary>
-    public RtpPacket? GetPacketBySequence(ushort sequenceNumber)
-    {
-        lock (_buffer)
-        {
-            if (_buffer.TryGetValue(sequenceNumber, out var bufferedPacket))
-            {
-                return bufferedPacket.Packet;
-            }
-            return null;
-        }
     }
         
     /// <summary>
     /// Measure packet arrival jitter
     /// </summary>
-    private void MeasureJitter(BufferedPacket packet, double expectedTimestampMs)
+    private void MeasureJitter(long ticksElapsed, long samplesElapsed)
     {
         if (_lastPacketReceivedTicks == 0)
         {
             // First packet - just record baseline
-            _lastPacketReceivedTicks = packet.ReceivedTicks;
-            _lastPacketTimestamp = expectedTimestampMs;
+            _lastPacketReceivedTicks = ticksElapsed;
+            _lastPacketTimestamp = samplesElapsed;
             return;
         }
 
-        double actualIntervalMs = (packet.ReceivedTicks - _lastPacketReceivedTicks) * 1000.0 / Stopwatch.Frequency;
-        double expectedIntervalMs = expectedTimestampMs - _lastPacketTimestamp;
+        double actualInterval = (double)(ticksElapsed - _lastPacketReceivedTicks) / Stopwatch.Frequency;
+        double expectedInterval = (double)(samplesElapsed - _lastPacketTimestamp) / OpenFreqRtcClient.SAMPLE_RATE;
     
         // Detect transmission gap (PTT released).
-        if (expectedIntervalMs > 500)
+        if (expectedInterval > 0.5)
         {
-            _logger.LogInformation("Transmission gap detected ({IntervalMs:F0}ms RTP delta), resetting jitter measurement", expectedIntervalMs);
+            _logger.LogInformation("Transmission gap detected ({IntervalMs:F0}ms RTP delta), resetting jitter measurement",
+                expectedInterval * 1000.0);
             _jitterSamples.Clear();
             _measuredJitterMs = 0;
-            _lastPacketReceivedTicks = packet.ReceivedTicks;
-            _lastPacketTimestamp = expectedTimestampMs;
+            _lastPacketReceivedTicks = ticksElapsed;
+            _lastPacketTimestamp = samplesElapsed;
             return;
         }
     
         // Normal jitter calculation
-        double jitter = Math.Abs(actualIntervalMs - expectedIntervalMs);
+        double jitterMs = Math.Abs(actualInterval - expectedInterval) * 1000;
     
-        _jitterSamples.Enqueue(jitter);
+        _jitterSamples.Enqueue(jitterMs);
         if (_jitterSamples.Count > 50)
             _jitterSamples.Dequeue();
     
@@ -277,8 +223,8 @@ public class RtpJitterBuffer
             _measuredJitterMs = _jitterSamples.Average();
         }
     
-        _lastPacketReceivedTicks = packet.ReceivedTicks;
-        _lastPacketTimestamp = expectedTimestampMs;
+        _lastPacketReceivedTicks = ticksElapsed;
+        _lastPacketTimestamp = samplesElapsed;
     }
         
     /// <summary>
@@ -305,31 +251,6 @@ public class RtpJitterBuffer
         _targetBufferMs = Math.Clamp(_targetBufferMs, MIN_BUFFER_MS, MAX_BUFFER_MS);
     }
 
-    /// <summary>
-    /// Nudges the playout clock to steer actual buffer depth towards the
-    /// target. Called each time a packet is dequeued so corrections are
-    /// applied incrementally rather than in a single jump.
-    /// Buffer deeper than target  → advance clock slightly (drain faster).
-    /// Buffer shallower than target → retard clock slightly (let it fill).
-    /// </summary>
-    private void AdjustPlayoutClock()
-    {
-        // _buffer is already locked by the caller (GetNextPacket)
-        int targetPackets = (int)Math.Round(_targetBufferMs / RtpAudioReceiver.PLAYOUT_INTERVAL_MS);
-        int error = _buffer.Count - targetPackets;
-
-        if (Math.Abs(error) <= 1)
-            return;
-
-        // 1ms nudge per dequeued packet
-        long nudgeTicks = (long)(0.001 * Stopwatch.Frequency);
-
-        if (error > 1)
-            _playoutStartTicks -= nudgeTicks; // clock advances → releases packets sooner
-        else
-            _playoutStartTicks += nudgeTicks; // clock retards → holds packets longer
-    }
-    
         
     /// <summary>
     /// Get buffer statistics
@@ -359,33 +280,7 @@ public class RtpJitterBuffer
             bufferedCount
         );
     }
-        
-    /// <summary>
-    /// Reset jitter buffer
-    /// </summary>
-    public void Reset()
-    {
-        lock (_buffer)
-        {
-            _buffer.Clear();
-            _jitterSamples.Clear();
-            _initialized = false;
-            _firstPacketPlayed = false;
-            _baseTimeTicks = 0;
-            _playoutStartTicks = 0;
-            _lastPacketReceivedTicks = 0;
-            _lastPacketTimestamp = 0;
-            _packetsReceived = 0;
-            _packetsLost = 0;
-            _packetsLate = 0;
-            _packetsDuplicate = 0;
-            _packetsPlayed = 0;
-        }
-    }
-        
-   
-    public double GetBufferSizeMs() => _targetBufferMs;
-        
+
     /// <summary>
     /// Set target buffer size (for manual override)
     /// </summary>

@@ -43,6 +43,5 @@ public sealed class RtpSourceContext : IDisposable
     public void Dispose()
     {
         OpusDecoder?.Dispose();
-        JitterBuffer.Reset();
     }
 }
