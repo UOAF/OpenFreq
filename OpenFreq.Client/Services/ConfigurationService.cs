@@ -9,12 +9,9 @@ namespace OpenFreqClient.Services;
 
 public class ConfigurationService(ILogger<ConfigurationService> logger) : IConfigurationService
 {
-    private static readonly string ConfigDirectory = 
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OpenFreq");
-    
     private static readonly string ConfigFilePath = 
-        Path.Combine(ConfigDirectory, "OpenFreq.Client.json");
-
+        Path.Combine(AppContext.BaseDirectory, "OpenFreq.Client.json");
+    
     public async Task<AppConfiguration> LoadConfigurationAsync()
     {
         try
@@ -39,9 +36,6 @@ public class ConfigurationService(ILogger<ConfigurationService> logger) : IConfi
     {
         try
         {
-            // Ensure directory exists
-            Directory.CreateDirectory(ConfigDirectory);
-
             var json = Json.Json.Instance.Serialize(config);
             await File.WriteAllTextAsync(ConfigFilePath, json);
         }
