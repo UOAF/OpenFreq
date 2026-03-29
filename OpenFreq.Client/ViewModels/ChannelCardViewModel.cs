@@ -110,20 +110,20 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
 
 
     [RelayCommand]
-    public void BmsLobby1Clicked()
+    public void BmsLobby2Clicked()
     {
-        Name = "BMS Lobby 1";
+        Name = "BMS Lobby 2";
         FrequencyKhz = 1234;
-        PttHotKey = KeyCode.VcF1;
+        PttHotKey = KeyCode.VcF2;
         ToggleEditing();
     }
 
     [RelayCommand]
-    public void BmsLobby2Clicked()
+    public void BmsLobby1Clicked()
     {
-        Name = "BMS Lobby 2";
+        Name = "BMS Lobby 1";
         FrequencyKhz = 339750;
-        PttHotKey = KeyCode.VcF2;
+        PttHotKey = KeyCode.VcF1;
         ToggleEditing();
     }
 

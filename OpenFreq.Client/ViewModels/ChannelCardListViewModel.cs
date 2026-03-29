@@ -266,20 +266,23 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                         // set hotkeys and AudioChannel from Settings
                         switch (type)
                         {
-                            case RadioType.VHF:
-                                channel.PttHotKey = KeyCode.VcF1;
-                                channel.SquelchHotKey = _settings.BmsVhfSquelchHotkey;
-                                channel.AudioChannel = _settings.BmsVhfAudioChannel;
-                                break;
                             case RadioType.UHF:
-                                channel.PttHotKey = KeyCode.VcF2;
+                                channel.PttHotKey = KeyCode.VcF1;
                                 channel.SquelchHotKey = _settings.BmsUhfSquelchHotkey;
                                 channel.AudioChannel = _settings.BmsUhfAudioChannel;
+                                break;
+                            case RadioType.VHF:
+                                channel.PttHotKey = KeyCode.VcF2;
+                                channel.SquelchHotKey = _settings.BmsVhfSquelchHotkey;
+                                channel.AudioChannel = _settings.BmsVhfAudioChannel;
                                 break;
                             case RadioType.GUARD:
                                 channel.PttHotKey = KeyCode.VcF3;
                                 channel.SquelchHotKey = _settings.BmsUhfSquelchHotkey;
                                 channel.AudioChannel = _settings.BmsUhfAudioChannel;
+                                break;
+                            default:
+                                _logger.LogWarning("Unknown radio type: " + type);
                                 break;
                         }
                     }
