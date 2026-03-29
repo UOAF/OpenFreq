@@ -72,7 +72,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
     public partial AcmiConnectionStatus AcmiConnectionStatus { get; set; } = AcmiConnectionStatus.Disconnected;
 
     [ObservableProperty] public partial bool SettingsDrawerOpened { get; set; } = true;
-    
+
     // Error handling properties
     [ObservableProperty] public partial bool HasError { get; set; }
 
@@ -404,7 +404,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         {
             PeerId = _openFreqService.PeerId ?? "";
             ClearError();
-           SettingsDrawerOpened = false;
+            SettingsDrawerOpened = false;
         }
         else if (state == ConnectionState.Disconnected && OpenFreqConnected)
         {
@@ -459,7 +459,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
     }
 
     public bool IsCapturingHotkey { get; set; }
-    
+
 
     private void OnStatusMessageReceived(object? sender, string message)
     {
@@ -484,31 +484,37 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
 
     private void OnPeerActivityReceived(object? sender, PeerActivityEventArgs e)
     {
-        // This isn't ideal performance-wise, but we don't have too many peers and there is no ObservableDictionary
-        foreach (var peer in PeerList
-                     .Where(f => f.FrequencyKhz == e.FrequencyKhz)
-                     .SelectMany(f => f.Peers)
-                     .Where(p => p.Id == e.PeerData.Id))
+        Dispatcher.UIThread.Post(() =>
         {
-            // Only show transmitting if the client is in the same mode as we are
-            peer.IsTransmitting =
-                (Settings.Is3dMode == e.Is3d) && e.PeerData.Status == PeerData.PeerStatus.Transmitting;
-        }
+            // This isn't ideal performance-wise, but we don't have too many peers and there is no ObservableDictionary
+            foreach (var peer in PeerList
+                         .Where(f => f.FrequencyKhz == e.FrequencyKhz)
+                         .SelectMany(f => f.Peers)
+                         .Where(p => p.Id == e.PeerData.Id))
+            {
+                // Only show transmitting if the client is in the same mode as we are
+                peer.IsTransmitting =
+                    (Settings.Is3dMode == e.Is3d) && e.PeerData.Status == PeerData.PeerStatus.Transmitting;
+            }
+        });
     }
-    
+
     private void OnFrequencyTransmissionStatusChanged(object? sender, FrequencyTransmissionStatusEventArgs e)
     {
         // Only interested in channels we are transmitting or idling in
         if (e.TransmissionStatus == Channel.ChannelTransmissionStatus.Receiving) return;
-        
-        // This isn't ideal performance-wise, but we don't have too many peers and there is no ObservableDictionary
-        foreach (var peer in PeerList
-                     .Where(f => f.FrequencyKhz == e.FrequencyKhz)
-                     .SelectMany(f => f.Peers)
-                     .Where(p => p.Id == _openFreqService.PeerId))
+
+        Dispatcher.UIThread.Post(() =>
         {
-            peer.IsTransmitting = e.TransmissionStatus == Channel.ChannelTransmissionStatus.Transmitting;
-        }
+            // This isn't ideal performance-wise, but we don't have too many peers and there is no ObservableDictionary
+            foreach (var peer in PeerList
+                         .Where(f => f.FrequencyKhz == e.FrequencyKhz)
+                         .SelectMany(f => f.Peers)
+                         .Where(p => p.Id == _openFreqService.PeerId))
+            {
+                peer.IsTransmitting = e.TransmissionStatus == Channel.ChannelTransmissionStatus.Transmitting;
+            }
+        });
     }
 
     private async Task LoadConfigurationAsync()
