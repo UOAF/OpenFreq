@@ -84,7 +84,14 @@ public class AudioStreamServer
         // Create single shared UDP client
         _udpClient = new UdpClient(_audioPort);
         _udpClient.DontFragment = true;
-
+        
+        #if WINDOWS
+        // According to MS KB263823, sending a UDP packet to a client that is no longer listening will cause a
+        // WSAECONNRESET (10054) for any further socket operations (even recv()). Disable SIO_UDP_CONNRESET:  
+        const int sioUdpConnReset = -1744830452;
+        _udpClient.Client.IOControl((IOControlCode)sioUdpConnReset, new byte[] { 0 }, null);
+        #endif
+        
         // Start single receive loop for all clients
         _receiveTask = Task.Run(ReceiveAudioLoop);
 
