@@ -1,11 +1,13 @@
-﻿using Concentus.Structs;
+using Concentus.Structs;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Common.Rtp;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using static OpenFreq.Common.RtpJitterBuffer;
 
 // This is to avoid issues in Linux where the Concentus Factory methods does not work currently.
 #pragma warning disable CS0618 // Type or member is obsolete
@@ -32,11 +34,10 @@ public class RtpAudioReceiver : IDisposable
     private readonly UdpClient _udpClient;
     private readonly RtpJitterBufferPool _pool;
     private readonly bool _opusEnabled;
-    private readonly CancellationTokenSource _cts = new();
-    private readonly Timer _playoutTimer;
 
-    // Prune stale sources every N ticks (20ms * 50 = 1s)
-    private int _pruneCountdown = 50;
+    private readonly CancellationTokenSource _cts = new();
+    private readonly Task _rxTask;
+    private readonly Task _playbackTask;
 
     private const int OPUS_FRAME_SAMPLES = 960; // 20ms at 48kHz (matches sender)
     public static int PLAYOUT_INTERVAL_MS = 20;
@@ -57,8 +58,8 @@ public class RtpAudioReceiver : IDisposable
         _logger.LogInformation("  Opus: {OpusEnabled}", _opusEnabled);
         _logger.LogInformation("  Initial buffer: {BufferMs}ms (adaptive, per-SSRC)", initialBufferMs);
 
-        Task.Run(() => ReceiveLoop(), _cts.Token);
-        _playoutTimer = new Timer(PlayoutTimerCallback, null, 0, PLAYOUT_INTERVAL_MS);
+        _rxTask = Task.Run(() => ReceiveLoop(), _cts.Token);
+        _playbackTask = Task.Run(() => PlaybackLoop());
 
         if (!_logger.IsEnabled(LogLevel.Debug))
         {
@@ -84,7 +85,7 @@ public class RtpAudioReceiver : IDisposable
     {
         _logger.LogInformation("Receive loop started");
 
-        while (!_cts.Token.IsCancellationRequested)
+        while (!_cts.IsCancellationRequested)
         {
             try
             {
@@ -132,9 +133,12 @@ public class RtpAudioReceiver : IDisposable
                 _logger.LogWarning("Invalid RTP packet");
                 return;
             }
-
-            // Pool demuxes by SSRC automatically
-            _pool.AddPacket(rtpPacket);
+            lock (_pool)
+            {
+                _pool.AddPacket(rtpPacket);
+                // Wake the playback loop, we have new packets.
+                Monitor.Pulse(_pool);
+            }
         }
         catch (Exception ex)
         {
@@ -146,55 +150,100 @@ public class RtpAudioReceiver : IDisposable
     /// Playout timer callback. Polls every active SSRC for a ready packet,
     /// performing per-source FEC/PLC concealment independently.
     /// </summary>
-    private void PlayoutTimerCallback(object? state)
+    private void PlaybackLoop()
     {
         try
         {
-            // Prune sources that have gone silent
-            if (--_pruneCountdown <= 0)
+            while (!_cts.IsCancellationRequested)
             {
-                _pool.PruneStale();
-                _pruneCountdown = 50;
-            }
+                var now = Stopwatch.GetTimestamp();
 
-            foreach (var context in _pool.GetActiveSources())
-            {
-                // One packet per SSRC per 20ms tick — burst delivery is handled
-                // by AdjustPlayoutClock advancing the playout clock incrementally.
-                if (context.JitterBuffer.GetNextPacket() is { } packet)
+                // All the state we need to playback is in the jitter pool.
+                // Runs mutually exclusive with adding a new packet.
+                lock (_pool)
                 {
-
-                    // Loss detection and concealment — per-source sequence
-                    if (context.FirstPacketReceived)
+                    _pool.PruneStale(now);
+                    long? ticksToSleep = null;
+                    bool handledPackets = false;
+                    foreach (var context in _pool.GetActiveSources())
                     {
-                        ushort expectedSeq = (ushort)(context.LastSequenceReceived + 1);
-
-                        if (packet.SequenceNumber != expectedSeq)
+                        PacketsReadyResult rp = context.JitterBuffer.GetReadyPackets(now);
+                        switch (rp)
                         {
-                            int gap = RtpPacket.SequenceDifference(packet.SequenceNumber, expectedSeq);
-
-                            if (gap > 0 && gap < 100)
-                            {
-                                _logger.LogDebug(
-                                    "SSRC={Ssrc:X8}: {Gap} lost packet(s) (seq {Start} to {End}), generating concealment",
-                                    context.Ssrc, gap, expectedSeq, packet.SequenceNumber - 1);
-
-                                for (int i = 0; i < gap; i++)
+                            case PacketsReady pr:
+                                foreach (var p in pr.Packets)
                                 {
-                                    ushort lostSeq = (ushort)(expectedSeq + i);
-                                    // Only the last lost packet can use FEC (next packet carries FEC for it)
-                                    GenerateConcealmentAudio(lostSeq, i == gap - 1 ? packet : null, context);
+                                    // Loss detection and concealment — per-source sequence
+                                    if (context.FirstPacketReceived)
+                                    {
+                                        ushort expectedSeq = (ushort)(context.LastSequenceReceived + 1);
+
+                                        if (p.SequenceNumber != expectedSeq)
+                                        {
+                                            int gap = RtpPacket.SequenceDifference(p.SequenceNumber, expectedSeq);
+
+                                            if (gap > 0 && gap < 100)
+                                            {
+                                                _logger.LogDebug(
+                                                    "SSRC={Ssrc:X8}: {Gap} lost packet(s) (seq {Start} to {End}), generating concealment",
+                                                    context.Ssrc, gap, expectedSeq, p.SequenceNumber - 1);
+
+                                                for (int i = 0; i < gap; i++)
+                                                {
+                                                    ushort lostSeq = (ushort)(expectedSeq + i);
+                                                    // Only the last lost packet can use FEC (next packet carries FEC for it)
+                                                    GenerateConcealmentAudio(lostSeq, i == gap - 1 ? p : null, context);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        context.FirstPacketReceived = true;
+                                    }
+
+                                    context.LastSequenceReceived = p.SequenceNumber;
+                                    ProcessReadyPacket(p, context);
                                 }
-                            }
+                                handledPackets = true;
+                                break;
+
+                            case WaitFor wf:
+                                if (ticksToSleep.HasValue)
+                                {
+                                    ticksToSleep = Math.Min(ticksToSleep.Value, wf.Ticks);
+                                }
+                                else
+                                {
+                                    ticksToSleep = wf.Ticks;
+                                }
+                                break;
+
+                            case NoPackets:
+                                break;
+
+                            default: throw new UnreachableException();
+                        };
+                    }
+
+                    // If we handled some packets,
+                    // go again immediately, we might have more.
+                    if (handledPackets) continue;
+                    // Otherwise wait until something happens - a new packet,
+                    // some ready to play, etc.
+                    if (ticksToSleep.HasValue)
+                    {
+                        var t = ticksToSleep.Value;
+                        var ms = (int)((double)t / Stopwatch.Frequency * 1000.0);
+                        if (ms > 0)
+                        {
+                            Monitor.Wait(_pool, ms);
                         }
                     }
                     else
                     {
-                        context.FirstPacketReceived = true;
+                        Monitor.Wait(_pool);
                     }
-
-                    context.LastSequenceReceived = packet.SequenceNumber;
-                    ProcessReadyPacket(packet, context);
                 }
             }
         }
@@ -375,13 +424,16 @@ public class RtpAudioReceiver : IDisposable
         _logger.LogInformation("================================");
     }
 
-    public void SetJitterBufferSize(int milliseconds)
-        => _pool.SetAllBufferSizes(milliseconds);
-
     public void Dispose()
     {
+        // Cancel our background tasks and wake them up.
         _cts.Cancel();
-        _playoutTimer.Dispose();
+        lock (_pool)
+        {
+            Monitor.PulseAll(_pool);
+        }
+        _rxTask.Wait();
+        _playbackTask.Wait();
         PrintStatistics();
         _pool.Dispose();
         _logger.LogInformation("Disposed");

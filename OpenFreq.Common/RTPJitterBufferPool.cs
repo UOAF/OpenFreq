@@ -15,7 +15,7 @@ public sealed class RtpJitterBufferPool : IDisposable
     private readonly bool _opusEnabled;
     private readonly int _initialBufferMs;
 
-    private readonly ConcurrentDictionary<uint, RtpSourceContext> _sources = new();
+    private readonly Dictionary<uint, RtpSourceContext> _sources = new();
 
     /// <summary>
     /// How long a source must be silent before it is pruned from the pool.
@@ -42,54 +42,48 @@ public sealed class RtpJitterBufferPool : IDisposable
     /// </summary>
     public void AddPacket(RtpPacket packet)
     {
-        var context = _sources.GetOrAdd(packet.Ssrc, ssrc =>
+        var ssrc = packet.Ssrc;
+        RtpSourceContext? src;
+        if (!_sources.TryGetValue(ssrc, out src))
         {
             _logger.LogInformation("New RTP source: SSRC={Ssrc:X8}", ssrc);
-            var ctx = new RtpSourceContext(ssrc, _loggerFactory, _opusEnabled, _initialBufferMs);
+            src = new RtpSourceContext(ssrc, _loggerFactory, _opusEnabled, _initialBufferMs);
+            _sources.Add(ssrc, src);
             SourceAdded?.Invoke(ssrc);
-            return ctx;
-        });
+        }
 
-        context.LastActivityTicks = Stopwatch.GetTimestamp();
-        context.JitterBuffer.AddPacket(packet);
+        src.LastActivityTicks = Stopwatch.GetTimestamp();
+        src.JitterBuffer.AddPacket(packet);
     }
 
     /// <summary>
     /// Returns a point-in-time snapshot of all currently active source contexts.
     /// Safe to iterate while new packets arrive concurrently.
     /// </summary>
-    public IReadOnlyList<RtpSourceContext> GetActiveSources()
-        => _sources.Values.ToList();
+    public IEnumerable<RtpSourceContext> GetActiveSources()
+        => _sources.Values;
 
     /// <summary>
     /// Removes sources that have not received a packet within <see cref="SourceTimeoutMs"/>.
     /// </summary>
-    public void PruneStale()
+    public void PruneStale(long now)
     {
         var threshold = (long)(SourceTimeoutMs / 1000.0 * Stopwatch.Frequency);
-        var now = Stopwatch.GetTimestamp();
-
+        List<uint> toRemove = [];
         foreach (var (ssrc, context) in _sources)
         {
             if (now - context.LastActivityTicks <= threshold)
                 continue;
 
-            if (_sources.TryRemove(ssrc, out var removed))
-            {
-                _logger.LogInformation("Pruned stale source SSRC={Ssrc:X8}", ssrc);
-                SourceExpired?.Invoke(ssrc);
-                removed.Dispose();
-            }
+            toRemove.Add(ssrc);
         }
-    }
-
-    /// <summary>
-    /// Override the jitter buffer target size on all current (and future) sources.
-    /// </summary>
-    public void SetAllBufferSizes(int milliseconds)
-    {
-        foreach (var context in _sources.Values)
-            context.JitterBuffer.SetTargetBufferSize(milliseconds);
+        foreach (var r in toRemove)
+        {
+            _logger.LogInformation("Pruned stale source SSRC={Ssrc:X8}", r);
+            SourceExpired?.Invoke(r);
+            _sources.Remove(r, out var removed);
+            removed!.Dispose();
+        }
     }
 
     /// <summary>
@@ -98,14 +92,11 @@ public sealed class RtpJitterBufferPool : IDisposable
     public (int received, int lost, int late, int duplicate, int played,
         double lossPercent, double jitterMs, double bufferMs, int buffered) GetStatistics()
     {
-        var sources = GetActiveSources();
-        if (sources.Count == 0)
-            return (0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0);
-
         int received = 0, lost = 0, late = 0, duplicate = 0, played = 0, buffered = 0;
         double jitterSum = 0, bufferSum = 0;
+        int numSources = 0;
 
-        foreach (var ctx in sources)
+        foreach (var ctx in GetActiveSources())
         {
             var s = ctx.JitterBuffer.GetStatistics();
             received  += s.received;
@@ -116,7 +107,11 @@ public sealed class RtpJitterBufferPool : IDisposable
             buffered  += s.buffered;
             jitterSum += s.jitterMs;
             bufferSum += s.bufferMs;
+            numSources++;
         }
+
+        if (numSources == 0)
+            return (0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0);
 
         double lossPercent = (received + lost) > 0
             ? 100.0 * lost / (received + lost)
@@ -124,8 +119,8 @@ public sealed class RtpJitterBufferPool : IDisposable
 
         return (received, lost, late, duplicate, played,
             lossPercent,
-            jitterSum  / sources.Count,   // average jitter across sources
-            bufferSum  / sources.Count,   // average buffer size across sources
+            jitterSum  / numSources,   // average jitter across sources
+            bufferSum  / numSources,   // average buffer size across sources
             buffered);
     }
 

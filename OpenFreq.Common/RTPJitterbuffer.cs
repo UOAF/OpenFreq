@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Common.Rtp;
 
@@ -11,23 +11,14 @@ namespace OpenFreq.Common;
 public class RtpJitterBuffer
 {
     private readonly ILogger<RtpJitterBuffer> _logger;
-    
-    private class BufferedPacket
-    {
-        public required RtpPacket Packet { get; set; }
-        public long ReceivedTicks { get; set; }
-    }
+
     /// <summary>
     /// Sorts packets based on their (extended) sequence number
     /// </summary>
-    private readonly SortedDictionary<ushort, BufferedPacket> _buffer = new();
+    private readonly SortedDictionary<ushort, RtpPacket> _buffer = new();
     private readonly Queue<double> _jitterSamples = new(50);
     private readonly int _maxBufferPackets;
-        
-    /// <summary>
-    /// Once we've played a packet, the next expected one. Used to detect missing ones.
-    /// </summary>
-    private ushort? _nextExpectedSequence;
+
     /// <summary>
     /// Starting (extended) timestamp from the first packet
     /// </summary>
@@ -68,120 +59,99 @@ public class RtpJitterBuffer
     /// </summary>
     public void AddPacket(RtpPacket packet)
     {
-    
+        var now = Stopwatch.GetTimestamp();
+
         // Initialize on first packet
         if (_packetsReceived == 0)
         {
             _baseTimestamp = packet.Timestamp;
-            _baseTimeTicks = Stopwatch.GetTimestamp();
-
+            _baseTimeTicks = now;
             _logger.LogInformation("Initialized: buffer={BufferMs}ms", _targetBufferMs);
         }
         _packetsReceived++;
 
-        lock (_buffer)
+        // Check for duplicate
+        if (_buffer.ContainsKey(packet.SequenceNumber))
         {
+            _packetsDuplicate++;
+            return;
+        }
 
+        // Calculate playout time
+        long timestampDiff = RtpPacket.TimestampDifference(packet.Timestamp, _baseTimestamp);
 
-            // Check for duplicate
-            if (_buffer.ContainsKey(packet.SequenceNumber))
-            {
-                _packetsDuplicate++;
-                return;
-            }
+        // Add to buffer
+        _buffer[packet.SequenceNumber] = packet;
 
-            // Calculate playout time
-            long timestampDiff = RtpPacket.TimestampDifference(packet.Timestamp, _baseTimestamp);
+        var ticksDiff = now - _baseTimeTicks;
+        MeasureJitter(ticksDiff, timestampDiff);
 
-            var bufferedPacket = new BufferedPacket
-            {
-                Packet = packet,
-                ReceivedTicks = Stopwatch.GetTimestamp()
-            };
+        // Adapt buffer size
+        AdaptBufferSize();
 
-            // Add to buffer
-            _buffer[packet.SequenceNumber] = bufferedPacket;
-
-            MeasureJitter(bufferedPacket.ReceivedTicks, timestampDiff);
-
-            // Adapt buffer size
-            AdaptBufferSize();
-
-            // Limit buffer size
-            while (_buffer.Count > _maxBufferPackets)
-            {
-                var oldest = _buffer.Keys.First();
-                _buffer.Remove(oldest);
-                _logger.LogWarning("Buffer overflow, dropped seq {SequenceNumber}", oldest);
-            }
+        // Limit buffer size
+        while (_buffer.Count > _maxBufferPackets)
+        {
+            var oldest = _buffer.Keys.First();
+            _buffer.Remove(oldest);
+            _logger.LogWarning("Buffer overflow, dropped seq {SequenceNumber}", oldest);
         }
     }
-        
-    /// <summary>
-    /// Get next packet ready for playout
-    /// </summary>
-    public RtpPacket? GetNextPacket()
+
+    // Toy language doesn't have sum types/tagged unions,
+    // but apparently this is the closest we get since C# 9.
+    public abstract record PacketsReadyResult;
+    public record NoPackets : PacketsReadyResult;
+    public record PacketsReady(List<RtpPacket> Packets) : PacketsReadyResult;
+    public record WaitFor(long Ticks) : PacketsReadyResult;
+
+
+    public PacketsReadyResult GetReadyPackets(long now)
     {
-        if (_packetsReceived == 0 || _buffer.Count == 0)
-            return null;
+        // Bail if we've got nothing to play
+        if (_buffer.Count == 0)return new NoPackets();
 
-        var nowTicks = Stopwatch.GetTimestamp();
-        var elapsedTicks = nowTicks - _baseTimeTicks;
+        long elapsedTicks = now - _baseTimeTicks;
+        // The current jitter buffer length, in ticks.
+        long bufferDelayTicks = (long)(_targetBufferMs / 1000.0 * Stopwatch.Frequency);
+        // How many samples have elapsed, after applying the buffer delay?
+        long jitterAdjustedElapsedSamples = (long)(
+            (double)(elapsedTicks - bufferDelayTicks) /
+                Stopwatch.Frequency * OpenFreqRtcClient.SAMPLE_RATE);
 
-        // The playout position is "where the sender was _targetBufferMs ago".
-        // When _targetBufferMs changes (via AdaptBufferSize), this adjusts immediately.
-        long elapsedSamples = (long)((double)elapsedTicks * OpenFreqRtcClient.SAMPLE_RATE / Stopwatch.Frequency);
-        long bufferDelaySamples = (long)(_targetBufferMs / 1000.0 * OpenFreqRtcClient.SAMPLE_RATE);
-        uint playoutTimestamp = _baseTimestamp + (uint)(elapsedSamples - bufferDelaySamples);
-
-        KeyValuePair<ushort, BufferedPacket> nextPacket;
-        lock (_buffer)
+        List<RtpPacket> readies = [];
+        while (_buffer.Count > 0)
         {
-
-
-            // Find packets ready for playout
-            var readyPackets = _buffer
-                .Where(kvp => RtpPacket.TimestampDifference(playoutTimestamp, kvp.Value.Packet.Timestamp) >= 0)
-                .ToList();
-
-            if (readyPackets.Count == 0)
+            var first = _buffer.First();
+            var packet = first.Value;
+            var pt = packet.Timestamp - _baseTimestamp;
+            var samplesUntilReady = (long)pt - jitterAdjustedElapsedSamples;
+            if (samplesUntilReady > 0)
             {
-                return null;
-            }
-
-            // Get the packet with the lowest sequence number
-            nextPacket = readyPackets.First();
-            _buffer.Remove(nextPacket.Key);
-
-            // Check if this is the expected sequence (loss detection).
-            // Skip the check on the first packet
-            if (_nextExpectedSequence.HasValue)
-            {
-                var nextExpected = _nextExpectedSequence.Value;
-                var gap = RtpPacket.SequenceDifference(nextPacket.Key, nextExpected);
-                switch (gap)
+                // If no packets are ready,
+                // return the amount of time to wait until the first is.
+                if (readies.Count == 0)
                 {
-                    case > 0:
-                        // Skipped packets (loss)
-                        _packetsLost += gap;
-                        _logger.LogWarning("Packet loss: {Gap} packets (seq {ExpectedSeq} to {LastSeq})", 
-                            gap, nextExpected, nextPacket.Key - 1);
-                        break;
-                    case < 0:
-                        // Late packet
-                        _packetsLate++;
-                        _logger.LogWarning("Late packet seq {SequenceNumber} (expected {ExpectedSequence})", 
-                            nextPacket.Key, nextExpected);
-                        break;
+                    // Back to ticks
+                    var ticksUntilReady = (long)(
+                        (double)samplesUntilReady /
+                            OpenFreqRtcClient.SAMPLE_RATE * Stopwatch.Frequency);
+                    return new WaitFor(ticksUntilReady);
+                }
+                else
+                {
+                    break;
                 }
             }
-
-            _nextExpectedSequence = (ushort)(nextPacket.Key + 1);
-            _packetsPlayed++;
-
+            else
+            {
+                _buffer.Remove(first.Key);
+                readies.Add(packet);
+            }
         }
-
-        return nextPacket.Value.Packet;
+        _packetsPlayed += readies.Count;
+        // TODO other stats aggregation
+        return new PacketsReady(readies);
     }
         
     /// <summary>
@@ -196,6 +166,7 @@ public class RtpJitterBuffer
             _lastPacketTimestamp = samplesElapsed;
             return;
         }
+        if (samplesElapsed < _lastPacketTimestamp) ++_packetsLate;
 
         double actualInterval = (double)(ticksElapsed - _lastPacketReceivedTicks) / Stopwatch.Frequency;
         double expectedInterval = (double)(samplesElapsed - _lastPacketTimestamp) / OpenFreqRtcClient.SAMPLE_RATE;
@@ -216,7 +187,7 @@ public class RtpJitterBuffer
         double jitterMs = Math.Abs(actualInterval - expectedInterval) * 1000;
     
         _jitterSamples.Enqueue(jitterMs);
-        if (_jitterSamples.Count > 50)
+        while (_jitterSamples.Count > 50)
             _jitterSamples.Dequeue();
     
         if (_jitterSamples.Count >= 10)
@@ -263,11 +234,7 @@ public class RtpJitterBuffer
             ? (100.0 * _packetsLost) / (_packetsReceived + _packetsLost)
             : 0.0;
 
-        int bufferedCount;
-        lock (_buffer)
-        {
-            bufferedCount = _buffer.Count;
-        }
+        int bufferedCount = _buffer.Count;
 
         return (
             _packetsReceived, 
