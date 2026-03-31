@@ -244,11 +244,12 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
             }
 
             // Find and attach to BMS process
+            // This is optional - if we can't find it, we'll rely on read failures to detect disconnection
+            // Reason: we want to be able to run in WINE
             _bmsProcess = FindBmsProcess();
             if (_bmsProcess == null)
             {
-                // The SHMEM is still valid but it seems BMS has crashed - just continue polling until the user restarts it
-                return false;
+                _logger.LogWarning("Could not find BMS process by name - will rely on shared memory validity for connection monitoring");
             }
 
 
