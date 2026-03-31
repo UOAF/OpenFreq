@@ -12,6 +12,7 @@ using FalconRadioService.Models;
 using FalconRadioService.Services;
 using Material.Styles.Controls;
 using Microsoft.Extensions.Logging;
+using OpenFreq.Client.Models;
 using OpenFreq.Common;
 using OpenFreq.Services.Acmi;
 using OpenFreqClient.Models;
@@ -72,7 +73,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
     public partial AcmiConnectionStatus AcmiConnectionStatus { get; set; } = AcmiConnectionStatus.Disconnected;
 
     [ObservableProperty] public partial bool SettingsDrawerOpened { get; set; } = true;
-    
+
     // Error handling properties
     [ObservableProperty] public partial bool HasError { get; set; }
 
@@ -404,7 +405,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         {
             PeerId = _openFreqService.PeerId ?? "";
             ClearError();
-           SettingsDrawerOpened = false;
+            SettingsDrawerOpened = false;
         }
         else if (state == ConnectionState.Disconnected && OpenFreqConnected)
         {
@@ -424,7 +425,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         IsCapturingHotkey = true;
         try
         {
-            var capturedKey = await _hotkeyService.CaptureNextKeyAsync();
+            var capturedKey = await _hotkeyService.CaptureNextHotkeyAsync();
             Settings.BmsUhfSquelchHotkey = capturedKey;
             ChannelList.FalconChannelGroup?.UpdateUhfHotkey(capturedKey);
         }
@@ -444,7 +445,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         IsCapturingHotkey = true;
         try
         {
-            var capturedKey = await _hotkeyService.CaptureNextKeyAsync();
+            var capturedKey = await _hotkeyService.CaptureNextHotkeyAsync();
             Settings.BmsVhfSquelchHotkey = capturedKey;
             ChannelList.FalconChannelGroup?.UpdateVhfHotkey(capturedKey);
         }
@@ -459,7 +460,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
     }
 
     public bool IsCapturingHotkey { get; set; }
-    
+
 
     private void OnStatusMessageReceived(object? sender, string message)
     {
@@ -495,12 +496,12 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
                 (Settings.Is3dMode == e.Is3d) && e.PeerData.Status == PeerData.PeerStatus.Transmitting;
         }
     }
-    
+
     private void OnFrequencyTransmissionStatusChanged(object? sender, FrequencyTransmissionStatusEventArgs e)
     {
         // Only interested in channels we are transmitting or idling in
         if (e.TransmissionStatus == Channel.ChannelTransmissionStatus.Receiving) return;
-        
+
         // This isn't ideal performance-wise, but we don't have too many peers and there is no ObservableDictionary
         foreach (var peer in PeerList
                      .Where(f => f.FrequencyKhz == e.FrequencyKhz)
@@ -526,15 +527,8 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
             Settings.OutputDeviceName = config.Settings.OutputDeviceName;
             Settings.HeightmapPath = config.Settings.HeightmapPath;
 
-            if (Enum.TryParse<KeyCode>(config.Settings.BmsSquelchVhfHotkeyCode, out var vhfSquelchHotkey))
-            {
-                Settings.BmsVhfSquelchHotkey = vhfSquelchHotkey;
-            }
-
-            if (Enum.TryParse<KeyCode>(config.Settings.BmsSquelchUhfHotkeyCode, out var uhfSquelchHotkey))
-            {
-                Settings.BmsUhfSquelchHotkey = uhfSquelchHotkey;
-            }
+            Settings.BmsVhfSquelchHotkey = config.Settings.BmsSquelchVhfHotkey;
+            Settings.BmsUhfSquelchHotkey = config.Settings.BmsSquelchUhfHotkey;
 
             // Load audio settings
             Settings.LoadFromSettings(config.Settings);
@@ -553,16 +547,13 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
                         channelGroup.CreateChannel(channelData.FrequencyKhz, channelData.Name ?? "");
                     channel.IsEditing = false;
 
-                    // Parse and set PTT hotkey
-                    if (Enum.TryParse<KeyCode>(channelData.HotkeyCode, out var keyCode))
+                    // Set PTT hotkey
+                    channel.PttHotKey = channelData.Hotkey;
+                    if (channel.PttHotKey != null)
                     {
-                        channel.PttHotKey = keyCode;
-                        if (keyCode != KeyCode.VcUndefined)
-                        {
-                            _hotkeyService.RegisterHotkey(IHotkeyService.HotkeyType.Ptt, keyCode, channel.Id);
-                        }
+                        _hotkeyService.RegisterHotkey(IHotkeyService.HotkeyType.Ptt, channel.PttHotKey, channel.Id);
                     }
-                }
+                } 
             }
         }
         catch (Exception ex)
@@ -593,7 +584,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
                             {
                                 Name = c.Name,
                                 FrequencyKhz = c.FrequencyKhz,
-                                HotkeyCode = c.PttHotKey.ToString(),
+                                Hotkey = c.PttHotKey,
                             }).ToList()
                         };
                     }).ToList()

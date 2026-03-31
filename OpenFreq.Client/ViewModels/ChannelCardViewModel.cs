@@ -82,16 +82,16 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     // Hotkey binding
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HotkeyDisplay), nameof(HasPttHotkey))]
-    public partial KeyCode PttHotKey { get; set; } = KeyCode.VcUndefined;
+    public partial HotkeyBinding? PttHotKey { get; set; } = null;
 
-    public bool HasPttHotkey => PttHotKey != KeyCode.VcUndefined;
+    public bool HasPttHotkey => PttHotKey != null;
 
 
     [ObservableProperty] public partial bool IsCapturingPttHotkey { get; set; }
 
-    public string HotkeyDisplay => GetKeyDisplayName(PttHotKey);
+    public string HotkeyDisplay => PttHotKey?.DisplayName ?? "None";
 
-    [ObservableProperty] public partial KeyCode SquelchHotKey { get; set; } = KeyCode.VcUndefined;
+    [ObservableProperty] public partial HotkeyBinding? SquelchHotKey { get; set; }
 
     // Reference to the data of the RadioStationGroup
     [ObservableProperty] public partial RadioStationData RadioStationData { get; set; }
@@ -105,7 +105,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
 
     // Store original values when entering edit mode
     private int _originalFrequencyKhz;
-    private KeyCode _originalBinding;
+    private HotkeyBinding _originalBinding;
     private readonly IOpenFreqService _openFreqService;
 
 
@@ -114,7 +114,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     {
         Name = "BMS Lobby 1";
         FrequencyKhz = 1234;
-        PttHotKey = KeyCode.VcF1;
+        PttHotKey = new KeyboardBinding(KeyCode.VcF1);
         ToggleEditing();
     }
 
@@ -123,7 +123,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     {
         Name = "BMS Lobby 2";
         FrequencyKhz = 339750;
-        PttHotKey = KeyCode.VcF2;
+        PttHotKey = new KeyboardBinding(KeyCode.VcF2);
         ToggleEditing();
     }
 
@@ -189,7 +189,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         IsCapturingPttHotkey = true;
         try
         {
-            var capturedKey = await _hotkeyService.CaptureNextKeyAsync();
+            var capturedKey = await _hotkeyService.CaptureNextHotkeyAsync();
             PttHotKey = capturedKey;
         }
         catch (OperationCanceledException)
@@ -202,37 +202,37 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         }
     }
 
-    partial void OnPttHotKeyChanging(KeyCode oldValue, KeyCode newValue)
+    partial void OnPttHotKeyChanging(HotkeyBinding? oldValue, HotkeyBinding? newValue)
     {
         // Unregister old binding
-        if (oldValue != KeyCode.VcUndefined)
+        if (oldValue != null)
         {
             _hotkeyService.UnregisterHotkey(IHotkeyService.HotkeyType.Ptt, oldValue, Id);
         }
     }
 
-    partial void OnPttHotKeyChanged(KeyCode oldValue, KeyCode newValue)
+    partial void OnPttHotKeyChanged(HotkeyBinding? oldValue, HotkeyBinding? newValue)
     {
         // Register new binding
-        if (newValue != KeyCode.VcUndefined)
+        if (newValue != null)
         {
             _hotkeyService.RegisterHotkey(IHotkeyService.HotkeyType.Ptt, newValue, Id);
         }
     }
 
-    partial void OnSquelchHotKeyChanging(KeyCode oldValue, KeyCode newValue)
+    partial void OnSquelchHotKeyChanging(HotkeyBinding? oldValue, HotkeyBinding? newValue)
     {
         // Unregister old binding
-        if (oldValue != KeyCode.VcUndefined)
+        if (oldValue != null)
         {
             _hotkeyService.UnregisterHotkey(IHotkeyService.HotkeyType.SquelchToggle, oldValue, Id);
         }
     }
 
-    partial void OnSquelchHotKeyChanged(KeyCode oldValue, KeyCode newValue)
+    partial void OnSquelchHotKeyChanged(HotkeyBinding? oldValue, HotkeyBinding? newValue)
     {
         // Register new binding
-        if (newValue != KeyCode.VcUndefined)
+        if (newValue != null)
         {
             _hotkeyService.RegisterHotkey(IHotkeyService.HotkeyType.SquelchToggle, newValue, Id);
         }
@@ -241,16 +241,9 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     private void ClearPttHotkey()
     {
-        if (PttHotKey != KeyCode.VcUndefined)
-        {
-            _hotkeyService.UnregisterHotkey(IHotkeyService.HotkeyType.Ptt, PttHotKey, Id);
-            PttHotKey = KeyCode.VcUndefined;
-        }
-    }
-
-    private string GetKeyDisplayName(KeyCode key)
-    {
-        return key == KeyCode.VcUndefined ? "None" : key.ToString().Replace("Vc", "");
+        if (PttHotKey == null) return;
+        _hotkeyService.UnregisterHotkey(IHotkeyService.HotkeyType.Ptt, PttHotKey, Id);
+        PttHotKey = null;
     }
 
     partial void OnFrequencyKhzChanged(int value)
@@ -326,7 +319,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
 
     public void Dispose()
     {
-        if (PttHotKey != KeyCode.VcUndefined)
+        if (PttHotKey != null)
         {
             _hotkeyService.UnregisterHotkey(IHotkeyService.HotkeyType.Ptt, PttHotKey, Id);
         }

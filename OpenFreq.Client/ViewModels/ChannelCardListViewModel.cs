@@ -13,6 +13,7 @@ using FalconBmsDataService.Services;
 using FalconRadioService.Models;
 using FalconRadioService.Services;
 using Microsoft.Extensions.Logging;
+using NetTopologySuite.Index.Quadtree;
 using OpenFreq.Client.Models;
 using OpenFreq.Common;
 using OpenFreq.Services.Acmi;
@@ -267,17 +268,17 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                         switch (type)
                         {
                             case RadioType.VHF:
-                                channel.PttHotKey = KeyCode.VcF1;
+                                channel.PttHotKey = new KeyboardBinding(KeyCode.VcF1);
                                 channel.SquelchHotKey = _settings.BmsVhfSquelchHotkey;
                                 channel.AudioChannel = _settings.BmsVhfAudioChannel;
                                 break;
                             case RadioType.UHF:
-                                channel.PttHotKey = KeyCode.VcF2;
+                                channel.PttHotKey = new KeyboardBinding(KeyCode.VcF2);
                                 channel.SquelchHotKey = _settings.BmsUhfSquelchHotkey;
                                 channel.AudioChannel = _settings.BmsUhfAudioChannel;
                                 break;
                             case RadioType.GUARD:
-                                channel.PttHotKey = KeyCode.VcF3;
+                                channel.PttHotKey = new KeyboardBinding(KeyCode.VcF3);
                                 channel.SquelchHotKey = _settings.BmsUhfSquelchHotkey;
                                 channel.AudioChannel = _settings.BmsUhfAudioChannel;
                                 break;

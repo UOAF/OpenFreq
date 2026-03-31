@@ -656,7 +656,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         return Id.GetHashCode();
     }
 
-    public void UpdateVhfHotkey(KeyCode capturedKey)
+    public void UpdateVhfHotkey(HotkeyBinding? capturedKey)
     {
         foreach (var channel in Channels)
         {
@@ -667,7 +667,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         }
     }
     
-    public void UpdateUhfHotkey(KeyCode capturedKey)
+    public void UpdateUhfHotkey(HotkeyBinding? capturedKey)
     {
         foreach (var channel in Channels)
         {

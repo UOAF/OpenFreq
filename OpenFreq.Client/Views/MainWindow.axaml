@@ -192,7 +192,8 @@
                                             CornerRadius="4"
                                             Padding="6,4"
                                             Margin="0,0,0,12"
-                                            Classes="Flat">
+                                            Classes="Flat"
+                                            ToolTip.Tip="{Binding Settings.BmsUhfSquelchHotkeyDisplay }">
                                             <StackPanel Orientation="Horizontal" Spacing="4">
                                                 <avalonia:MaterialIcon Kind="KeyboardOutline"
                                                                        Width="18" Height="18" />
@@ -200,8 +201,9 @@
                                                            Classes="Body2"
                                                            FontWeight="SemiBold"
                                                            VerticalAlignment="Center"
-
-                                                           FontFamily="Consolas,Courier New,monospace" />
+                                                           FontFamily="Consolas,Courier New,monospace"
+                                                           TextTrimming="LeadingCharacterEllipsis"
+                                                           MaxWidth="180"/>
                                             </StackPanel>
                                         </Button>
 
@@ -213,7 +215,8 @@
                                             CornerRadius="4"
                                             Padding="6,4"
                                             Margin="0,0,0,12"
-                                            Classes="Flat">
+                                            Classes="Flat"
+                                            ToolTip.Tip="{Binding Settings.BmsVhfSquelchHotkeyDisplay }">
                                             <StackPanel Orientation="Horizontal" Spacing="4">
                                                 <avalonia:MaterialIcon Kind="KeyboardOutline"
                                                                        Width="18" Height="18" />
@@ -221,8 +224,9 @@
                                                            Classes="Body2"
                                                            FontWeight="SemiBold"
                                                            VerticalAlignment="Center"
-
-                                                           FontFamily="Consolas,Courier New,monospace" />
+                                                           FontFamily="Consolas,Courier New,monospace"
+                                                           TextTrimming="LeadingCharacterEllipsis"
+                                                           MaxWidth="180"/>
                                             </StackPanel>
                                         </Button>
                                     </StackPanel>

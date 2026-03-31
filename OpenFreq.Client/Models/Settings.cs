@@ -1,3 +1,4 @@
+using OpenFreq.Client.Models;
 using OpenFreqAudio;
 using OpenFreqClient.Services.Interfaces;
 
@@ -21,8 +22,8 @@ public class OpenFreqSettings
     public RadioPlayback.AudioChannel BmsUhfChannel { get; set; } = RadioPlayback.AudioChannel.Both;
     public RadioPlayback.AudioChannel BmsVhfChannel { get; set; } = RadioPlayback.AudioChannel.Both;
     
-    public string BmsSquelchUhfHotkeyCode { get; set; } = "VcUndefined";
-    public string BmsSquelchVhfHotkeyCode { get; set; } = "VcUndefined";
+    public HotkeyBinding? BmsSquelchUhfHotkey { get; set; }
+    public HotkeyBinding? BmsSquelchVhfHotkey { get; set; }
     
     // Window Position & Size
     public int? Left { get; set; }

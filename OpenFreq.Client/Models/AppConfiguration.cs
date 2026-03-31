@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using OpenFreq.Client.Models;
 using OpenFreq.Common;
@@ -33,5 +32,5 @@ public class ChannelData
 {
     public string? Name { get; set; }
     public int FrequencyKhz { get; set; }
-    public string HotkeyCode { get; set; } = "VcUndefined";
+    public HotkeyBinding? Hotkey { get; set; }
 }

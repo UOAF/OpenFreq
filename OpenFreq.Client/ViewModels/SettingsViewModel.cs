@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input;
 using Avalonia.Platform;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -13,6 +14,7 @@ using FalconBmsDataService.Models;
 using FalconBmsDataService.Services;
 using FalconRadioService.Services;
 using Microsoft.Extensions.Logging;
+using OpenFreq.Client.Models;
 using OpenFreq.Services.Acmi;
 using OpenFreqAudio;
 using OpenFreqClient.Models;
@@ -91,20 +93,16 @@ public partial class SettingsViewModel : ViewModelBase
     public partial RadioPlayback.AudioChannel BmsVhfAudioChannel { get; set; } = RadioPlayback.AudioChannel.Both;
 
     [ObservableProperty][NotifyPropertyChangedFor(nameof(BmsUhfSquelchHotkeyDisplay))]
-    public partial KeyCode BmsUhfSquelchHotkey { get; set; } = KeyCode.VcUndefined;
+    public partial HotkeyBinding? BmsUhfSquelchHotkey { get; set; }
 
     [ObservableProperty][NotifyPropertyChangedFor(nameof(BmsVhfSquelchHotkeyDisplay))]
-    public partial KeyCode BmsVhfSquelchHotkey { get; set; } = KeyCode.VcUndefined;
+    public partial HotkeyBinding? BmsVhfSquelchHotkey { get; set; }
 
     public string BmsUhfSquelchHotkeyDisplay =>
-        BmsUhfSquelchHotkey == KeyCode.VcUndefined
-            ? "None"
-            : BmsUhfSquelchHotkey.ToString().Replace("Vc", "");
+        BmsUhfSquelchHotkey?.DisplayName ?? "None";
 
     public string BmsVhfSquelchHotkeyDisplay =>
-        BmsVhfSquelchHotkey == KeyCode.VcUndefined
-            ? "None"
-            : BmsVhfSquelchHotkey.ToString().Replace("Vc", "");
+        BmsVhfSquelchHotkey?.DisplayName ?? "None";
 
 
     // This is displayed in the Top Bar but shared throughout the app
@@ -407,8 +405,8 @@ public partial class SettingsViewModel : ViewModelBase
             SelectedTheater = SelectedTheater,
             BmsUhfChannel = BmsUhfAudioChannel,
             BmsVhfChannel = BmsVhfAudioChannel,
-            BmsSquelchUhfHotkeyCode = BmsUhfSquelchHotkey.ToString(),
-            BmsSquelchVhfHotkeyCode = BmsVhfSquelchHotkey.ToString(),
+            BmsSquelchUhfHotkey = BmsUhfSquelchHotkey,
+            BmsSquelchVhfHotkey = BmsVhfSquelchHotkey,
             Left = _left,
             Top = _top,
             Width = _width,
