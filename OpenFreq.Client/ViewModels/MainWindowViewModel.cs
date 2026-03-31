@@ -12,6 +12,7 @@ using FalconRadioService.Models;
 using FalconRadioService.Services;
 using Material.Styles.Controls;
 using Microsoft.Extensions.Logging;
+using OpenFreq.Client.Models;
 using OpenFreq.Common;
 using OpenFreq.Services.Acmi;
 using OpenFreqClient.Models;
@@ -424,7 +425,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         IsCapturingHotkey = true;
         try
         {
-            var capturedKey = await _hotkeyService.CaptureNextKeyAsync();
+            var capturedKey = await _hotkeyService.CaptureNextHotkeyAsync();
             Settings.BmsUhfSquelchHotkey = capturedKey;
             ChannelList.FalconChannelGroup?.UpdateUhfHotkey(capturedKey);
         }
@@ -444,7 +445,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         IsCapturingHotkey = true;
         try
         {
-            var capturedKey = await _hotkeyService.CaptureNextKeyAsync();
+            var capturedKey = await _hotkeyService.CaptureNextHotkeyAsync();
             Settings.BmsVhfSquelchHotkey = capturedKey;
             ChannelList.FalconChannelGroup?.UpdateVhfHotkey(capturedKey);
         }
@@ -532,15 +533,8 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
             Settings.OutputDeviceName = config.Settings.OutputDeviceName;
             Settings.HeightmapPath = config.Settings.HeightmapPath;
 
-            if (Enum.TryParse<KeyCode>(config.Settings.BmsSquelchVhfHotkeyCode, out var vhfSquelchHotkey))
-            {
-                Settings.BmsVhfSquelchHotkey = vhfSquelchHotkey;
-            }
-
-            if (Enum.TryParse<KeyCode>(config.Settings.BmsSquelchUhfHotkeyCode, out var uhfSquelchHotkey))
-            {
-                Settings.BmsUhfSquelchHotkey = uhfSquelchHotkey;
-            }
+            Settings.BmsVhfSquelchHotkey = config.Settings.BmsSquelchVhfHotkey;
+            Settings.BmsUhfSquelchHotkey = config.Settings.BmsSquelchUhfHotkey;
 
             // Load audio settings
             Settings.LoadFromSettings(config.Settings);
@@ -559,14 +553,11 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
                         channelGroup.CreateChannel(channelData.FrequencyKhz, channelData.Name ?? "");
                     channel.IsEditing = false;
 
-                    // Parse and set PTT hotkey
-                    if (Enum.TryParse<KeyCode>(channelData.HotkeyCode, out var keyCode))
+                    // Set PTT hotkey
+                    channel.PttHotKey = channelData.Hotkey;
+                    if (channel.PttHotKey != null)
                     {
-                        channel.PttHotKey = keyCode;
-                        if (keyCode != KeyCode.VcUndefined)
-                        {
-                            _hotkeyService.RegisterHotkey(IHotkeyService.HotkeyType.Ptt, keyCode, channel.Id);
-                        }
+                        _hotkeyService.RegisterHotkey(IHotkeyService.HotkeyType.Ptt, channel.PttHotKey, channel.Id);
                     }
                 }
             }
@@ -599,7 +590,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
                             {
                                 Name = c.Name,
                                 FrequencyKhz = c.FrequencyKhz,
-                                HotkeyCode = c.PttHotKey.ToString(),
+                                Hotkey = c.PttHotKey,
                             }).ToList()
                         };
                     }).ToList()
