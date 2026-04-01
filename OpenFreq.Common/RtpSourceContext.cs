@@ -18,7 +18,7 @@ public sealed class RtpSourceContext : IDisposable
     public OpusDecoder OpusDecoder { get; }
     
     // Loss detection state
-    public ushort LastSequenceReceived { get; set; }
+    public long LastSequenceReceived { get; set; }
     public bool FirstPacketReceived { get; set; }
     
     // Last valid metadata from this source, used to reconstruct concealment packets

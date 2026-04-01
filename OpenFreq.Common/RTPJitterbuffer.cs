@@ -1,8 +1,18 @@
 using System.Diagnostics;
+using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Common.Rtp;
 
 namespace OpenFreq.Common;
+
+public record SequencedPacket
+{
+    public required uint Ssrc { get; set; }
+    public required long SequenceNumber { get; set; }
+    public required long Timestamp { get; set; }
+    public required byte[] Payload { get; set; }
+    public required byte[]? Metadata { get; set; }
+}
 
 /// <summary>
 /// Adaptive RTP jitter buffer with timestamp-based playout scheduling.
@@ -15,7 +25,7 @@ public class RtpJitterBuffer
     /// <summary>
     /// Sorts packets based on their (extended) sequence number
     /// </summary>
-    private readonly SortedDictionary<ushort, RtpPacket> _buffer = new();
+    private readonly SortedDictionary<long, SequencedPacket> _buffer = new();
     private readonly Queue<double> _jitterSamples = new(50);
     private readonly int _maxBufferPackets;
 
@@ -28,11 +38,26 @@ public class RtpJitterBuffer
     /// Jitter is a comparison to the base timestamp
     /// </summary>
     private long _baseTimeTicks;
+    // rollover logic - see AddPacket()
+    private int _timestampEpoch = 0;
+    private int _sequenceEpoch = 0;
+    private uint _highestTimestamp = 0;
+    private ushort _highestSequence = 0;
     /// <summary>
     /// Local monotonic time when the last packet arrived.
     /// </summary>
     private long _lastPacketReceivedTicks;
+    /// <summary>
+    /// Timestamp (in extended samples) of the last packet
+    /// </summary>
     private long _lastPacketTimestamp;
+    /// <summary>
+    /// Sequence number of the last packet returned form this jitter buffer.
+    /// </summary>
+    /// <remarks>
+    /// Used to detect missing packets - i.e. gaps in the buffer.
+    /// </remarks>
+    private long? _lastReturnedPacket;
 
     // Adaptive jitter buffer parameters
     private double _targetBufferMs = 60; // Start with 60ms
@@ -66,24 +91,87 @@ public class RtpJitterBuffer
         {
             _baseTimestamp = packet.Timestamp;
             _baseTimeTicks = now;
+            _highestSequence = packet.SequenceNumber;
+            _highestTimestamp = packet.Timestamp;
             _logger.LogInformation("Initialized: buffer={BufferMs}ms", _targetBufferMs);
         }
         _packetsReceived++;
 
+        // Rollover handling (from RTP's RFC 3711, seciton 3.3.1):
+        // we can extend both the 16-bit sequence number _and_ the 32-bit timestamp
+        // to 64-bit values, in a way that handles rollover *and* out-of-order packets!
+        // This is very nice because it lets everything downstream never worry about
+        // rollover ever again. (2^63 samples @ 48kHz is 6 million years.)
+        var seqDelta = (short)(ushort)(packet.SequenceNumber - _highestSequence);
+        int seqEpoch;
+        if (seqDelta >= 0)
+        {
+            // If the delta is positive but the sequence is < highest,
+            // we've rolled over
+            if (packet.SequenceNumber < _highestSequence) ++_sequenceEpoch;
+            seqEpoch = _sequenceEpoch;
+            _highestSequence = packet.SequenceNumber;
+        }
+        else
+        {
+            // If the delta is <= 0 but sequence is > highest,
+            // it's a late packet from before the last rollover.
+            if (packet.SequenceNumber > _highestSequence)
+            {
+                seqEpoch = _sequenceEpoch - 1;
+            }
+            // Late packet without any rollover shenanigans:
+            else
+            {
+                seqEpoch = _sequenceEpoch;
+            }
+        }
+        // Our result is a 48-bit int.
+        long seq = (long)seqEpoch << 16 | (long)packet.SequenceNumber;
+
+        // Give timestamps the same treatment.
+        int tsDelta = (int)(packet.Timestamp - _highestTimestamp);
+        int tsEpoch;
+        if (tsDelta >= 0)
+        {
+            if (packet.Timestamp < _highestTimestamp) ++_timestampEpoch;
+            tsEpoch = _timestampEpoch;
+            _highestTimestamp = packet.Timestamp;
+        }
+        else
+        {
+            if (packet.Timestamp > _highestTimestamp)
+            {
+                tsEpoch = _timestampEpoch - 1;
+            }
+            else
+            {
+                tsEpoch = _timestampEpoch;
+            }
+        }
+        long ts = (long)tsEpoch << 32 | (long)packet.Timestamp;
+
+        var sp = new SequencedPacket
+        {
+            Ssrc = packet.Ssrc,
+            Payload = packet.Payload,
+            Metadata = packet.ExtensionData,
+            SequenceNumber = seq,
+            Timestamp = ts,
+        };
+
         // Check for duplicate
-        if (_buffer.ContainsKey(packet.SequenceNumber))
+        if (_buffer.ContainsKey(sp.SequenceNumber))
         {
             _packetsDuplicate++;
             return;
         }
 
-        // Calculate playout time
-        long timestampDiff = RtpPacket.TimestampDifference(packet.Timestamp, _baseTimestamp);
-
         // Add to buffer
-        _buffer[packet.SequenceNumber] = packet;
+        _buffer[sp.SequenceNumber] = sp;
 
         var ticksDiff = now - _baseTimeTicks;
+        var timestampDiff = sp.Timestamp - _baseTimestamp;
         MeasureJitter(ticksDiff, timestampDiff);
 
         // Adapt buffer size
@@ -102,7 +190,7 @@ public class RtpJitterBuffer
     // but apparently this is the closest we get since C# 9.
     public abstract record PacketsReadyResult;
     public record NoPackets : PacketsReadyResult;
-    public record PacketsReady(List<RtpPacket> Packets) : PacketsReadyResult;
+    public record PacketsReady(List<SequencedPacket> Packets) : PacketsReadyResult;
     public record WaitFor(long Ticks) : PacketsReadyResult;
 
 
@@ -119,7 +207,7 @@ public class RtpJitterBuffer
             (double)(elapsedTicks - bufferDelayTicks) /
                 Stopwatch.Frequency * OpenFreqRtcClient.SAMPLE_RATE);
 
-        List<RtpPacket> readies = [];
+        List<SequencedPacket> readies = [];
         while (_buffer.Count > 0)
         {
             var first = _buffer.First();
@@ -150,7 +238,15 @@ public class RtpJitterBuffer
             }
         }
         _packetsPlayed += readies.Count;
-        // TODO other stats aggregation
+        foreach (var p in readies)
+        {
+            if (_lastReturnedPacket is long last)
+            {
+                long gap = p.SequenceNumber - last - 1;
+                if (gap > 0) _packetsLost += (int)gap;
+            }
+            _lastReturnedPacket = p.SequenceNumber;
+        }
         return new PacketsReady(readies);
     }
         

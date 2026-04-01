@@ -176,11 +176,11 @@ public class RtpAudioReceiver : IDisposable
                                     // Loss detection and concealment — per-source sequence
                                     if (context.FirstPacketReceived)
                                     {
-                                        ushort expectedSeq = (ushort)(context.LastSequenceReceived + 1);
+                                        long expectedSeq = context.LastSequenceReceived + 1;
 
                                         if (p.SequenceNumber != expectedSeq)
                                         {
-                                            int gap = RtpPacket.SequenceDifference(p.SequenceNumber, expectedSeq);
+                                            long gap = p.SequenceNumber - expectedSeq;
 
                                             if (gap > 0 && gap < 100)
                                             {
@@ -188,7 +188,7 @@ public class RtpAudioReceiver : IDisposable
                                                     "SSRC={Ssrc:X8}: {Gap} lost packet(s) (seq {Start} to {End}), generating concealment",
                                                     context.Ssrc, gap, expectedSeq, p.SequenceNumber - 1);
 
-                                                for (int i = 0; i < gap; i++)
+                                                for (long i = 0; i < gap; i++)
                                                 {
                                                     ushort lostSeq = (ushort)(expectedSeq + i);
                                                     // Only the last lost packet can use FEC (next packet carries FEC for it)
@@ -256,17 +256,17 @@ public class RtpAudioReceiver : IDisposable
     /// <summary>
     /// Process a packet that is ready for playout, using the source's own Opus decoder.
     /// </summary>
-    private void ProcessReadyPacket(RtpPacket packet, RtpSourceContext context)
+    private void ProcessReadyPacket(SequencedPacket packet, RtpSourceContext context)
     {
         try
         {
-            if (packet.ExtensionData is not { Length: > 0 })
+            if (packet.Metadata is not { Length: > 0 })
             {
                 _logger.LogWarning("SSRC={Ssrc:X8}: missing RTP header extension metadata", context.Ssrc);
                 return;
             }
 
-            var metadataJson = Encoding.UTF8.GetString(packet.ExtensionData).TrimEnd('\0');
+            var metadataJson = Encoding.UTF8.GetString(packet.Metadata).TrimEnd('\0');
             var metadata = JsonSerializer.Deserialize(metadataJson, OpenFreqJsonContext.Default.AudioPacketMetadata);
 
             if (metadata == null)
@@ -310,7 +310,7 @@ public class RtpAudioReceiver : IDisposable
     /// <summary>
     /// Generate FEC or PLC concealment audio for a lost packet within one source's context.
     /// </summary>
-    private void GenerateConcealmentAudio(ushort lostSequence, RtpPacket? nextPacket, RtpSourceContext context)
+    private void GenerateConcealmentAudio(ushort lostSequence, SequencedPacket? nextPacket, RtpSourceContext context)
     {
         try
         {

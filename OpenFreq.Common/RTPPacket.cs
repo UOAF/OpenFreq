@@ -140,39 +140,6 @@ public class RtpPacket
 
         return data;
     }
-    
-           
-    /// <summary>
-    /// Calculate expected sequence number difference (handles wraparound)
-    /// </summary>
-    public static int SequenceDifference(ushort seq1, ushort seq2)
-    {
-        // Handle 16-bit wraparound
-        int diff = seq1 - seq2;
-            
-        if (diff < -32768)
-            diff += 65536;
-        else if (diff > 32768)
-            diff -= 65536;
-            
-        return diff;
-    }
-        
-    /// <summary>
-    /// Calculate timestamp difference (handles wraparound)
-    /// </summary>
-    public static long TimestampDifference(uint ts1, uint ts2)
-    {
-        // Handle 32-bit wraparound
-        long diff = (long)ts1 - (long)ts2;
-            
-        if (diff < -2147483648L)
-            diff += 4294967296L;
-        else if (diff > 2147483648L)
-            diff -= 4294967296L;
-            
-        return diff;
-    }
         
     public override string ToString()
     {
