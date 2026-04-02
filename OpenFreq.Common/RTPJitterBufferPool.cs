@@ -1,7 +1,9 @@
-using System.Collections.Concurrent;
-using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Common.Rtp;
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Threading.Channels;
+using static OpenFreq.Common.RtpAudioReceiver;
 
 namespace OpenFreq.Common;
 
@@ -12,6 +14,8 @@ public sealed class RtpJitterBufferPool : IDisposable
 {
     private readonly ILogger<RtpJitterBufferPool> _logger;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly CancellationToken _cancelled;
+    private readonly ChannelWriter<AudioReceivedEventArgs> _player;
     private readonly bool _opusEnabled;
     private readonly int _initialBufferMs;
 
@@ -28,10 +32,17 @@ public sealed class RtpJitterBufferPool : IDisposable
     /// <summary>Fired just before a stale source is removed.</summary>
     public event Action<uint>? SourceExpired;
 
-    public RtpJitterBufferPool(ILoggerFactory loggerFactory, bool opusEnabled, int initialBufferMs)
+    public RtpJitterBufferPool(
+        ILoggerFactory loggerFactory,
+        CancellationToken ct,
+        ChannelWriter<AudioReceivedEventArgs> player,
+        bool opusEnabled,
+        int initialBufferMs)
     {
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<RtpJitterBufferPool>();
+        _cancelled = ct;
+        _player = player;
         _opusEnabled = opusEnabled;
         _initialBufferMs = initialBufferMs;
     }
@@ -47,7 +58,7 @@ public sealed class RtpJitterBufferPool : IDisposable
         if (!_sources.TryGetValue(ssrc, out src))
         {
             _logger.LogInformation("New RTP source: SSRC={Ssrc:X8}", ssrc);
-            src = new RtpSourceContext(ssrc, _loggerFactory, _opusEnabled, _initialBufferMs);
+            src = new RtpSourceContext(ssrc, _loggerFactory, _cancelled, _player, _opusEnabled, _initialBufferMs);
             _sources.Add(ssrc, src);
             SourceAdded?.Invoke(ssrc);
         }
