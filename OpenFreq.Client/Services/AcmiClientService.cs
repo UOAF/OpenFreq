@@ -10,7 +10,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Common;
-using OpenFreqClient;
 using OpenFreqClient.Models;
 
 namespace OpenFreq.Services.Acmi;
@@ -20,7 +19,7 @@ namespace OpenFreq.Services.Acmi;
 /// </summary>
 public class AcmiClientService : IAcmiClientService
 {
-    private const int DEFAULT_PORT = 42674;
+    private const int DefaultPort = 42674;
     
     private readonly ILogger<AcmiClientService> _logger;
     private readonly ConcurrentDictionary<string, AcmiAircraft> _trackedAircraft = new();
@@ -38,7 +37,7 @@ public class AcmiClientService : IAcmiClientService
     private DateTime _referenceTime = DateTime.UnixEpoch;
     private double _relativeTime;
     
-    private readonly object _statusLock = new();
+    private readonly Lock _statusLock = new();
     private AcmiConnectionStatus _status = AcmiConnectionStatus.Disconnected;
     
     // Track all encountered callsigns (objectId -> callsign)
@@ -63,17 +62,15 @@ public class AcmiClientService : IAcmiClientService
     {
         if (string.IsNullOrEmpty(objectId))
             return;
-            
-        if (_trackedAircraft.TryRemove(objectId, out var aircraft))
-        {
-            _logger.LogInformation("Removed tracking for aircraft: {ObjectId} ({CallSign})", 
-                objectId, aircraft.CallSign ?? "Unknown");
+
+        if (!_trackedAircraft.TryRemove(objectId, out var aircraft)) return;
+        _logger.LogInformation("Removed tracking for aircraft: {ObjectId} ({CallSign})", 
+            objectId, aircraft.CallSign);
                 
-            // If this was the selected aircraft, clear selection
-            if (_selectedAircraftId == objectId)
-            {
-                _selectedAircraftId = null;
-            }
+        // If this was the selected aircraft, clear selection
+        if (_selectedAircraftId == objectId)
+        {
+            _selectedAircraftId = null;
         }
     }
 
@@ -118,7 +115,7 @@ public class AcmiClientService : IAcmiClientService
             return false;
         }
         
-        var ipPort = Util.ResolveAddress(connectionString, DEFAULT_PORT);
+        var ipPort = Util.ResolveAddress(connectionString, DefaultPort);
         
         _serverAddress = ipPort.ipAddress;
         _serverPort = ipPort.port;
@@ -159,6 +156,25 @@ public class AcmiClientService : IAcmiClientService
             // CTS already disposed, ignore
         }
         
+        // Wait for receive task to complete before disposing resources
+        if (_receiveTask != null)
+        {
+            try
+            {
+                // Give the task a reasonable timeout to finish gracefully
+                await _receiveTask.WaitAsync(TimeSpan.FromMilliseconds(500));
+            }
+            catch (TimeoutException)
+            {
+                _logger.LogWarning("Receive task did not complete within timeout during disconnect");
+            }
+            catch (Exception ex)
+            {
+                // Task may have thrown during cancellation, which is expected
+            }
+        }
+        
+        // Now safe to dispose resources since background task has stopped
         _stream?.Dispose();
         _client?.Dispose();
         var ctsToDispose = _cts;
@@ -175,6 +191,8 @@ public class AcmiClientService : IAcmiClientService
         Status = AcmiConnectionStatus.Disconnected;
         RaiseConnectionStatusChanged(AcmiConnectionStatus.Disconnected, "Disconnected");
     }
+
+
 
     /// <summary>Gets an aircraft by its object ID</summary>
     public AcmiAircraft? GetAircraft(string objectId) => 
@@ -520,12 +538,12 @@ public class AcmiClientService : IAcmiClientService
         }
 
         // Update or create aircraft
-        bool isNewAircraft = false;
-        AcmiAircraft aircraftData;
+        var isNewAircraft = false;
+        AcmiAircraft? aircraftData;
         
         if (_trackedAircraft.ContainsKey(objectId))
         {
-            _trackedAircraft.TryGetValue(objectId, out aircraftData!);
+            _trackedAircraft.TryGetValue(objectId, out aircraftData);
             
             // this should never happen but let's be sure
             if (aircraftData == null)
@@ -681,37 +699,37 @@ public class AcmiClientService : IAcmiClientService
                 case 4: // Simple flat: lon|lat|alt|u|v
                     if (partCount >= 5)
                     {
-                        transform.Longitude = ParseDoubleOrDefault(tValue[ranges[0]]);
-                        transform.Latitude = ParseDoubleOrDefault(tValue[ranges[1]]);
-                        transform.Altitude = ParseDoubleOrDefault(tValue[ranges[2]]);
-                        transform.U = ParseDoubleOrDefault(tValue[ranges[3]]);
-                        transform.V = ParseDoubleOrDefault(tValue[ranges[4]]);
+                        if (TryParseIfPresent(tValue[ranges[0]], out var lon)) transform.Longitude = lon;
+                        if (TryParseIfPresent(tValue[ranges[1]], out var lat)) transform.Latitude = lat;
+                        if (TryParseIfPresent(tValue[ranges[2]], out var alt)) transform.Altitude = alt;
+                        if (TryParseIfPresent(tValue[ranges[3]], out var u)) transform.U = u;
+                        if (TryParseIfPresent(tValue[ranges[4]], out var v)) transform.V = v;
                     }
                     break;
 
                 case 5: // Spherical (or flat with extra pipe)
                     if (partCount >= 5)
                     {
-                        transform.Longitude = ParseDoubleOrDefault(tValue[ranges[0]]);
-                        transform.Latitude = ParseDoubleOrDefault(tValue[ranges[1]]);
-                        transform.Altitude = ParseDoubleOrDefault(tValue[ranges[2]]);
-                        transform.U = ParseDoubleOrDefault(tValue[ranges[3]]);
-                        transform.V = ParseDoubleOrDefault(tValue[ranges[4]]);
+                        if (TryParseIfPresent(tValue[ranges[0]], out var lon)) transform.Longitude = lon;
+                        if (TryParseIfPresent(tValue[ranges[1]], out var lat)) transform.Latitude = lat;
+                        if (TryParseIfPresent(tValue[ranges[2]], out var alt)) transform.Altitude = alt;
+                        if (TryParseIfPresent(tValue[ranges[3]], out var u)) transform.U = u;
+                        if (TryParseIfPresent(tValue[ranges[4]], out var v)) transform.V = v;
                     }
                     break;
 
                 case 8: // Complex: lon|lat|alt|roll|pitch|yaw|u|v|heading
                     if (partCount >= 9)
                     {
-                        transform.Longitude = ParseDoubleOrDefault(tValue[ranges[0]]);
-                        transform.Latitude = ParseDoubleOrDefault(tValue[ranges[1]]);
-                        transform.Altitude = ParseDoubleOrDefault(tValue[ranges[2]]);
-                        transform.Roll = ParseDoubleOrDefault(tValue[ranges[3]]);
-                        transform.Pitch = ParseDoubleOrDefault(tValue[ranges[4]]);
-                        transform.Yaw = ParseDoubleOrDefault(tValue[ranges[5]]);
-                        transform.U = ParseDoubleOrDefault(tValue[ranges[6]]);
-                        transform.V = ParseDoubleOrDefault(tValue[ranges[7]]);
-                        transform.Heading = ParseDoubleOrDefault(tValue[ranges[8]]);
+                        if (TryParseIfPresent(tValue[ranges[0]], out var lon)) transform.Longitude = lon;
+                        if (TryParseIfPresent(tValue[ranges[1]], out var lat)) transform.Latitude = lat;
+                        if (TryParseIfPresent(tValue[ranges[2]], out var alt)) transform.Altitude = alt;
+                        if (TryParseIfPresent(tValue[ranges[3]], out var roll)) transform.Roll = roll;
+                        if (TryParseIfPresent(tValue[ranges[4]], out var pitch)) transform.Pitch = pitch;
+                        if (TryParseIfPresent(tValue[ranges[5]], out var yaw)) transform.Yaw = yaw;
+                        if (TryParseIfPresent(tValue[ranges[6]], out var u)) transform.U = u;
+                        if (TryParseIfPresent(tValue[ranges[7]], out var v)) transform.V = v;
+                        if (TryParseIfPresent(tValue[ranges[8]], out var heading)) transform.Heading = heading;
                     }
                     break;
             }
@@ -723,11 +741,19 @@ public class AcmiClientService : IAcmiClientService
         }
     }
 
-    private static double ParseDoubleOrDefault(ReadOnlySpan<char> span)
+    /// <summary>
+    /// Attempts to parse a double value only if the span is non-empty.
+    /// This preserves previous values when the compressed stream omits unchanged data.
+    /// </summary>
+    /// <returns>True if a value was present and successfully parsed</returns>
+    private static bool TryParseIfPresent(ReadOnlySpan<char> span, out double result)
     {
-        return double.TryParse(span, NumberStyles.Float, CultureInfo.InvariantCulture, out double result) 
-            ? result 
-            : 0.0;
+        // Skip empty fields - compressed stream only sends changed values
+        if (!span.IsEmpty && !span.IsWhiteSpace())
+            return double.TryParse(span, NumberStyles.Float, CultureInfo.InvariantCulture, out result);
+        result = 0;
+        return false;
+
     }
 
     private readonly List<byte> _persistentBuffer = new();
@@ -841,7 +867,7 @@ public class AcmiClientService : IAcmiClientService
             Timestamp = DateTime.UtcNow
         });
         
-        _logger.LogInformation("New aircraft discovered: {ObjectId} - {CallSign} ({Name})",
+        _logger.LogDebug("New aircraft discovered: {ObjectId} - {CallSign} ({Name})",
             aircraft.ObjectId, aircraft.CallSign ?? "Unknown", aircraft.Name ?? "Unknown");
     }
 
