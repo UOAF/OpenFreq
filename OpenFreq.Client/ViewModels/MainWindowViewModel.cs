@@ -505,7 +505,8 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         // Only interested in channels we are transmitting or idling in
         if (e.TransmissionStatus == Channel.ChannelTransmissionStatus.Receiving) return;
 
-        Dispatcher.UIThread.Post(() =>
+Dispatcher.UIThread.Post(() =>
+
         {
             // This isn't ideal performance-wise, but we don't have too many peers and there is no ObservableDictionary
             foreach (var peer in PeerList
@@ -559,7 +560,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
                     {
                         _hotkeyService.RegisterHotkey(IHotkeyService.HotkeyType.Ptt, channel.PttHotKey, channel.Id);
                     }
-                }
+                } 
             }
         }
         catch (Exception ex)

@@ -110,6 +110,15 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
 
 
     [RelayCommand]
+    public void BmsLobby1Clicked()
+    {
+        Name = "BMS Lobby 1";
+        FrequencyKhz = 1234;
+        PttHotKey = new KeyboardBinding(KeyCode.VcF1);
+        ToggleEditing();
+    }
+
+    [RelayCommand]
     public void BmsLobby2Clicked()
     {
         Name = "BMS Lobby 2";
@@ -117,16 +126,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         PttHotKey = new KeyboardBinding(KeyCode.VcF2);
         ToggleEditing();
     }
-
-    [RelayCommand]
-    public void BmsLobby1Clicked()
-    {
-        Name = "BMS Lobby 1";
-        FrequencyKhz = 339750;
-        PttHotKey = new KeyboardBinding(KeyCode.VcF1);
-        ToggleEditing();
-    }
-
+    
 
     public ChannelCardViewModel(IOpenFreqService openFreqService, IHotkeyService hotkeyService, string name,
         int frequencyKhz, bool isInEditMode,
