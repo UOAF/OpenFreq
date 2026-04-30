@@ -6,6 +6,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -29,6 +30,7 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsReadyToConnect))]
     public partial string OpenFreqServerAddress { get; set; } = string.Empty;
+
     [ObservableProperty] public partial string DisplayName { get; set; } = "Joe Pilot";
     [ObservableProperty] public partial string OpenFreqPassword { get; set; } = string.Empty;
     [ObservableProperty] public partial ObservableCollection<string> PlaybackDeviceNames { get; set; } = [];
@@ -90,10 +92,12 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial RadioPlayback.AudioChannel BmsVhfAudioChannel { get; set; } = RadioPlayback.AudioChannel.Both;
 
-    [ObservableProperty][NotifyPropertyChangedFor(nameof(BmsUhfSquelchHotkeyDisplay))]
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(BmsUhfSquelchHotkeyDisplay))]
     public partial KeyCode BmsUhfSquelchHotkey { get; set; } = KeyCode.VcUndefined;
 
-    [ObservableProperty][NotifyPropertyChangedFor(nameof(BmsVhfSquelchHotkeyDisplay))]
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(BmsVhfSquelchHotkeyDisplay))]
     public partial KeyCode BmsVhfSquelchHotkey { get; set; } = KeyCode.VcUndefined;
 
     public string BmsUhfSquelchHotkeyDisplay =>
@@ -108,7 +112,15 @@ public partial class SettingsViewModel : ViewModelBase
 
 
     // This is displayed in the Top Bar but shared throughout the app
-        [ObservableProperty] public partial bool Is3dMode { get; set; }
+    [ObservableProperty] public partial bool Is3dMode { get; set; }
+
+    [ObservableProperty] public partial bool IsDarkMode { get; set; }
+
+    partial void OnIsDarkModeChanged(bool value)
+    {
+        var app = Application.Current;
+        app?.RequestedThemeVariant = value ? ThemeVariant.Dark : ThemeVariant.Light;
+    }
 
     partial void OnIs3dModeChanged(bool value)
     {
@@ -135,7 +147,8 @@ public partial class SettingsViewModel : ViewModelBase
         }
     }
 
-    public SettingsViewModel(ILogger<SettingsViewModel> logger, IAudioService audioService, IFalconRadioSharedMemoryService falconRadioSharedMemoryService,
+    public SettingsViewModel(ILogger<SettingsViewModel> logger, IAudioService audioService,
+        IFalconRadioSharedMemoryService falconRadioSharedMemoryService,
         IFalconSharedMemoryService falconSharedMemoryService, IAcmiClientService acmiClientService,
         IOpenFreqService openFreqService, IHotkeyService hotkeyService)
     {
@@ -182,7 +195,7 @@ public partial class SettingsViewModel : ViewModelBase
             });
         }
     }
-    
+
     private void OnRecordingDevicesChanged(object? sender, DeviceChangedEventArgs e)
     {
         Dispatcher.UIThread.Post(() =>
@@ -277,6 +290,7 @@ public partial class SettingsViewModel : ViewModelBase
 
     public void LoadFromSettings(OpenFreqSettings settings)
     {
+        IsDarkMode = settings.IsDarkMode;
         OpenFreqServerAddress = settings.OpenFreqServerAddress;
         OpenFreqPassword = settings.OpenFreqPassword;
         ConnectionMode = settings.OwnPositionMode;
@@ -367,6 +381,8 @@ public partial class SettingsViewModel : ViewModelBase
 
         MainWindow.Width = settings.Width.Value;
         MainWindow.Height = settings.Height.Value;
+        
+        OnIsDarkModeChanged(false);
     }
 
     private Screen? FindScreenContainingPositionInWorkingArea(PixelPoint position)
@@ -395,6 +411,7 @@ public partial class SettingsViewModel : ViewModelBase
     {
         return new OpenFreqSettings
         {
+            IsDarkMode =  IsDarkMode,
             OpenFreqServerAddress = OpenFreqServerAddress,
             OpenFreqPassword = OpenFreqPassword,
             OwnPositionMode = ConnectionMode,

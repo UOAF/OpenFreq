@@ -63,17 +63,35 @@
                 <!-- Settings Drawer -->
                 <DockPanel Width="320">
                     <!-- Header with Mode Selection -->
+                    <!-- Header with Mode Selection -->
                     <Border DockPanel.Dock="Top"
                             Background="{DynamicResource MaterialPaperBrush}"
                             Padding="16"
                             BorderBrush="{DynamicResource MaterialDividerBrush}"
                             BorderThickness="0,0,0,1">
                         <StackPanel>
-                            <TextBlock Text="Settings"
-                                       FontSize="18"
-                                       FontWeight="SemiBold"
-                                       Margin="0,0,0,12" />
-
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+                                <TextBlock Grid.Column="0"
+                                           Text="Settings"
+                                           FontSize="18"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center" />
+            
+                                <!-- Theme Toggle Switch -->
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="3">
+                                    <avalonia:MaterialIcon Kind="Brightness7"
+                                                           Width="16" Height="16"
+                                                           Margin="0,0,8,0"
+                                                           Foreground="{DynamicResource PrimaryHueMidBrush}" />
+                                    <ToggleSwitch
+                                        IsChecked="{Binding Settings.IsDarkMode}"
+                                        VerticalAlignment="Center" />
+                                    <avalonia:MaterialIcon Kind="MoonWaningCrescent"
+                                                           Width="16" Height="16"
+                                                           Margin="0,0,8,0"
+                                                           Foreground="{DynamicResource PrimaryHueMidBrush}" />
+                                </StackPanel>
+                            </Grid>
                             <!-- Mode Toggle with Background -->
                             <Border Background="{DynamicResource MaterialBackgroundBrush}"
                                     CornerRadius="8"
@@ -455,6 +473,8 @@
                                 </StackPanel>
                             </RadioButton>
                         </StackPanel>
+
+
 
                         <!-- Connection Statuses (Center/Fill) -->
                         <StackPanel Orientation="Horizontal"

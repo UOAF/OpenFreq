@@ -1,3 +1,5 @@
+using Avalonia;
+using Avalonia.Styling;
 using OpenFreqAudio;
 using OpenFreqClient.Services.Interfaces;
 
@@ -5,6 +7,7 @@ namespace OpenFreqClient.Models;
 
 public class OpenFreqSettings
 {
+    public bool IsDarkMode { get; set; } = Application.Current?.ActualThemeVariant == ThemeVariant.Dark;
     public string OpenFreqServerAddress { get; set; } = "";
     public string OpenFreqPassword { get; set; } = "";
 
