@@ -16,6 +16,7 @@ using Mapsui.Styles;
 using Mapsui.Tiling.Layers;
 using NetTopologySuite.Geometries;
 using OpenFreq.Utilities;
+using OpenFreqClient.Json;
 using Brush = Mapsui.Styles.Brush;
 using Point = NetTopologySuite.Geometries.Point;
 using MapsuiColor = Mapsui.Styles.Color;
@@ -210,8 +211,7 @@ public partial class MapPickerViewModel : ViewModelBase
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var results = JsonSerializer.Deserialize<NominatimResult[]>(json);
-
+            var results = JsonSerializer.Deserialize(json, ClientJsonContext.Default.NominatimResultArray);
             if (results == null || results.Length == 0)
             {
                 SearchError = "No results found";
