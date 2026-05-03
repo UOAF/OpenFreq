@@ -75,7 +75,7 @@ public class RtpAudioReceiver : IDisposable
         {
             Task.Run(async () =>
                 {
-                    while (_cts.IsCancellationRequested)
+                    while (!_cts.IsCancellationRequested)
                     {
                         var stats = GetStatistics();
                         _logger.LogDebug("Network Stats (aggregated)");
@@ -246,6 +246,10 @@ public class RtpAudioReceiver : IDisposable
             catch (OperationCanceledException)
             {
                 break;
+            }
+            catch (Exception ex)
+            {
+                ErrorOccurred?.Invoke(this, $"Playout error: {ex.Message}");
             }
         }
     }

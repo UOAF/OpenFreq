@@ -137,6 +137,11 @@ public sealed class RtpSourceContext : IDisposable
             {
                 break;
             }
+            catch (Exception ex)
+            {
+                // Don't let a single decode failure permanently kill this SSRC's audio.
+                Logger.LogError(ex, "SSRC={Ssrc:X8}: unhandled exception in decode loop", Ssrc);
+            }
         }
     }
 
