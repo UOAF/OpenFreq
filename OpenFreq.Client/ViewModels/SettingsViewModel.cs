@@ -236,7 +236,7 @@ public partial class SettingsViewModel : ViewModelBase
         if (value >= 0 && value < RecordingDeviceNames.Count)
         {
             InputDeviceName = RecordingDeviceNames[value];
-            _openFreqService.RecordingDeviceIndex = value;
+            _openFreqService.RecordingDeviceIndex = _audioService.GetRecordingBassIndex(value);
         }
     }
 
@@ -245,7 +245,7 @@ public partial class SettingsViewModel : ViewModelBase
         if (value >= 0 && value < PlaybackDeviceNames.Count)
         {
             OutputDeviceName = PlaybackDeviceNames[value];
-            _openFreqService.PlaybackDeviceIndex = value;
+            _openFreqService.PlaybackDeviceIndex = _audioService.GetPlaybackBassIndex(value);
         }
     }
 

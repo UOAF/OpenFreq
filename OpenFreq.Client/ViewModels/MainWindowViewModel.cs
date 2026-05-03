@@ -294,8 +294,9 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
             }
 
             // Initialize service with settings
-            await _openFreqService.Initialize(Settings.GetSettings(), Settings.RecordingDeviceIndex,
-                Settings.PlaybackDeviceIndex);
+            await _openFreqService.Initialize(Settings.GetSettings(),
+                _audioService.GetRecordingBassIndex(Settings.RecordingDeviceIndex),
+                _audioService.GetPlaybackBassIndex(Settings.PlaybackDeviceIndex));
 
             // Connect to server (channels will auto-join when authenticated)
             await _openFreqService.ConnectAsync();

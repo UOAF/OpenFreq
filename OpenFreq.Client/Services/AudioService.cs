@@ -24,6 +24,10 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
     public event EventHandler<DeviceChangedEventArgs>? PlaybackDevicesChanged;
     public event EventHandler<DeviceChangedEventArgs>? RecordingDevicesChanged;
 
+    // BASS device indices parallel to the enabled-device name lists
+    private List<int> _playbackBassIndices = new();
+    private List<int> _recordingBassIndices = new();
+
     // Device monitoring
     private CancellationTokenSource? _monitoringCts;
     private Task? _monitoringTask;
@@ -112,16 +116,16 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
         {
             logger.LogWarning("Playback device '{DeviceName}' not found, falling back to default device {DefaultDevice}",
                 _selectedPlaybackDeviceName, DefaultPlaybackDevice);
-            newIndex = DefaultPlaybackDevice;
+            newIndex = DefaultPlaybackDevice; // list index
 
             if (newIndex != -1)
             {
-                var deviceInfo = Bass.GetDeviceInfo(newIndex);
+                var deviceInfo = Bass.GetDeviceInfo(GetPlaybackBassIndex(newIndex));
                 _selectedPlaybackDeviceName = deviceInfo.Name;
             }
         }
 
-        _selectedPlaybackDeviceIndex = newIndex;
+        _selectedPlaybackDeviceIndex = newIndex; // list index
 
         PlaybackDevicesChanged?.Invoke(this, new DeviceChangedEventArgs
         {
@@ -150,16 +154,16 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
         {
             logger.LogWarning("Recording device '{DeviceName}' not found, falling back to default device {DefaultDevice}",
                 _selectedRecordingDeviceName, DefaultRecordingDevice);
-            newIndex = DefaultRecordingDevice;
+            newIndex = DefaultRecordingDevice; // list index
 
             if (newIndex != -1)
             {
-                var deviceInfo = Bass.RecordGetDeviceInfo(newIndex);
+                var deviceInfo = Bass.RecordGetDeviceInfo(GetRecordingBassIndex(newIndex));
                 _selectedRecordingDeviceName = deviceInfo.Name;
             }
         }
 
-        _selectedRecordingDeviceIndex = newIndex;
+        _selectedRecordingDeviceIndex = newIndex; // list index
 
         RecordingDevicesChanged?.Invoke(this, new DeviceChangedEventArgs
         {
@@ -173,15 +177,15 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
 
     private int FindDeviceIndexByName(string deviceName, bool isRecording)
     {
+        int listIndex = 0;
         if (isRecording)
         {
             for (var i = 0; i < Bass.RecordingDeviceCount; i++)
             {
                 var deviceInfo = Bass.RecordGetDeviceInfo(i);
-                if (deviceInfo.IsEnabled && deviceInfo.Name == deviceName)
-                {
-                    return i;
-                }
+                if (!deviceInfo.IsEnabled) continue;
+                if (deviceInfo.Name == deviceName) return listIndex;
+                listIndex++;
             }
         }
         else
@@ -189,10 +193,9 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
             for (var i = 0; i < Bass.DeviceCount; i++)
             {
                 var deviceInfo = Bass.GetDeviceInfo(i);
-                if (deviceInfo.IsEnabled && deviceInfo.Name == deviceName)
-                {
-                    return i;
-                }
+                if (!deviceInfo.IsEnabled) continue;
+                if (deviceInfo.Name == deviceName) return listIndex;
+                listIndex++;
             }
         }
 
@@ -235,15 +238,17 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
     public List<string> GetPlaybackDevices()
     {
         List<string> deviceList = [];
+        _playbackBassIndices = [];
         DefaultPlaybackDevice = -1;
 
         for (var i = 0; i < Bass.DeviceCount; i++)
         {
             var deviceInfo = Bass.GetDeviceInfo(i);
             if (!deviceInfo.IsEnabled) continue;
-            deviceList.Add(deviceInfo.Name);
             if (deviceInfo.IsDefault)
-                DefaultPlaybackDevice = i;
+                DefaultPlaybackDevice = deviceList.Count; // list index, not BASS index
+            deviceList.Add(deviceInfo.Name);
+            _playbackBassIndices.Add(i);
         }
 
         return deviceList;
@@ -252,19 +257,27 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
     public List<string> GetRecordingDevices()
     {
         List<string> deviceList = [];
+        _recordingBassIndices = [];
         DefaultRecordingDevice = -1;
 
         for (var i = 0; i < Bass.RecordingDeviceCount; i++)
         {
             var deviceInfo = Bass.RecordGetDeviceInfo(i);
             if (!deviceInfo.IsEnabled) continue;
-            deviceList.Add(deviceInfo.Name);
             if (deviceInfo.IsDefault)
-                DefaultRecordingDevice = i;
+                DefaultRecordingDevice = deviceList.Count; // list index, not BASS index
+            deviceList.Add(deviceInfo.Name);
+            _recordingBassIndices.Add(i);
         }
 
         return deviceList;
     }
+
+    public int GetPlaybackBassIndex(int listIndex)
+        => listIndex >= 0 && listIndex < _playbackBassIndices.Count ? _playbackBassIndices[listIndex] : -1;
+
+    public int GetRecordingBassIndex(int listIndex)
+        => listIndex >= 0 && listIndex < _recordingBassIndices.Count ? _recordingBassIndices[listIndex] : -1;
 
     public async ValueTask DisposeAsync()
     {
