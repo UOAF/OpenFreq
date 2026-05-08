@@ -298,28 +298,19 @@
                                         </Grid>
 
                                         <!-- BMS auto-detection (Windows + BMS found) -->
-                                        <StackPanel IsVisible="{Binding Settings.BmsInstallFound}"
-                                                    Margin="0,0,0,12">
+                                        <StackPanel IsVisible="{Binding Settings.BmsInstallFound}">
                                             <TextBlock Text="BMS Theater" Classes="InputLabel" />
                                             <ComboBox ItemsSource="{Binding Settings.BmsInstalledTheaters}"
                                                       SelectedItem="{Binding Settings.SelectedBmsTheater}"
                                                       IsEnabled="{Binding !OpenFreqConnected}"
                                                       HorizontalAlignment="Stretch"
-                                                      Margin="0,0,0,8">
+                                                      Margin="0,0,0,12">
                                                 <ComboBox.ItemTemplate>
                                                     <DataTemplate>
                                                         <TextBlock Text="{Binding Name}" />
                                                     </DataTemplate>
                                                 </ComboBox.ItemTemplate>
                                             </ComboBox>
-                                            <CheckBox Content="Select heightmap file manually"
-                                                      IsChecked="{Binding Settings.UseManualHeightmap}"
-                                                      IsEnabled="{Binding !OpenFreqConnected}" />
-                                        </StackPanel>
-
-                                        <!-- Auto-detected heightmap info -->
-                                        <StackPanel IsVisible="{Binding Settings.ShowAutoHeightmapInfo}"
-                                                    Margin="0,0,0,0">
                                             <TextBlock Text="Heightmap" Classes="InputLabel" />
                                             <Border Background="{DynamicResource MaterialBackgroundBrush}"
                                                     BorderBrush="{DynamicResource MaterialDividerBrush}"
@@ -341,8 +332,8 @@
                                             </Border>
                                         </StackPanel>
 
-                                        <!-- Manual selection (non-Windows / BMS not found / override) -->
-                                        <StackPanel IsVisible="{Binding Settings.ShowManualHeightmapPicker}">
+                                        <!-- Manual selection (non-Windows or BMS not found) -->
+                                        <StackPanel IsVisible="{Binding !Settings.BmsInstallFound}">
                                             <TextBlock Text="Theater" Classes="InputLabel" />
                                             <ComboBox ItemsSource="{Binding Settings.AvailableTheaterNames}"
                                                       SelectedItem="{Binding Settings.SelectedTheater}"

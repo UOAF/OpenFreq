@@ -44,10 +44,7 @@ public partial class SettingsViewModel : ViewModelBase
     private static readonly string[] DefaultTheaterNames = ["Korea KTO", "Balkans", "Ikaros", "ITO"];
     private bool _suppressBmsTheaterSideEffects;
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowManualHeightmapPicker))]
-    [NotifyPropertyChangedFor(nameof(ShowAutoHeightmapInfo))]
-    public partial bool BmsInstallFound { get; set; }
+    [ObservableProperty] public partial bool BmsInstallFound { get; set; }
 
     [ObservableProperty] public partial ObservableCollection<BmsInstalledTheater> BmsInstalledTheaters { get; set; } = [];
 
@@ -55,15 +52,7 @@ public partial class SettingsViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsReadyToConnect))]
     public partial BmsInstalledTheater? SelectedBmsTheater { get; set; }
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowManualHeightmapPicker))]
-    [NotifyPropertyChangedFor(nameof(ShowAutoHeightmapInfo))]
-    public partial bool UseManualHeightmap { get; set; }
-
     [ObservableProperty] public partial ObservableCollection<string> AvailableTheaterNames { get; set; } = new(DefaultTheaterNames);
-
-    public bool ShowManualHeightmapPicker => !BmsInstallFound || UseManualHeightmap;
-    public bool ShowAutoHeightmapInfo => BmsInstallFound && !UseManualHeightmap;
 
 
     [ObservableProperty]
@@ -164,15 +153,6 @@ public partial class SettingsViewModel : ViewModelBase
         SelectedTheater = value.Name;
     }
 
-    partial void OnUseManualHeightmapChanged(bool value)
-    {
-        if (!value && SelectedBmsTheater != null)
-        {
-            HeightmapPath = SelectedBmsTheater.HeightmapPath;
-            SelectedTheater = SelectedBmsTheater.Name;
-        }
-    }
-
     private void InitializeBmsDetection()
     {
         var bmsDir = BmsDetectionService.GetBmsDirectory();
@@ -188,11 +168,7 @@ public partial class SettingsViewModel : ViewModelBase
         BmsInstalledTheaters = new ObservableCollection<BmsInstalledTheater>(theaters);
 
         foreach (var t in theaters)
-        {
             TheaterCoordinateConverter.RegisterTheater(t.Name, t.ProjString, t.CenterLat, t.CenterLon);
-            if (!AvailableTheaterNames.Contains(t.Name))
-                AvailableTheaterNames.Add(t.Name);
-        }
     }
 
     public SettingsViewModel(ILogger<SettingsViewModel> logger, IAudioService audioService, IFalconRadioSharedMemoryService falconRadioSharedMemoryService,
