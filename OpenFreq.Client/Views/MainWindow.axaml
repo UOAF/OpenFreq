@@ -297,16 +297,31 @@
                                             </Ellipse>
                                         </Grid>
 
-                                        <TextBlock Text="Theater" Classes="InputLabel" />
-                                        <ComboBox ItemsSource="{x:Static local:TheaterCoordinateConverter.AllTheaters}"
-                                                  SelectedItem="{Binding Settings.SelectedTheater}"
-                                                  HorizontalAlignment="Stretch"
-                                                  Margin="0,0,0,12" />
+                                        <!-- BMS auto-detection (Windows + BMS found) -->
+                                        <StackPanel IsVisible="{Binding Settings.BmsInstallFound}"
+                                                    Margin="0,0,0,12">
+                                            <TextBlock Text="BMS Theater" Classes="InputLabel" />
+                                            <ComboBox ItemsSource="{Binding Settings.BmsInstalledTheaters}"
+                                                      SelectedItem="{Binding Settings.SelectedBmsTheater}"
+                                                      IsEnabled="{Binding !OpenFreqConnected}"
+                                                      HorizontalAlignment="Stretch"
+                                                      Margin="0,0,0,8">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding Name}" />
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                            <CheckBox Content="Select heightmap file manually"
+                                                      IsChecked="{Binding Settings.UseManualHeightmap}"
+                                                      IsEnabled="{Binding !OpenFreqConnected}" />
+                                        </StackPanel>
 
-                                        <TextBlock Text="File" Classes="InputLabel" />
-                                        <Grid ColumnDefinitions="*,Auto">
-                                            <Border Grid.Column="0"
-                                                    Background="{DynamicResource MaterialBackgroundBrush}"
+                                        <!-- Auto-detected heightmap info -->
+                                        <StackPanel IsVisible="{Binding Settings.ShowAutoHeightmapInfo}"
+                                                    Margin="0,0,0,0">
+                                            <TextBlock Text="Heightmap" Classes="InputLabel" />
+                                            <Border Background="{DynamicResource MaterialBackgroundBrush}"
                                                     BorderBrush="{DynamicResource MaterialDividerBrush}"
                                                     BorderThickness="1"
                                                     CornerRadius="4"
@@ -317,21 +332,53 @@
                                                                FontSize="11"
                                                                TextTrimming="CharacterEllipsis"
                                                                IsVisible="{Binding Settings.HeightmapPath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                                                    <TextBlock
-                                                        IsVisible="{Binding Settings.HeightmapPath, Converter={x:Static StringConverters.IsNullOrEmpty}}"
-                                                        Text="No heightmap selected"
-                                                        FontSize="11"
-                                                        Foreground="Red"
-                                                        Opacity="0.7" />
+                                                    <TextBlock Text="Select a BMS theater above"
+                                                               FontSize="11"
+                                                               Foreground="Red"
+                                                               Opacity="0.7"
+                                                               IsVisible="{Binding Settings.HeightmapPath, Converter={x:Static StringConverters.IsNullOrEmpty}}" />
                                                 </Panel>
                                             </Border>
-                                            <Button Grid.Column="1"
-                                                    Click="HeightmapButton_OnClick"
-                                                    Padding="12,8"
-                                                    Margin="8,0,0,0">
-                                                <avalonia:MaterialIcon Kind="FolderOpen" Width="16" Height="16" />
-                                            </Button>
-                                        </Grid>
+                                        </StackPanel>
+
+                                        <!-- Manual selection (non-Windows / BMS not found / override) -->
+                                        <StackPanel IsVisible="{Binding Settings.ShowManualHeightmapPicker}">
+                                            <TextBlock Text="Theater" Classes="InputLabel" />
+                                            <ComboBox ItemsSource="{Binding Settings.AvailableTheaterNames}"
+                                                      SelectedItem="{Binding Settings.SelectedTheater}"
+                                                      HorizontalAlignment="Stretch"
+                                                      Margin="0,0,0,12" />
+
+                                            <TextBlock Text="File" Classes="InputLabel" />
+                                            <Grid ColumnDefinitions="*,Auto">
+                                                <Border Grid.Column="0"
+                                                        Background="{DynamicResource MaterialBackgroundBrush}"
+                                                        BorderBrush="{DynamicResource MaterialDividerBrush}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="4"
+                                                        Padding="12,8"
+                                                        ToolTip.Tip="{Binding Settings.HeightmapPath}">
+                                                    <Panel>
+                                                        <TextBlock Text="{Binding Settings.HeightmapPath}"
+                                                                   FontSize="11"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   IsVisible="{Binding Settings.HeightmapPath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                                        <TextBlock
+                                                            IsVisible="{Binding Settings.HeightmapPath, Converter={x:Static StringConverters.IsNullOrEmpty}}"
+                                                            Text="No heightmap selected"
+                                                            FontSize="11"
+                                                            Foreground="Red"
+                                                            Opacity="0.7" />
+                                                    </Panel>
+                                                </Border>
+                                                <Button Grid.Column="1"
+                                                        Click="HeightmapButton_OnClick"
+                                                        Padding="12,8"
+                                                        Margin="8,0,0,0">
+                                                    <avalonia:MaterialIcon Kind="FolderOpen" Width="16" Height="16" />
+                                                </Button>
+                                            </Grid>
+                                        </StackPanel>
                                     </StackPanel>
                                 </controls:Card>
 

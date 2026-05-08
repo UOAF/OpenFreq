@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -14,7 +15,9 @@ using FalconRadioService.Services;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Client.Models;
 using OpenFreq.Services.Acmi;
+using OpenFreq.Utilities;
 using OpenFreqClient.Models;
+using OpenFreqClient.Services;
 using OpenFreqClient.Services.Interfaces;
 
 namespace OpenFreqClient.ViewModels;
@@ -36,6 +39,31 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] public partial int RecordingDeviceIndex { get; set; }
     [ObservableProperty] public partial int PlaybackDeviceIndex { get; set; }
     [ObservableProperty] public partial string SelectedTheater { get; set; } = "Korea KTO";
+
+    // BMS auto-detection
+    private static readonly string[] DefaultTheaterNames = ["Korea KTO", "Balkans", "Ikaros", "ITO"];
+    private bool _suppressBmsTheaterSideEffects;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowManualHeightmapPicker))]
+    [NotifyPropertyChangedFor(nameof(ShowAutoHeightmapInfo))]
+    public partial bool BmsInstallFound { get; set; }
+
+    [ObservableProperty] public partial ObservableCollection<BmsInstalledTheater> BmsInstalledTheaters { get; set; } = [];
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsReadyToConnect))]
+    public partial BmsInstalledTheater? SelectedBmsTheater { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowManualHeightmapPicker))]
+    [NotifyPropertyChangedFor(nameof(ShowAutoHeightmapInfo))]
+    public partial bool UseManualHeightmap { get; set; }
+
+    [ObservableProperty] public partial ObservableCollection<string> AvailableTheaterNames { get; set; } = new(DefaultTheaterNames);
+
+    public bool ShowManualHeightmapPicker => !BmsInstallFound || UseManualHeightmap;
+    public bool ShowAutoHeightmapInfo => BmsInstallFound && !UseManualHeightmap;
 
 
     [ObservableProperty]
@@ -129,6 +157,44 @@ public partial class SettingsViewModel : ViewModelBase
         }
     }
 
+    partial void OnSelectedBmsTheaterChanged(BmsInstalledTheater? value)
+    {
+        if (value == null || _suppressBmsTheaterSideEffects) return;
+        HeightmapPath = value.HeightmapPath;
+        SelectedTheater = value.Name;
+    }
+
+    partial void OnUseManualHeightmapChanged(bool value)
+    {
+        if (!value && SelectedBmsTheater != null)
+        {
+            HeightmapPath = SelectedBmsTheater.HeightmapPath;
+            SelectedTheater = SelectedBmsTheater.Name;
+        }
+    }
+
+    private void InitializeBmsDetection()
+    {
+        var bmsDir = BmsDetectionService.GetBmsDirectory();
+        if (bmsDir == null) return;
+
+        List<BmsInstalledTheater> theaters;
+        try { theaters = BmsDetectionService.GetInstalledTheaters(bmsDir); }
+        catch { return; }
+
+        if (theaters.Count == 0) return;
+
+        BmsInstallFound = true;
+        BmsInstalledTheaters = new ObservableCollection<BmsInstalledTheater>(theaters);
+
+        foreach (var t in theaters)
+        {
+            TheaterCoordinateConverter.RegisterTheater(t.Name, t.ProjString, t.CenterLat, t.CenterLon);
+            if (!AvailableTheaterNames.Contains(t.Name))
+                AvailableTheaterNames.Add(t.Name);
+        }
+    }
+
     public SettingsViewModel(ILogger<SettingsViewModel> logger, IAudioService audioService, IFalconRadioSharedMemoryService falconRadioSharedMemoryService,
         IFalconSharedMemoryService falconSharedMemoryService, IAcmiClientService acmiClientService,
         IOpenFreqService openFreqService, IHotkeyService hotkeyService)
@@ -141,6 +207,7 @@ public partial class SettingsViewModel : ViewModelBase
         _openFreqService = openFreqService;
         _hotkeyService = hotkeyService;
         InitializeAudioDevices();
+        InitializeBmsDetection();
     }
 
     private void InitializeAudioDevices()
@@ -294,6 +361,19 @@ public partial class SettingsViewModel : ViewModelBase
         }
 
         RestoreWindowPosition(settings);
+
+        // Re-select BMS theater from saved heightmap path
+        if (BmsInstallFound && !string.IsNullOrEmpty(HeightmapPath))
+        {
+            var match = BmsInstalledTheaters.FirstOrDefault(t =>
+                string.Equals(t.HeightmapPath, HeightmapPath, StringComparison.OrdinalIgnoreCase));
+            if (match != null)
+            {
+                _suppressBmsTheaterSideEffects = true;
+                SelectedBmsTheater = match;
+                _suppressBmsTheaterSideEffects = false;
+            }
+        }
     }
 
     private void RestoreWindowPosition(OpenFreqSettings settings)

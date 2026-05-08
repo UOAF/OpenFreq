@@ -210,6 +210,15 @@ namespace OpenFreq.Utilities
         /// </summary>
         public static IEnumerable<string> GetAvailableTheaters() => Theaters.Keys;
 
+        /// <summary>
+        /// Registers a dynamically-detected theater (e.g., from BMS installation scan).
+        /// No-op if name is already registered.
+        /// </summary>
+        public static void RegisterTheater(string name, string projString, double centerLat, double centerLon)
+        {
+            Theaters.TryAdd(name, new Theater(name, projString, centerLat, centerLon));
+        }
+
         // For UI bindings
         public static readonly IEnumerable<string> AllTheaters = ["Korea KTO", "Balkans", "HTO", "ITO"];
 
