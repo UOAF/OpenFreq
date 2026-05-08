@@ -61,7 +61,7 @@ public static class BmsDetectionService
 
     private static BmsInstalledTheater? ParseTdfFile(string bmsDirectory, string tdfPath)
     {
-        string? name = null, newTerrainDir = null, terrainDir = null;
+        string? name = null, terrainDir = null;
 
         foreach (var rawLine in File.ReadAllLines(tdfPath))
         {
@@ -75,19 +75,21 @@ public static class BmsDetectionService
             switch (key)
             {
                 case "name": name = value; break;
-                case "newterraindir": newTerrainDir = value; break;
                 case "terraindir":
                     if (terrainDir == null) terrainDir = value;
                     break;
             }
         }
 
-        if (name == null || newTerrainDir == null || terrainDir == null) return null;
+        if (name == null || terrainDir == null) return null;
 
-        var heightmapPath = Path.Combine(bmsDirectory, "Data", newTerrainDir, "HeightMap.raw");
+        // Mirrors how OpenFreqService.cs resolves the heightmap in BMS mode:
+        // Path.Join(TheaterTerrainDir, "NewTerrain", "HeightMaps", "HeightMap.raw")
+        var absTerrainDir = Path.Combine(bmsDirectory, "Data", terrainDir);
+        var heightmapPath = Path.Combine(absTerrainDir, "NewTerrain", "HeightMaps", "HeightMap.raw");
         if (!File.Exists(heightmapPath)) return null;
 
-        var theaterTxtPath = Path.Combine(bmsDirectory, "Data", terrainDir, "Theater.txt");
+        var theaterTxtPath = Path.Combine(absTerrainDir, "Theater.txt");
         return ParseTheaterTxt(name, heightmapPath, theaterTxtPath);
     }
 
