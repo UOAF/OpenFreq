@@ -20,8 +20,7 @@ public static class BmsDetectionService
 
     public static string? GetBmsDirectory()
     {
-        if (!OperatingSystem.IsWindows()) return null;
-        return GetBmsDirectoryWindows();
+        return !OperatingSystem.IsWindows() ? null : GetBmsDirectoryWindows();
     }
 
     [SupportedOSPlatform("windows")]
@@ -89,7 +88,7 @@ public static class BmsDetectionService
         var heightmapPath = Path.Combine(absTerrainDir, "NewTerrain", "HeightMaps", "HeightMap.raw");
         if (!File.Exists(heightmapPath)) return null;
 
-        var theaterTxtPath = Path.Combine(absTerrainDir, "Theater.txt");
+        var theaterTxtPath = Path.Combine(absTerrainDir, "NewTerrain", "Theater.txt");
         return ParseTheaterTxt(name, heightmapPath, theaterTxtPath);
     }
 

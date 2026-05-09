@@ -42,7 +42,6 @@ public partial class SettingsViewModel : ViewModelBase
 
     // BMS auto-detection
     private static readonly string[] DefaultTheaterNames = ["Korea KTO", "Balkans", "Ikaros", "ITO"];
-    private bool _suppressBmsTheaterSideEffects;
 
     [ObservableProperty] public partial bool BmsInstallFound { get; set; }
 
@@ -148,7 +147,7 @@ public partial class SettingsViewModel : ViewModelBase
 
     partial void OnSelectedBmsTheaterChanged(BmsInstalledTheater? value)
     {
-        if (value == null || _suppressBmsTheaterSideEffects) return;
+        if (value == null) return;
         HeightmapPath = value.HeightmapPath;
         SelectedTheater = value.Name;
     }
@@ -345,9 +344,7 @@ public partial class SettingsViewModel : ViewModelBase
                 string.Equals(t.HeightmapPath, HeightmapPath, StringComparison.OrdinalIgnoreCase));
             if (match != null)
             {
-                _suppressBmsTheaterSideEffects = true;
                 SelectedBmsTheater = match;
-                _suppressBmsTheaterSideEffects = false;
             }
         }
     }

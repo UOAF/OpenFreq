@@ -54,7 +54,6 @@ namespace OpenFreq.Utilities
             public string ProjString { get; }
             private readonly ProjectionInfo _projectionInfo;
             private readonly ProjectionInfo _wgs84;
-            private double XOffsetM, YOffsetM;
             public (double x, double y) CenterProjected { get; private set; }
             
             // Pre-calculated corners in lat/lon (WGS84)
@@ -72,9 +71,6 @@ namespace OpenFreq.Utilities
                 
                 // Use the authoritative center from theater definition
                 CenterProjected = Transform(centerLat, centerLon);
-                XOffsetM = CenterProjected.x - (HEIGHTMAP_SIZE_M / 2);
-                YOffsetM = CenterProjected.y - (HEIGHTMAP_SIZE_M / 2);
-
                 
                 // Pre-calculate corners (in BMS position coordinate system)
                 var corners = new[]
