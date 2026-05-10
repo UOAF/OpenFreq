@@ -6,6 +6,8 @@ using DotSpatial.Projections;
 
 namespace OpenFreq.Utilities
 {
+    public record TheaterDefinition(string Name, string ProjString, double CenterLat, double CenterLon, string? HeightmapPath = null);
+
     public static partial class TheaterCoordinateConverter
     {
         private const int HEIGHTMAP_SIZE_M = 1024 * 1000;
@@ -210,9 +212,9 @@ namespace OpenFreq.Utilities
         /// Registers a dynamically-detected theater (e.g., from BMS installation scan).
         /// No-op if name is already registered.
         /// </summary>
-        public static void RegisterTheater(string name, string projString, double centerLat, double centerLon)
+        public static void RegisterTheater(TheaterDefinition theater)
         {
-            Theaters.TryAdd(name, new Theater(name, projString, centerLat, centerLon));
+            Theaters.TryAdd(theater.Name, new Theater(theater.Name, theater.ProjString, theater.CenterLat, theater.CenterLon));
         }
 
         // For UI bindings

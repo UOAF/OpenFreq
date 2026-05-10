@@ -3,16 +3,9 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Runtime.Versioning;
+using OpenFreq.Utilities;
 
 namespace OpenFreqClient.Services;
-
-public record BmsInstalledTheater(
-    string Name,
-    string HeightmapPath,
-    string ProjString,
-    double CenterLat,
-    double CenterLon
-);
 
 public static class BmsDetectionService
 {
@@ -37,13 +30,16 @@ public static class BmsDetectionService
         }
     }
 
-    public static List<BmsInstalledTheater> GetInstalledTheaters(string bmsDirectory)
+    public static List<TheaterDefinition> GetInstalledTheaters(string bmsDirectory)
     {
-        var result = new List<BmsInstalledTheater>();
+        var result = new List<TheaterDefinition>();
         var lstPath = Path.Combine(bmsDirectory, "Data", "TerrData", "TheaterDefinition", "theater.lst");
-        if (!File.Exists(lstPath)) return result;
 
-        foreach (var rawLine in File.ReadAllLines(lstPath))
+        IEnumerable<string> lines;
+        try { lines = File.ReadAllLines(lstPath); }
+        catch { return result; }
+
+        foreach (var rawLine in lines)
         {
             var line = rawLine.Trim();
             if (string.IsNullOrEmpty(line) || line.StartsWith('#')) continue;
@@ -51,14 +47,18 @@ public static class BmsDetectionService
             var tdfPath = Path.Combine(bmsDirectory, "Data", line);
             if (!File.Exists(tdfPath)) continue;
 
-            var theater = ParseTdfFile(bmsDirectory, tdfPath);
-            if (theater != null) result.Add(theater);
+            try
+            {
+                var theater = ParseTdfFile(bmsDirectory, tdfPath);
+                if (theater != null) result.Add(theater);
+            }
+            catch { /* skip this theater, continue with others */ }
         }
 
         return result;
     }
 
-    private static BmsInstalledTheater? ParseTdfFile(string bmsDirectory, string tdfPath)
+    private static TheaterDefinition? ParseTdfFile(string bmsDirectory, string tdfPath)
     {
         string? name = null, terrainDir = null;
 
@@ -92,7 +92,7 @@ public static class BmsDetectionService
         return ParseTheaterTxt(name, heightmapPath, theaterTxtPath);
     }
 
-    private static BmsInstalledTheater? ParseTheaterTxt(string name, string heightmapPath, string theaterTxtPath)
+    private static TheaterDefinition? ParseTheaterTxt(string name, string heightmapPath, string theaterTxtPath)
     {
         if (!File.Exists(theaterTxtPath)) return null;
 
@@ -109,6 +109,6 @@ public static class BmsDetectionService
                 double.TryParse(line["Center longitude=".Length..].Trim(), CultureInfo.InvariantCulture, out centerLon);
         }
 
-        return projString == null ? null : new BmsInstalledTheater(name, heightmapPath, projString, centerLat, centerLon);
+        return projString == null ? null : new TheaterDefinition(name, projString, centerLat, centerLon, heightmapPath);
     }
 }

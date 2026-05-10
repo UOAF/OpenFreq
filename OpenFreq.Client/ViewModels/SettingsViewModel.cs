@@ -45,11 +45,11 @@ public partial class SettingsViewModel : ViewModelBase
 
     [ObservableProperty] public partial bool BmsInstallFound { get; set; }
 
-    [ObservableProperty] public partial ObservableCollection<BmsInstalledTheater> BmsInstalledTheaters { get; set; } = [];
+    [ObservableProperty] public partial ObservableCollection<TheaterDefinition> TheaterDefinitions { get; set; } = [];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsReadyToConnect))]
-    public partial BmsInstalledTheater? SelectedBmsTheater { get; set; }
+    public partial TheaterDefinition? SelectedBmsTheater { get; set; }
 
     [ObservableProperty] public partial ObservableCollection<string> AvailableTheaterNames { get; set; } = new(DefaultTheaterNames);
 
@@ -145,10 +145,10 @@ public partial class SettingsViewModel : ViewModelBase
         }
     }
 
-    partial void OnSelectedBmsTheaterChanged(BmsInstalledTheater? value)
+    partial void OnSelectedBmsTheaterChanged(TheaterDefinition? value)
     {
         if (value == null) return;
-        HeightmapPath = value.HeightmapPath;
+        HeightmapPath = value.HeightmapPath ?? string.Empty;
         SelectedTheater = value.Name;
     }
 
@@ -157,17 +157,17 @@ public partial class SettingsViewModel : ViewModelBase
         var bmsDir = BmsDetectionService.GetBmsDirectory();
         if (bmsDir == null) return;
 
-        List<BmsInstalledTheater> theaters;
+        List<TheaterDefinition> theaters;
         try { theaters = BmsDetectionService.GetInstalledTheaters(bmsDir); }
         catch { return; }
 
         if (theaters.Count == 0) return;
 
         BmsInstallFound = true;
-        BmsInstalledTheaters = new ObservableCollection<BmsInstalledTheater>(theaters);
+        TheaterDefinitions = new ObservableCollection<TheaterDefinition>(theaters);
 
         foreach (var t in theaters)
-            TheaterCoordinateConverter.RegisterTheater(t.Name, t.ProjString, t.CenterLat, t.CenterLon);
+            TheaterCoordinateConverter.RegisterTheater(t);
     }
 
     public SettingsViewModel(ILogger<SettingsViewModel> logger, IAudioService audioService, IFalconRadioSharedMemoryService falconRadioSharedMemoryService,
@@ -340,7 +340,7 @@ public partial class SettingsViewModel : ViewModelBase
         // Re-select BMS theater from saved heightmap path
         if (BmsInstallFound && !string.IsNullOrEmpty(HeightmapPath))
         {
-            var match = BmsInstalledTheaters.FirstOrDefault(t =>
+            var match = TheaterDefinitions.FirstOrDefault(t =>
                 string.Equals(t.HeightmapPath, HeightmapPath, StringComparison.OrdinalIgnoreCase));
             if (match != null)
             {
