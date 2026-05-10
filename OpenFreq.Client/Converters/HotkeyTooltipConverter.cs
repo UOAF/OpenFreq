@@ -14,8 +14,8 @@ namespace OpenFreqClient.Converters
             if (value is bool hasHotkey)
             {
                 return hasHotkey
-                    ? "Click to change hotkey (or clear it)"
-                    : "Click to set a hotkey for Push-To-Talk";
+                    ? "Click to change hotkey, ESC clears it)"
+                    : "Click to set a hotkey";
             }
 
             return "Set hotkey";
