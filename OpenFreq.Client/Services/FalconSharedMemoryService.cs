@@ -454,12 +454,13 @@ public class FalconSharedMemoryService : IFalconSharedMemoryService
     public ServiceState State { get; }
     public FlightPosition? Position { get; }
     public FlightVelocity? Velocity { get; }
-    private FlightVelocity? _velocity;
     public string? TheaterTerrainDir { get; }
     public bool? IsFlying { get; }
     public double PollingFrequencyHz { get; set; }
+#pragma warning disable CS0067
     public event EventHandler<ServiceStateChangedEventArgs>? StateChanged;
     public event EventHandler<FlyingStateChangedEventArgs>? FlyingStateChanged;
+#pragma warning restore CS0067
 
     public void Start()
     {

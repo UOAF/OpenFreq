@@ -100,7 +100,9 @@ public class IvcMonitorService : IIvcMonitorService
 #else
 public class IvcMonitorService : IIvcMonitorService
 {
+#pragma warning disable CS0067
     public event EventHandler<IvcStatusChangedEventArgs>? IvcStatusChanged;
+#pragma warning restore CS0067
     public bool IsIvcRunning => false;
 
     public void Start() 

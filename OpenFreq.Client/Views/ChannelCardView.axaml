@@ -241,7 +241,7 @@
                                    Opacity="0.7"
                                    FontWeight="Medium" />
                         <TextBox Text="{Binding Name}"
-                                 Watermark="Enter channel name"
+                                 PlaceholderText="Enter channel name"
                                  Classes="Outline" />
                     </StackPanel>
 
@@ -252,7 +252,7 @@
                                    Opacity="0.7"
                                    FontWeight="Medium" />
                         <TextBox Text="{Binding FrequencyMhzString}"
-                                 Watermark="Enter frequency (MHz)"
+                                 PlaceholderText="Enter frequency (MHz)"
                                  Classes="Outline">
                             <TextBox.KeyBindings>
                                 <KeyBinding Command="{Binding ToggleEditingCommand}" Gesture="Enter" />

@@ -337,7 +337,8 @@ public class OpenFreqService : IOpenFreqService
 
         if (radioStationData == null)
         {
-            _logger.LogWarning("RadioStationData is null");
+            _logger.LogWarning("Not joining frequency {FrequencyKhz}, RadioStationData is null", frequencyKhz);
+            return;
         }
 
         if (_tunedFrequencies.ContainsKey(frequencyKhz))
@@ -748,6 +749,7 @@ public class OpenFreqService : IOpenFreqService
 
     private void OnClientFrequencyJoined(object? sender, FrequencyJoinedEventArgs e)
     {
+        FrequencyJoined?.Invoke(this, e);
         _playbackService?.TuneFrequency(e.FrequencyKhz);
         foreach (var peer in e.Peers)
         {

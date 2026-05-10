@@ -168,7 +168,7 @@ public class AcmiClientService : IAcmiClientService
             {
                 _logger.LogWarning("Receive task did not complete within timeout during disconnect");
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 // Task may have thrown during cancellation, which is expected
             }

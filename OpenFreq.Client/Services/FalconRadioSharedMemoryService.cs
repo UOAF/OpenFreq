@@ -685,12 +685,14 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
         throw new NotImplementedException();
     }
 
+#pragma warning disable CS0067
     public event EventHandler<ServiceStateChangedEventArgs>? StateChanged;
     public event EventHandler<RadioFrequencyChangedEventArgs>? FrequencyChanged;
     public event EventHandler<RadioVolumeChangedEventArgs>? VolumeChanged;
     public event EventHandler<RadioPttChangedEventArgs>? PttChanged;
     public event EventHandler<RadioPowerChangedEventArgs>? PowerChanged;
     public event EventHandler<ConnectionParametersChangedEventArgs>? ConnectionParametersChanged;
+#pragma warning restore CS0067
 
     public void Start()
     {
