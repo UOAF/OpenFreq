@@ -365,8 +365,16 @@ public class AudioStreamServer
             if (clientId == sourceClientId)
                 continue;
 
-            if (!_sessions.TryGetValue(clientId, out var targetSession) ||
-                targetSession.RemoteEndPoint == null) continue;
+            if (!_sessions.TryGetValue(clientId, out var targetSession))
+                continue;
+
+            if (targetSession.RemoteEndPoint == null)
+            {
+                _logger.LogWarning(
+                    "Cannot relay audio to {DisplayName} ({ClientId}): no RTP endpoint registered yet",
+                    GetDisplayName(clientId), clientId);
+                continue;
+            }
 
             // Create RTP packet with receiver-specific sequence number
             var rtpPacket = CreateRtpAudioPacket(clientId, originalRtpPacket, metadata, audioData);
