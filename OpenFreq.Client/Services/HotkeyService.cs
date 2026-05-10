@@ -24,6 +24,7 @@ public class HotkeyService : IHotkeyService
     private CancellationTokenSource? _cts;
     private Task? _hookTask;
     private readonly HashSet<KeyCode> _pressedKeys = [];
+    private readonly Dictionary<KeyCode, HotkeyBinding> _activeKeyBindings = new();
 
     // Unified binding storage with custom comparer
     private readonly Dictionary<HotkeyBinding, List<Guid>> _pttBindings = new(new HotkeyBindingComparer());
@@ -483,11 +484,19 @@ public class HotkeyService : IHotkeyService
             if (e.Data.KeyCode == KeyCode.VcEscape)
             {
                 tcs.TrySetResult(null);
+                return;
             }
-            else
-            {
-                tcs.TrySetResult(new KeyboardBinding(e.Data.KeyCode));
-            }
+
+            // Skip standalone modifier key presses — wait for the actual key
+            if (IsModifierKey(e.Data.KeyCode))
+                return;
+
+            var mask = e.RawEvent.Mask;
+            tcs.TrySetResult(new KeyboardBinding(
+                e.Data.KeyCode,
+                shift: (mask & EventMask.Shift) != EventMask.None,
+                ctrl: (mask & EventMask.Ctrl) != EventMask.None,
+                alt: (mask & EventMask.Alt) != EventMask.None));
         }
 
 #if WINDOWS
@@ -580,13 +589,18 @@ public class HotkeyService : IHotkeyService
 
         _pressedKeys.Add(e.Data.KeyCode);
 
-        var binding = new KeyboardBinding(e.Data.KeyCode);
+        var mask = e.RawEvent.Mask;
+        var binding = new KeyboardBinding(e.Data.KeyCode,
+            shift: (mask & EventMask.Shift) != EventMask.None,
+            ctrl: (mask & EventMask.Ctrl) != EventMask.None,
+            alt: (mask & EventMask.Alt) != EventMask.None);
 
         // Check PTT bindings
         if (_pttBindings.TryGetValue(binding, out var pttChannels))
         {
             if (!PttKeysPaused)
             {
+                _activeKeyBindings[e.Data.KeyCode] = binding;
                 HotkeyPressed?.Invoke(this, new HotkeyPressedEventArgs(
                     IHotkeyService.HotkeyType.Ptt, pttChannels));
             }
@@ -595,6 +609,7 @@ public class HotkeyService : IHotkeyService
         // Check squelch toggle bindings
         if (_squelchToggleBindings.TryGetValue(binding, out var squelchChannels))
         {
+            _activeKeyBindings[e.Data.KeyCode] = binding;
             HotkeyPressed?.Invoke(this, new HotkeyPressedEventArgs(
                 IHotkeyService.HotkeyType.SquelchToggle, squelchChannels));
         }
@@ -604,7 +619,9 @@ public class HotkeyService : IHotkeyService
     {
         _pressedKeys.Remove(e.Data.KeyCode);
 
-        var binding = new KeyboardBinding(e.Data.KeyCode);
+        // Use the binding recorded at press time so modifier release order doesn't matter
+        if (!_activeKeyBindings.Remove(e.Data.KeyCode, out var binding))
+            return;
 
         // Check PTT bindings
         if (_pttBindings.TryGetValue(binding, out var pttChannels))
@@ -623,6 +640,12 @@ public class HotkeyService : IHotkeyService
                 IHotkeyService.HotkeyType.SquelchToggle, squelchChannels));
         }
     }
+
+    private static bool IsModifierKey(KeyCode keyCode) => keyCode is
+        KeyCode.VcLeftShift or KeyCode.VcRightShift or
+        KeyCode.VcLeftControl or KeyCode.VcRightControl or
+        KeyCode.VcLeftAlt or KeyCode.VcRightAlt or
+        KeyCode.VcLeftMeta or KeyCode.VcRightMeta;
 
     private Dictionary<HotkeyBinding, List<Guid>> GetBindingsDictionary(IHotkeyService.HotkeyType type)
     {
