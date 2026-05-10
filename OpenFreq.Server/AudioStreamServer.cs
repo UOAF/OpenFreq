@@ -54,7 +54,7 @@ public class AudioStreamServer
     private static readonly Action<ILogger, string, string, int, Exception?> LogTransmittingOnFrequencies =
         LoggerMessage.Define<string, string, int>(
             LogLevel.Debug,
-            new EventId(2, nameof(ForwardAudioToChannel)),
+            new EventId(2, nameof(ForwardAudioToReceivers)),
             "{DisplayName} ({ClientId}) transmitting on {FrequencyCount} frequency(ies)");
 
     private static readonly Action<ILogger, string, string, int, int, Exception?> LogSessionRemoved =
@@ -233,11 +233,9 @@ public class AudioStreamServer
                     LogTransmittingOnFrequencies(_logger, GetDisplayName(clientId), clientId,
                         validFrequencies.Count, null);
 
-                // Forward audio to all specified frequencies
-                foreach (var frequency in validFrequencies)
-                {
-                    ForwardAudioToChannel(frequency.Khz, clientId, rtpPacket, metadata, audioData);
-                }
+                // Forward audio to all receivers — deduplicated so a client on multiple matching
+                // frequencies gets exactly one packet (metadata contains all frequencies).
+                ForwardAudioToReceivers(validFrequencies.Select(f => f.Khz), clientId, rtpPacket, metadata, audioData);
             }
 
             catch (SocketException ex)
@@ -349,29 +347,33 @@ public class AudioStreamServer
     }
 
     /// <summary>
-    /// Forward audio to all clients in a channel
+    /// Forward audio to all unique receivers across the given frequency channels.
+    /// A receiver joined to multiple matching frequencies receives exactly one packet.
     /// </summary>
-    private void ForwardAudioToChannel(
-        int frequencyKhz,
+    private void ForwardAudioToReceivers(
+        IEnumerable<int> frequencyKhzList,
         string sourceClientId,
         RtpPacket originalRtpPacket,
         AudioPacketMetadata metadata,
         byte[] audioData)
     {
-        var clients = _channelManager.GetClientsInChannel(frequencyKhz);
-
-        foreach (var clientId in clients)
+        // Collect unique receivers across all matched channels.
+        var seen = new HashSet<string>();
+        foreach (var frequencyKhz in frequencyKhzList)
         {
-            if (clientId == sourceClientId)
-                continue;
+            foreach (var clientId in _channelManager.GetClientsInChannel(frequencyKhz))
+            {
+                if (clientId != sourceClientId)
+                    seen.Add(clientId);
+            }
+        }
 
+        foreach (var clientId in seen)
+        {
             if (!_sessions.TryGetValue(clientId, out var targetSession) ||
                 targetSession.RemoteEndPoint == null) continue;
 
-            // Create RTP packet with receiver-specific sequence number
             var rtpPacket = CreateRtpAudioPacket(clientId, originalRtpPacket, metadata, audioData);
-
-            // Just send our packets out ASAP
             SendPacket(rtpPacket, targetSession.RemoteEndPoint);
         }
     }
