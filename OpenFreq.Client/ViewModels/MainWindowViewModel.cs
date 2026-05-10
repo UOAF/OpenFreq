@@ -408,9 +408,10 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
             ClearError();
             SettingsDrawerOpened = false;
         }
-        else if (state == ConnectionState.Disconnected && OpenFreqConnected)
+        else if (state == ConnectionState.Disconnected)
         {
             ShowError("Lost connection to server");
+            SettingsDrawerOpened = true;
         }
     }
 
