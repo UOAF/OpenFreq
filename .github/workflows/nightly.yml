@@ -18,6 +18,10 @@ jobs:
         self_contained: ['true', 'false']
 
     steps:
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.OPENFREQAUDIO_DEPLOY_KEY }}
+
       - uses: actions/checkout@v4
         with:
           submodules: recursive
