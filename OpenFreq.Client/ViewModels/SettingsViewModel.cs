@@ -54,10 +54,15 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] public partial ObservableCollection<string> AvailableTheaterNames { get; set; } = new(DefaultTheaterNames);
 
 
+    public static bool IsBmsModeSupported => OperatingSystem.IsWindows();
+    public static string? BmsUnavailableTooltip => OperatingSystem.IsWindows() ? null : "BMS mode is only available on Windows";
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ModeIsGci))]
     [NotifyPropertyChangedFor(nameof(IsReadyToConnect))]
-    private IOpenFreqService.Mode _connectionMode = IOpenFreqService.Mode.BMS;
+    private IOpenFreqService.Mode _connectionMode = OperatingSystem.IsWindows()
+        ? IOpenFreqService.Mode.BMS
+        : IOpenFreqService.Mode.GCI;
 
     public bool ModeIsGci
     {

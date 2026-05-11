@@ -92,7 +92,14 @@
                                                  FontWeight="Bold"
                                                  HorizontalAlignment="Stretch"
                                                  HorizontalContentAlignment="Center"
-                                                 IsEnabled="{Binding !OpenFreqConnected}" />
+                                                 ToolTip.Tip="{Binding Settings.BmsUnavailableTooltip}">
+                                        <RadioButton.IsEnabled>
+                                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                                <Binding Path="Settings.IsBmsModeSupported" />
+                                                <Binding Path="!OpenFreqConnected" />
+                                            </MultiBinding>
+                                        </RadioButton.IsEnabled>
+                                    </RadioButton>
                                     <RadioButton Grid.Column="1"
                                                  GroupName="OwnPositionMode"
                                                  IsChecked="{Binding Settings.ModeIsGci}"

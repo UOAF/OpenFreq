@@ -139,7 +139,6 @@ public class OpenFreqService : IOpenFreqService
     public bool IsConnected => _client?.IsConnected ?? false;
     public bool IsAuthenticated => _client?.IsAuthenticated ?? false;
     public string? PeerId => _client?.MyPeerId;
-    private int _radioPlaybackInstanceId = 0;
 
 
     /// <summary>
@@ -182,7 +181,6 @@ public class OpenFreqService : IOpenFreqService
 
         if (_playbackService != null)
         {
-            _logger.LogWarning("Disposing old RadioPlayback instance: {InstanceId}", _radioPlaybackInstanceId);
             await _playbackService.StopAll();
             if (_playbackService is IDisposable disposable)
             {
@@ -192,9 +190,7 @@ public class OpenFreqService : IOpenFreqService
             _playbackService = null;
         }
 
-        _radioPlaybackInstanceId++;
         _playbackService = new RadioPlayback(_loggerFactory, playbackDeviceIndex);
-        _logger.LogWarning("Created NEW RadioPlayback instance: {InstanceId}", _radioPlaybackInstanceId);
         _playbackService.Initialize();
         _playbackService.Apply3dEffects = Apply3dAudioEffects;
         _isInitialized = true;
