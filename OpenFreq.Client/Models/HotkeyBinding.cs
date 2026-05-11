@@ -36,7 +36,7 @@ public abstract class HotkeyBinding : IEquatable<HotkeyBinding>
 }
 
 /// <summary>
-/// Keyboard key binding using SharpHook KeyCode
+/// Keyboard key binding using SharpHook KeyCode with optional modifier keys
 /// </summary>
 public class KeyboardBinding : HotkeyBinding
 {
@@ -44,31 +44,54 @@ public class KeyboardBinding : HotkeyBinding
     {
     }
 
-    public KeyboardBinding(KeyCode keyCode)
+    public KeyboardBinding(KeyCode keyCode, bool shift = false, bool ctrl = false, bool alt = false)
     {
         KeyCode = keyCode;
+        ShiftModifier = shift;
+        CtrlModifier = ctrl;
+        AltModifier = alt;
     }
 
     [JsonConverter(typeof(JsonStringEnumConverter<KeyCode>))]
     public KeyCode KeyCode { get; set; }
 
-    [JsonIgnore] 
-    public override string DisplayName => new string($"Keyboard: {KeyCode}").Replace("Vc", string.Empty);
+    public bool ShiftModifier { get; set; }
+    public bool CtrlModifier { get; set; }
+    public bool AltModifier { get; set; }
 
     [JsonIgnore]
-    public override string SerializationKey => $"kb:{KeyCode}";
+    public override string DisplayName
+    {
+        get
+        {
+            var key = KeyCode.ToString().Replace("Vc", string.Empty);
+            var parts = new List<string>();
+            if (CtrlModifier) parts.Add("Ctrl");
+            if (AltModifier) parts.Add("Alt");
+            if (ShiftModifier) parts.Add("Shift");
+            parts.Add(key);
+            return $"Keyboard: {string.Join("+", parts)}";
+        }
+    }
+
+    [JsonIgnore]
+    public override string SerializationKey =>
+        $"kb:{(CtrlModifier ? "C" : "")}{(AltModifier ? "A" : "")}{(ShiftModifier ? "S" : "")}{KeyCode}";
 
     public override bool Equals(HotkeyBinding? other)
     {
-        return other is KeyboardBinding kb && kb.KeyCode == KeyCode;
+        return other is KeyboardBinding kb
+               && kb.KeyCode == KeyCode
+               && kb.ShiftModifier == ShiftModifier
+               && kb.CtrlModifier == CtrlModifier
+               && kb.AltModifier == AltModifier;
     }
 
     [SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
     // We really need the setter for the KeyCode, otherwise it won't deserialize properly
     public override int GetHashCode()
     {
-         
-        return HashCode.Combine("keyboard", KeyCode);
+        return HashCode.Combine("keyboard", KeyCode, ShiftModifier, CtrlModifier, AltModifier);
     }
 
     public override bool Equals(object? obj)

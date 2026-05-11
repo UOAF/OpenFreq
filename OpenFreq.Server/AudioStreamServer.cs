@@ -370,9 +370,17 @@ public class AudioStreamServer
 
         foreach (var clientId in seen)
         {
-            if (!_sessions.TryGetValue(clientId, out var targetSession) ||
-                targetSession.RemoteEndPoint == null) continue;
+            if (!_sessions.TryGetValue(clientId, out var targetSession))
+                continue;
 
+            if (targetSession.RemoteEndPoint == null)
+            {
+                _logger.LogWarning(
+                    "Cannot relay audio to {DisplayName} ({ClientId}): no RTP endpoint registered yet",
+                    GetDisplayName(clientId), clientId);
+                continue;
+            }
+            
             var rtpPacket = CreateRtpAudioPacket(clientId, originalRtpPacket, metadata, audioData);
             SendPacket(rtpPacket, targetSession.RemoteEndPoint);
         }

@@ -21,7 +21,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\BMSAudioSim\OpenFreqAudio\OpenFreqAudio.csproj" />
+      <ProjectReference Include="..\libs\OpenFreqAudio\OpenFreqAudio\OpenFreqAudio.csproj" />
       <ProjectReference Include="..\OpenFreq.Common\OpenFreq.Common.csproj" />
     </ItemGroup>
 

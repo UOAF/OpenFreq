@@ -47,6 +47,7 @@ public class RtpAudioSender : IDisposable
     private readonly SyncRope<short> _sendQueue = new();
 
     private readonly Thread? _sendThread;
+    private readonly Timer _heartbeatTimer;
 
     // Statistics
     private int _packetsSent = 0;
@@ -66,28 +67,8 @@ public class RtpAudioSender : IDisposable
         _ssrc = (uint)Random.Shared.Next();
         _clientId = clid;
 
-        var metadata = new AudioPacketMetadata
-        {
-            ClientId = _clientId,
-            Frequencies = []  // Empty frequency list
-        };
-
-        var metadataJson = JsonSerializer.Serialize(metadata, OpenFreqJsonContext.Default.AudioPacketMetadata);
-        var metadataBytes = Encoding.UTF8.GetBytes(metadataJson);
-
-        // Send single packet with silence to register our endpoint
-        var keepalive = new RtpPacket
-        {
-            Version = 2,
-            PayloadType = _opusEnabled ? PAYLOAD_TYPE_OPUS : PAYLOAD_TYPE_PCMU,
-            SequenceNumber = 0,
-            Timestamp = 0,
-            Ssrc = _ssrc,
-            ExtensionProfile = RtpPacket.OpenFreqProfile,
-            ExtensionData = metadataBytes,
-            Payload = []  // Empty audio payload
-        };
-        _udpClient.Send(keepalive.ToBytes(), _serverEndpoint);
+        SendKeepalive();
+        _heartbeatTimer = new Timer(_ => SendKeepalive(), null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
 
         _opusEncoder.Bitrate = 24000;
         _opusEncoder.Complexity = 8;
@@ -108,6 +89,25 @@ public class RtpAudioSender : IDisposable
     /// Call on the start of a new transmission to clear any stale samples
     /// and to ensure packet timestamps reflect the gap.
     /// </summary>
+    private void SendKeepalive()
+    {
+        var metadata = new AudioPacketMetadata { ClientId = _clientId, Frequencies = [] };
+        var metadataBytes = Encoding.UTF8.GetBytes(
+            JsonSerializer.Serialize(metadata, OpenFreqJsonContext.Default.AudioPacketMetadata));
+        var packet = new RtpPacket
+        {
+            Version = 2,
+            PayloadType = _opusEnabled ? PAYLOAD_TYPE_OPUS : PAYLOAD_TYPE_PCMU,
+            SequenceNumber = 0,
+            Timestamp = 0,
+            Ssrc = _ssrc,
+            ExtensionProfile = RtpPacket.OpenFreqProfile,
+            ExtensionData = metadataBytes,
+            Payload = []
+        };
+        _udpClient.Send(packet.ToBytes(), _serverEndpoint);
+    }
+
     public void MarkTransmitStartTime()
     {
         _sendQueue.Clear();
@@ -205,6 +205,7 @@ public class RtpAudioSender : IDisposable
 
     public void Dispose()
     {
+        _heartbeatTimer.Dispose();
         _sendQueue.Close(); // Sentinel kills the thread
         _sendThread?.Join();
         _udpClient.Close();

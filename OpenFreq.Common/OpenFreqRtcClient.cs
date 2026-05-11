@@ -526,6 +526,7 @@ public class OpenFreqRtcClient : IDisposable
 
     public void Dispose()
     {
+        CleanupRtp();
         _cts.Cancel();
         _cts.Dispose();
 

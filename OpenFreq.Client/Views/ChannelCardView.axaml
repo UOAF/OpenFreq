@@ -81,7 +81,7 @@
 
                 </StackPanel>
 
-                <!-- Type, Hotkey & Status - All in one horizontal row -->
+                <!-- Type, Hotkey & Status -->
                 <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
                             Orientation="Horizontal"
                             Spacing="8"
@@ -117,11 +117,11 @@
                     <Border Background="{DynamicResource MaterialPrimaryLightBrush}"
                             CornerRadius="4"
                             Padding="8,4">
-                        <StackPanel>
+                        <Panel>
                             <!-- Calculated Type - Only in GCI Mode -->
                             <TextBlock Text="{Binding Type}"
-                                       IsVisible="{Binding RadioStationData.Type, 
-                                   Converter={StaticResource InvertedEnumToBoolConverter}, 
+                                       IsVisible="{Binding RadioStationData.Type,
+                                   Converter={StaticResource InvertedEnumToBoolConverter},
                                    ConverterParameter={x:Static models:RadioStationData+RadioStationType.BMS}}"
                                        Classes="Body2"
                                        FontWeight="Bold"
@@ -129,13 +129,13 @@
 
                             <!-- BMS Radio Type - Only in BMS Mode -->
                             <TextBlock Text="{Binding BmsRadioType}"
-                                       IsVisible="{Binding RadioStationData.Type, 
-                                   Converter={StaticResource EnumToBoolConverter}, 
+                                       IsVisible="{Binding RadioStationData.Type,
+                                   Converter={StaticResource EnumToBoolConverter},
                                    ConverterParameter={x:Static models:RadioStationData+RadioStationType.BMS}}"
                                        Classes="Body2"
                                        FontWeight="Bold"
                                        VerticalAlignment="Center" />
-                        </StackPanel>
+                        </Panel>
                     </Border>
 
                     <!-- Clickable Hotkey Button - Click to set/change hotkey -->
@@ -241,7 +241,7 @@
                                    Opacity="0.7"
                                    FontWeight="Medium" />
                         <TextBox Text="{Binding Name}"
-                                 Watermark="Enter channel name"
+                                 PlaceholderText="Enter channel name"
                                  Classes="Outline" />
                     </StackPanel>
 
@@ -252,7 +252,7 @@
                                    Opacity="0.7"
                                    FontWeight="Medium" />
                         <TextBox Text="{Binding FrequencyMhzString}"
-                                 Watermark="Enter frequency (MHz)"
+                                 PlaceholderText="Enter frequency (MHz)"
                                  Classes="Outline">
                             <TextBox.KeyBindings>
                                 <KeyBinding Command="{Binding ToggleEditingCommand}" Gesture="Enter" />

@@ -106,7 +106,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
 
     // Store original values when entering edit mode
     private int _originalFrequencyKhz;
-    private HotkeyBinding _originalBinding;
+    private HotkeyBinding? _originalBinding;
     private readonly IOpenFreqService _openFreqService;
 
 

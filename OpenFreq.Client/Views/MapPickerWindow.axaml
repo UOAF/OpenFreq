@@ -18,7 +18,7 @@
             <Grid ColumnDefinitions="*,Auto">
                 <TextBox Grid.Column="0"
                          Text="{Binding SearchQuery}"
-                         Watermark="Search for address or place..."
+                         PlaceholderText="Search for address or place..."
                          IsEnabled="{Binding !IsSearching}">
                     <TextBox.KeyBindings>
                         <KeyBinding Gesture="Enter" 

@@ -98,7 +98,7 @@
 
                                 <!-- Group Name -->
                                 <TextBox Text="{Binding Name}"
-                                         Watermark="Group name"
+                                         PlaceholderText="Group name"
                                          Classes="Outline" />
 
                                 <!-- Position Source -->
@@ -131,7 +131,7 @@
                                                     <TextBlock Text="Latitude" VerticalAlignment="Center" />
                                                     <TextBox
                                                         Text="{Binding Latitude, StringFormat={}{0:F5}}"
-                                                        Watermark="Latitude"
+                                                        PlaceholderText="Latitude"
                                                         Classes="Outline" VerticalAlignment="Center" />
                                                 </StackPanel>
 
@@ -140,7 +140,7 @@
                                                     <TextBlock Text="Longitude" VerticalAlignment="Center" />
                                                     <TextBox
                                                         Text="{Binding Longitude, StringFormat={}{0:F5}}"
-                                                        Watermark="Longitude"
+                                                        PlaceholderText="Longitude"
                                                         Classes="Outline" VerticalAlignment="Center" />
                                                 </StackPanel>
                                                 <StackPanel Grid.Row="0" Grid.Column="2" Orientation="Horizontal"
@@ -149,7 +149,7 @@
                                                                Margin="15, 0" />
                                                     <TextBox
                                                         Text="{Binding AltitudeFeet, Converter={StaticResource NullableDoubleConverter}}"
-                                                        Watermark="Alt (ft AGL)"
+                                                        PlaceholderText="Alt (ft AGL)"
                                                         Classes="Outline" VerticalAlignment="Center"
                                                         MinWidth="60" />
 

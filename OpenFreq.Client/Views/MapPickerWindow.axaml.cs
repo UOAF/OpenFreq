@@ -8,7 +8,7 @@ namespace OpenFreqClient.Views;
 
 public partial class MapPickerWindow : Window
 {
-    private readonly string _selectedTheaterName;
+    private readonly string _selectedTheaterName = null!;
     private readonly MapPickerViewModel _viewModel;
     public (double lat, double lon)? SelectedPosition { get; private set; }
     

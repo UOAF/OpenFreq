@@ -9,19 +9,19 @@ namespace OpenFreqClient.Converters
     /// </summary>
     public class HotkeyTooltipConverter : IValueConverter
     {
-        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
         {
             if (value is bool hasHotkey)
             {
-                return hasHotkey 
-                    ? "Click to change hotkey (or clear it)" 
-                    : "Click to set a hotkey for Push-To-Talk";
+                return hasHotkey
+                    ? "Click to change hotkey, ESC clears it)"
+                    : "Click to set a hotkey";
             }
-            
+
             return "Set hotkey";
         }
 
-        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         {
             throw new NotImplementedException("HotkeyTooltipConverter does not support ConvertBack");
         }

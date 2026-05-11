@@ -245,6 +245,11 @@ public sealed class RtpSourceContext : IDisposable
     /// </summary>
     private Memory<short> DecodeOpus(ReadOnlySpan<byte> opusData, bool decodeFec)
     {
+        if (OpusDecoder is null)
+        {
+            return Memory<short>.Empty;
+        }
+
         const int OPUS_FRAME_SAMPLES = 960; // 20ms at 48kHz (matches sender)
 
         try

@@ -18,8 +18,8 @@ public class OpenFreqSettings
     public string OutputDeviceName { get; set; } = "";
     public string SelectedTheater { get; set; } = "Korea KTO";
 
-    public int BmsUhfPan { get; set; } = 0;
-    public int BmsVhfPan { get; set; } = 0;
+    public int BmsUhfPan { get; set; } // 0 == center
+    public int BmsVhfPan { get; set; }
     
     public HotkeyBinding? BmsSquelchUhfHotkey { get; set; }
     public HotkeyBinding? BmsSquelchVhfHotkey { get; set; }
@@ -34,5 +34,5 @@ public class OpenFreqSettings
     public int? MaximizedScreenY { get; set; }
     public int? MaximizedScreenWidth { get; set; }
     public int? MaximizedScreenHeight { get; set; }
-    public string DisplayName { get; set; }
+    public string DisplayName { get; set; } = string.Empty;
 }

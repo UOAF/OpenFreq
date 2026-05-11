@@ -337,7 +337,8 @@ public class OpenFreqService : IOpenFreqService
 
         if (radioStationData == null)
         {
-            _logger.LogWarning("RadioStationData is null");
+            _logger.LogWarning("Not joining frequency {FrequencyKhz}, RadioStationData is null", frequencyKhz);
+            return;
         }
 
         if (_tunedFrequencies.ContainsKey(frequencyKhz))
@@ -748,6 +749,7 @@ public class OpenFreqService : IOpenFreqService
 
     private void OnClientFrequencyJoined(object? sender, FrequencyJoinedEventArgs e)
     {
+        FrequencyJoined?.Invoke(this, e);
         _playbackService?.TuneFrequency(e.FrequencyKhz);
         foreach (var peer in e.Peers)
         {
@@ -826,8 +828,13 @@ public class OpenFreqService : IOpenFreqService
                 new PeerData(e.PeerId, e.PeerDisplayName,
                     e.IsTransmitting ? PeerData.PeerStatus.Transmitting : PeerData.PeerStatus.Receiving), e.Is3d));
 
+        // Own TX is authoritative: don't let peer state overwrite Transmitting in subscribers
         OnFrequencyTransmissionStatusChanged(e.FrequencyKhz,
-            e.IsTransmitting ? Channel.ChannelTransmissionStatus.Receiving : Channel.ChannelTransmissionStatus.Idle);
+            _activeTransmissionsAndMutedFrequencies.ContainsKey(e.FrequencyKhz)
+                ? Channel.ChannelTransmissionStatus.Transmitting
+                : e.IsTransmitting
+                    ? Channel.ChannelTransmissionStatus.Receiving
+                    : Channel.ChannelTransmissionStatus.Idle);
     }
 
     /// <summary>

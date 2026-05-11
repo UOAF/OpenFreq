@@ -195,10 +195,13 @@ public class SignalingServer
 
                 if (result.MessageType == WebSocketMessageType.Close)
                 {
-                    await session.WebSocket.CloseAsync(
-                        WebSocketCloseStatus.NormalClosure,
-                        "Closing",
-                        CancellationToken.None);
+                    if (session.WebSocket.State == WebSocketState.CloseReceived)
+                    {
+                        await session.WebSocket.CloseAsync(
+                            WebSocketCloseStatus.NormalClosure,
+                            "Closing",
+                            CancellationToken.None);
+                    }
                     break;
                 }
 
@@ -480,7 +483,7 @@ public class SignalingServer
         }
 
         session.DisplayName = setDisplayNameMsg.DisplayName;
-        _channelManager.UpdateDisplayName(session.Id, setDisplayNameMsg.DisplayName ?? "Unknown");
+        _channelManager.UpdateDisplayName(session.Id, setDisplayNameMsg.DisplayName);
 
         if (_config.BroadcastPeerUpdates)
         {
@@ -621,6 +624,36 @@ public class SignalingServer
 
         // Stop audio server first
         _audioServer.Stop();
+
+        // Notify connected clients before cancelling so they receive a proper close frame.
+        // CloseAsync (full handshake) ensures the frame is transmitted before we return —
+        // the client's echo close frame proves delivery. Per-client 500ms timeout prevents
+        // any single slow client from blocking shutdown.
+        var closeTasks = _clients.Values
+            .Where(s => s.WebSocket.State == WebSocketState.Open)
+            .Select(async s =>
+            {
+                try
+                {
+                    using var closeCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+                    await s.WebSocket.CloseAsync(
+                        WebSocketCloseStatus.NormalClosure,
+                        "Server shutting down",
+                        closeCts.Token);
+                }
+                catch
+                {
+                    // don't care
+                }
+            });
+        try
+        {
+            await Task.WhenAll(closeTasks).WaitAsync(TimeSpan.FromSeconds(2));
+        }
+        catch
+        {
+            // don't care
+        }
 
         // Cancel the CTS
         _cts.Cancel();

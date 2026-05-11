@@ -161,7 +161,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
                 ObservableCollection<ChannelPeerViewModel> peers = [];
                 foreach (var peer in e.AllPeers[frequency])
                 {
-                    peers.Add(new ChannelPeerViewModel(peer.Id, peer.Name,
+                    peers.Add(new ChannelPeerViewModel(peer.Id, peer.Name ?? string.Empty,
                         peer.Status == PeerData.PeerStatus.Transmitting, peer.Id == _openFreqService.PeerId));
                 }
 
@@ -408,9 +408,10 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
             ClearError();
             SettingsDrawerOpened = false;
         }
-        else if (state == ConnectionState.Disconnected && OpenFreqConnected)
+        else if (state == ConnectionState.Disconnected)
         {
             ShowError("Lost connection to server");
+            SettingsDrawerOpened = true;
         }
     }
 
