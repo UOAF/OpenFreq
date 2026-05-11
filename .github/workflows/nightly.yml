@@ -1,0 +1,109 @@
+name: Nightly Build
+
+on:
+  push:
+    branches: [develop]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [Server, Client]
+        rid: [win-x64, linux-x64]
+        self_contained: ['true', 'false']
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Set names
+        id: names
+        run: |
+          SUFFIX=$([[ "${{ matrix.self_contained }}" == "true" ]] && echo "selfcontained" || echo "framework")
+          ARTIFACT="OpenFreq-${{ matrix.project }}-${{ matrix.rid }}-${SUFFIX}"
+          echo "artifact=${ARTIFACT}" >> $GITHUB_OUTPUT
+          echo "publish_dir=publish/${ARTIFACT}" >> $GITHUB_OUTPUT
+
+      - name: Publish
+        run: |
+          dotnet publish OpenFreq.${{ matrix.project }}/OpenFreq.${{ matrix.project }}.csproj \
+            -c Release \
+            -r ${{ matrix.rid }} \
+            --self-contained ${{ matrix.self_contained }} \
+            -p:PublishSingleFile=true \
+            -p:DebugType=none \
+            -p:DebugSymbols=false \
+            -o ${{ steps.names.outputs.publish_dir }}
+
+      - name: Copy native libs
+        if: matrix.project == 'Client'
+        run: |
+          if [[ "${{ matrix.rid }}" == "win-x64" ]]; then
+            cp libs/OpenFreqAudio/OpenFreqAudio/Assets/windows/*.dll \
+               ${{ steps.names.outputs.publish_dir }}/
+          else
+            cp libs/OpenFreqAudio/OpenFreqAudio/Assets/linux/*.so \
+               ${{ steps.names.outputs.publish_dir }}/
+          fi
+
+      - name: Package
+        run: |
+          pushd ${{ steps.names.outputs.publish_dir }}
+          zip -r "$GITHUB_WORKSPACE/${{ steps.names.outputs.artifact }}.zip" .
+          popd
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.names.outputs.artifact }}
+          path: ${{ steps.names.outputs.artifact }}.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Delete old nightly release
+        run: gh release delete nightly --yes --cleanup-tag --repo ${{ github.repository }} || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          target_commitish: ${{ github.sha }}
+          name: Nightly Build
+          prerelease: true
+          make_latest: false
+          body: |
+            Automated build from `develop`.
+
+            Commit: ${{ github.sha }}
+            Built: ${{ github.event.head_commit.timestamp }}
+
+            | Archive | Platform | Mode |
+            |---|---|---|
+            | `OpenFreq-Server-win-x64-selfcontained.zip` | Windows | Self-contained (.NET bundled) |
+            | `OpenFreq-Server-win-x64-framework.zip` | Windows | Requires .NET 10 |
+            | `OpenFreq-Server-linux-x64-selfcontained.zip` | Linux | Self-contained (.NET bundled) |
+            | `OpenFreq-Server-linux-x64-framework.zip` | Linux | Requires .NET 10 |
+            | `OpenFreq-Client-win-x64-selfcontained.zip` | Windows | Self-contained (.NET bundled) |
+            | `OpenFreq-Client-win-x64-framework.zip` | Windows | Requires .NET 10 |
+            | `OpenFreq-Client-linux-x64-selfcontained.zip` | Linux | Self-contained (.NET bundled) |
+            | `OpenFreq-Client-linux-x64-framework.zip` | Linux | Requires .NET 10 |
+          files: artifacts/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
