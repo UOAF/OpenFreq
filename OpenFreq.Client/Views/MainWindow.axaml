@@ -148,7 +148,24 @@
                                         <TextBlock Text="Output" Classes="InputLabel" />
                                         <ComboBox ItemsSource="{Binding Settings.PlaybackDeviceNames}"
                                                   SelectedIndex="{Binding Settings.PlaybackDeviceIndex}"
-                                                  HorizontalAlignment="Stretch" />
+                                                  HorizontalAlignment="Stretch"
+                                                  Margin="0,0,0,12" />
+
+                                        <CheckBox Content="Sidetone"
+                                                  IsChecked="{Binding Settings.SidetoneEnabled}"
+                                                  Margin="0,0,0,4" />
+                                        <StackPanel IsVisible="{Binding Settings.SidetoneEnabled}">
+                                            <TextBlock Classes="InputLabel" Margin="0,4,0,4">
+                                                <Run Text="Volume: " />
+                                                <Run Text="{Binding Settings.SidetoneVolume, StringFormat={}{0:P0}}" />
+                                            </TextBlock>
+                                            <Slider Minimum="0" Maximum="1"
+                                                    Value="{Binding Settings.SidetoneVolume}"
+                                                    TickFrequency="0.05"
+                                                    IsSnapToTickEnabled="True" />
+                                            <TextBlock Classes="InputLabel" Margin="0, 8, 0, 4" TextWrapping="Wrap" Text="Experimental feature:
+                                            Sidetone with software will always have higher latency than real hardware solutions." FontStyle="Italic" />
+                                        </StackPanel>
                                     </StackPanel>
                                 </controls:Card>
 
@@ -411,7 +428,24 @@
                                         <TextBlock Text="Output" Classes="InputLabel" />
                                         <ComboBox ItemsSource="{Binding Settings.PlaybackDeviceNames}"
                                                   SelectedIndex="{Binding Settings.PlaybackDeviceIndex}"
-                                                  HorizontalAlignment="Stretch" />
+                                                  HorizontalAlignment="Stretch"
+                                                  Margin="0,0,0,12" />
+
+                                        <CheckBox Content="Sidetone"
+                                                  IsChecked="{Binding Settings.SidetoneEnabled}"
+                                                  Margin="0,0,0,4" />
+                                        <StackPanel IsVisible="{Binding Settings.SidetoneEnabled}">
+                                            <TextBlock Classes="InputLabel" Margin="0,4,0,4">
+                                                <Run Text="Volume: " />
+                                                <Run Text="{Binding Settings.SidetoneVolume, StringFormat={}{0:P0}}" />
+                                            </TextBlock>
+                                            <Slider Minimum="0" Maximum="1"
+                                                    Value="{Binding Settings.SidetoneVolume}"
+                                                    TickFrequency="0.05"
+                                                    IsSnapToTickEnabled="True" />
+                                            <TextBlock Classes="InputLabel" Margin="0, 8, 0, 4" TextWrapping="Wrap" Text="Experimental feature:
+                                            Sidetone with software will always have higher latency than real hardware solutions." FontStyle="Italic" />
+                                        </StackPanel>
                                     </StackPanel>
                                 </controls:Card>
                             </StackPanel>

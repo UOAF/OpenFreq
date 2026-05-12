@@ -20,6 +20,8 @@ public interface IOpenFreqService : IDisposable
     int PlaybackDeviceIndex { get; set; }
     int AudioParamsUpdateFrequency { get; set; }
     bool Apply3dAudioEffects { get; set; }
+    bool SidetoneEnabled { get; set; }
+    double SidetoneVolume { get; set; }
     
     Mode OwnPositionMode { get; }
 

@@ -35,4 +35,6 @@ public class OpenFreqSettings
     public int? MaximizedScreenWidth { get; set; }
     public int? MaximizedScreenHeight { get; set; }
     public string DisplayName { get; set; } = "Unnamed";
+    public bool SidetoneEnabled { get; set; } = false;
+    public double SidetoneVolume { get; set; } = 0.4;
 }

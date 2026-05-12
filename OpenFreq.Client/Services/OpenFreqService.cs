@@ -62,6 +62,9 @@ public class OpenFreqService : IOpenFreqService
     private readonly ConcurrentDictionary<(string PeerId, int FrequencyKhz), AudioParamsCacheEntry> _audioParamsCache =
         new();
 
+    // Pre-allocated sidetone conversion buffer — reused every recording callback (single-threaded).
+    private float[] _sidetonePushBuffer = new float[4800]; // 100ms @ 48kHz, grows if needed
+
     // Cache duration
     private readonly TimeSpan _audioParamsCacheDuration = TimeSpan.FromMilliseconds(100);
 
@@ -116,6 +119,26 @@ public class OpenFreqService : IOpenFreqService
             _playbackService?.Apply3dEffects = value;
         }
     }
+
+    public bool SidetoneEnabled
+    {
+        get;
+        set
+        {
+            field = value;
+            if (_playbackService != null) _playbackService.SidetoneEnabled = value;
+        }
+    }
+
+    public double SidetoneVolume
+    {
+        get => field;
+        set
+        {
+            field = value;
+            if (_playbackService != null) _playbackService.SidetoneVolume = (float)value;
+        }
+    } = 0.4;
 
     private bool _isInitialized;
 
@@ -197,6 +220,7 @@ public class OpenFreqService : IOpenFreqService
         _logger.LogWarning("Created NEW RadioPlayback instance: {InstanceId}", _radioPlaybackInstanceId);
         _playbackService.Initialize();
         _playbackService.Apply3dEffects = Apply3dAudioEffects;
+        _playbackService.SidetoneVolume = (float)SidetoneVolume;
         _isInitialized = true;
 
         _falconSharedMemoryService.FlyingStateChanged += OnFlyingStateChanged;
@@ -416,7 +440,7 @@ public class OpenFreqService : IOpenFreqService
                 OpenFreqRtcClient.SAMPLE_RATE,
                 1,
                 BassFlags.RecordPause,
-                Period: 5,
+                Period: 2,
                 RecordProcedure);
 
             if (_recordHandle == 0)
@@ -426,6 +450,7 @@ public class OpenFreqService : IOpenFreqService
                 return;
             }
             _client.MarkTransmitStartTime();
+            if (_playbackService != null) _playbackService.SidetoneEnabled = true;
             Bass.ChannelPlay(_recordHandle);
         }
 
@@ -447,12 +472,17 @@ public class OpenFreqService : IOpenFreqService
             _playbackService?.RemoveTransmittingFrequencies(mutedFrequencies);
         }
 
-        // If NO more transmissions, stop recording
+        // If NO more transmissions, stop recording and sidetone
         if (_activeTransmissionsAndMutedFrequencies.IsEmpty && _recordHandle != 0)
         {
             Bass.ChannelStop(_recordHandle);
             Bass.StreamFree(_recordHandle);
             _recordHandle = 0;
+            if (_playbackService != null)
+            {
+                _playbackService.SidetoneEnabled = false;
+                _playbackService.ClearSidetone();
+            }
         }
 
         await _client.StopTransmissionAsync(frequencyKhz, Apply3dAudioEffects);
@@ -581,6 +611,18 @@ public class OpenFreqService : IOpenFreqService
             // Copy audio data once
             short[] audioData = new short[length / 2];
             Marshal.Copy(buffer, audioData, 0, audioData.Length);
+
+            // Sidetone: feed mic back to speaker with no extra buffering.
+            // Use pre-allocated buffer to avoid GC allocation on the hot audio path.
+            if (_playbackService is { SidetoneEnabled: true })
+            {
+                int n = audioData.Length;
+                if (n > _sidetonePushBuffer.Length)
+                    _sidetonePushBuffer = new float[n * 2];
+                for (int i = 0; i < n; i++)
+                    _sidetonePushBuffer[i] = audioData[i] / (float)short.MaxValue;
+                _playbackService.PushSidetone(_sidetonePushBuffer.AsSpan()[..n]);
+            }
 
             // Send to ALL active frequencies
             var frequenciesData =

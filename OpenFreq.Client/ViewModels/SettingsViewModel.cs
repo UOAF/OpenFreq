@@ -79,6 +79,9 @@ public partial class SettingsViewModel : ViewModelBase
 
     [ObservableProperty] public partial string OutputDeviceName { get; set; } = string.Empty;
 
+    [ObservableProperty] public partial bool SidetoneEnabled { get; set; } = false;
+    [ObservableProperty] public partial double SidetoneVolume { get; set; } = 0.4;
+
     private readonly ILogger<SettingsViewModel> _logger;
     private readonly IAudioService _audioService;
     private readonly IFalconRadioSharedMemoryService _falconRadioSharedMemoryService;
@@ -269,6 +272,10 @@ public partial class SettingsViewModel : ViewModelBase
         });
     }
 
+    partial void OnSidetoneEnabledChanged(bool value) => _openFreqService.SidetoneEnabled = value;
+
+    partial void OnSidetoneVolumeChanged(double value) => _openFreqService.SidetoneVolume = value;
+
     partial void OnRecordingDeviceIndexChanged(int value)
     {
         if (value >= 0 && value < RecordingDeviceNames.Count)
@@ -316,6 +323,8 @@ public partial class SettingsViewModel : ViewModelBase
         SelectedTheater = settings.SelectedTheater;
         BmsUhfPan = settings.BmsUhfPan;
         BmsVhfPan = settings.BmsVhfPan;
+        SidetoneEnabled = settings.SidetoneEnabled;
+        SidetoneVolume = settings.SidetoneVolume;
 
         // Restore audio device selection
         InputDeviceName = settings.InputDeviceName;
@@ -451,6 +460,8 @@ public partial class SettingsViewModel : ViewModelBase
             BmsVhfPan = BmsVhfPan,
             BmsSquelchUhfHotkey = BmsUhfSquelchHotkey,
             BmsSquelchVhfHotkey = BmsVhfSquelchHotkey,
+            SidetoneEnabled = SidetoneEnabled,
+            SidetoneVolume = SidetoneVolume,
             Left = _left,
             Top = _top,
             Width = _width,
