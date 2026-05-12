@@ -69,10 +69,35 @@
                             BorderBrush="{DynamicResource MaterialDividerBrush}"
                             BorderThickness="0,0,0,1">
                         <StackPanel>
-                            <TextBlock Text="Settings"
-                                       FontSize="18"
-                                       FontWeight="SemiBold"
-                                       Margin="0,0,0,12" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+                                <TextBlock Grid.Column="0"
+                                           Text="Settings"
+                                           FontSize="18"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center" />
+                                <!-- Theme toggle: light/dark -->
+                                <Border Grid.Column="1"
+                                        Background="{DynamicResource MaterialBackgroundBrush}"
+                                        CornerRadius="8"
+                                        Padding="2">
+                                    <StackPanel Orientation="Horizontal">
+                                        <RadioButton GroupName="ThemeVariant"
+                                                     Theme="{StaticResource MaterialButtonlikeRadioButton}"
+                                                     IsChecked="{Binding !Settings.IsDarkMode}"
+                                                     Padding="6"
+                                                     ToolTip.Tip="Light mode">
+                                            <avalonia:MaterialIcon Kind="WeatherSunny" Width="18" Height="18" />
+                                        </RadioButton>
+                                        <RadioButton GroupName="ThemeVariant"
+                                                     Theme="{StaticResource MaterialButtonlikeRadioButton}"
+                                                     IsChecked="{Binding Settings.IsDarkMode}"
+                                                     Padding="6"
+                                                     ToolTip.Tip="Dark mode">
+                                            <avalonia:MaterialIcon Kind="WeatherNight" Width="18" Height="18" />
+                                        </RadioButton>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
 
                             <!-- Mode Toggle with Background -->
                             <Border Background="{DynamicResource MaterialBackgroundBrush}"

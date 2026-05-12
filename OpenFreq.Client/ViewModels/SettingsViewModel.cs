@@ -7,6 +7,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using FalconBmsDataService.Models;
@@ -81,6 +82,7 @@ public partial class SettingsViewModel : ViewModelBase
 
     [ObservableProperty] public partial bool SidetoneEnabled { get; set; } = false;
     [ObservableProperty] public partial double SidetoneVolume { get; set; } = 0.4;
+    [ObservableProperty] public partial bool IsDarkMode { get; set; }
 
     private readonly ILogger<SettingsViewModel> _logger;
     private readonly IAudioService _audioService;
@@ -276,6 +278,11 @@ public partial class SettingsViewModel : ViewModelBase
 
     partial void OnSidetoneVolumeChanged(double value) => _openFreqService.SidetoneVolume = value;
 
+    partial void OnIsDarkModeChanged(bool value)
+    {
+        Application.Current!.RequestedThemeVariant = value ? ThemeVariant.Dark : ThemeVariant.Light;
+    }
+
     partial void OnRecordingDeviceIndexChanged(int value)
     {
         if (value >= 0 && value < RecordingDeviceNames.Count)
@@ -325,6 +332,19 @@ public partial class SettingsViewModel : ViewModelBase
         BmsVhfPan = settings.BmsVhfPan;
         SidetoneEnabled = settings.SidetoneEnabled;
         SidetoneVolume = settings.SidetoneVolume;
+        if (settings.DarkMode.HasValue)
+        {
+            IsDarkMode = settings.DarkMode.Value;
+            Application.Current!.RequestedThemeVariant = IsDarkMode ? ThemeVariant.Dark : ThemeVariant.Light;
+        }
+        else
+        {
+            // No saved preference — RequestedThemeVariant stays "Default" (follows OS).
+            Dispatcher.UIThread.Post(() =>
+            {
+                IsDarkMode = Application.Current?.ActualThemeVariant == ThemeVariant.Dark;
+            }, DispatcherPriority.Background);
+        }
 
         // Restore audio device selection
         InputDeviceName = settings.InputDeviceName;
@@ -462,6 +482,7 @@ public partial class SettingsViewModel : ViewModelBase
             BmsSquelchVhfHotkey = BmsVhfSquelchHotkey,
             SidetoneEnabled = SidetoneEnabled,
             SidetoneVolume = SidetoneVolume,
+            DarkMode = IsDarkMode,
             Left = _left,
             Top = _top,
             Width = _width,

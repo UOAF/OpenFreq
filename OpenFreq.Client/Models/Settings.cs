@@ -37,4 +37,5 @@ public class OpenFreqSettings
     public string DisplayName { get; set; } = "Unnamed";
     public bool SidetoneEnabled { get; set; } = false;
     public double SidetoneVolume { get; set; } = 0.4;
+    public bool? DarkMode { get; set; }
 }
