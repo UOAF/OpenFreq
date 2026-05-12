@@ -1,7 +1,0 @@
-{
-  "serverPassword": "",
-  "websocketPort": 9987,
-  "audioBasePort": 9988,
-  "maxClientsPerChannel": 50,
-  "opusCompression": true
-}
