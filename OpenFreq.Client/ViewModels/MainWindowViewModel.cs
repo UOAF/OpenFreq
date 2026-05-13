@@ -165,11 +165,28 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
                         peer.Status == PeerData.PeerStatus.Transmitting, peer.Id == _openFreqService.PeerId));
                 }
 
-                PeerList.Add(new ChannelFrequencyPeerViewModel(frequency, peers));
+                PeerList.Add(new ChannelFrequencyPeerViewModel(frequency, peers, JoinFrequencyFromPeerList));
             }
 
             OnPropertyChanged(nameof(DistinctPeers));
         });
+    }
+
+    private void JoinFrequencyFromPeerList(int frequencyKhz)
+    {
+        var group = ChannelList.SelectedGroup;
+        if (group == null || group.IsBmsGroup) return;
+
+        var existing = group.Channels.FirstOrDefault(c => c.FrequencyKhz == frequencyKhz);
+        if (existing == null)
+        {
+            var channel = group.CreateChannel(frequencyKhz, $"{frequencyKhz / 1000d:F3} MHz", false);
+            channel.Join();
+        }
+        else if (existing.ConnectionStatus != Channel.ChannelConnectionStatus.Connected)
+        {
+            existing.Join();
+        }
     }
 
     private async void OnFalconSharedMemoryStateChanged(object? sender, ServiceStateChangedEventArgs e)

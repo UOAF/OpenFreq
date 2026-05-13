@@ -706,6 +706,15 @@
                                                             </TextBlock>
 
                                                         </StackPanel>
+
+                                                        <Button Grid.Column="1"
+                                                                Classes="Flat"
+                                                                Padding="6,2"
+                                                                VerticalAlignment="Center"
+                                                                ToolTip.Tip="Join in active channel group"
+                                                                Command="{Binding JoinCommand}">
+                                                            <TextBlock Text="+" FontSize="16" FontWeight="Medium" />
+                                                        </Button>
                                                     </Grid>
                                                 </Border>
 
