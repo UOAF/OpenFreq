@@ -629,7 +629,7 @@
 
 
                 <!-- Status at bottom -->
-                <TextBlock DockPanel.Dock="Bottom"
+                <TextBlock DockPanel.Dock="Bottom" HorizontalAlignment="Right"
                            Text="{Binding StatusMessage}"
                            Margin="8,4"
                            FontSize="12"

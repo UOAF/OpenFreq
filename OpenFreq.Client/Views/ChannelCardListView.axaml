@@ -246,14 +246,35 @@
         <!-- ===== RIGHT: Main Content (channel detail) ===== -->
         <Panel>
 
-            <!-- Empty state -->
-            <StackPanel IsVisible="{Binding SelectedGroup, Converter={x:Static ObjectConverters.IsNull}}"
-                        VerticalAlignment="Center"
+            <!-- Empty state - GCI mode -->
+            <StackPanel VerticalAlignment="Center"
                         HorizontalAlignment="Center"
                         Spacing="12"
                         Opacity="0.4">
+                <StackPanel.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                        <Binding Path="SelectedGroup" Converter="{x:Static ObjectConverters.IsNull}" />
+                        <Binding Path="Settings.ModeIsGci" />
+                    </MultiBinding>
+                </StackPanel.IsVisible>
                 <avalonia:MaterialIcon Kind="RadioTower" Width="48" Height="48" HorizontalAlignment="Center" />
                 <TextBlock Text="Select a channel group" HorizontalAlignment="Center" />
+            </StackPanel>
+
+            <!-- Empty state - BMS mode -->
+            <StackPanel VerticalAlignment="Center"
+                        HorizontalAlignment="Center"
+                        Spacing="12"
+                        Opacity="0.4">
+                <StackPanel.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                        <Binding Path="SelectedGroup" Converter="{x:Static ObjectConverters.IsNull}" />
+                        <Binding Path="Settings.ModeIsGci" Converter="{x:Static BoolConverters.Not}" />
+                    </MultiBinding>
+                </StackPanel.IsVisible>
+                <avalonia:MaterialIcon Kind="Airplane" Width="48" Height="48" HorizontalAlignment="Center" />
+                <TextBlock Text="Channels controlled by BMS" HorizontalAlignment="Center" FontWeight="Medium" />
+                <TextBlock Text="Connect Falcon BMS to manage your radio channels" HorizontalAlignment="Center" FontSize="12" />
             </StackPanel>
 
             <!-- Group Detail -->

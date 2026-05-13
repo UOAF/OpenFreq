@@ -579,8 +579,10 @@ Dispatcher.UIThread.Post(() =>
                     {
                         _hotkeyService.RegisterHotkey(IHotkeyService.HotkeyType.Ptt, channel.PttHotKey, channel.Id);
                     }
-                } 
+                }
             }
+
+            ChannelList.EnsureDefaultGciGroup();
         }
         catch (Exception ex)
         {

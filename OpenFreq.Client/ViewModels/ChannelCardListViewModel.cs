@@ -18,6 +18,7 @@ using NetTopologySuite.Index.Quadtree;
 using OpenFreq.Client.Models;
 using OpenFreq.Common;
 using OpenFreq.Services.Acmi;
+using OpenFreq.Utilities;
 using OpenFreqAudio;
 using OpenFreqClient.Models;
 using OpenFreqClient.Services.Interfaces;
@@ -122,7 +123,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         if (e.PropertyName == nameof(SettingsViewModel.ConnectionMode))
         {
             OnPropertyChanged(nameof(ChannelGroups));
-            if (SelectedGroup != null && !ChannelGroups.Contains(SelectedGroup))
+            if (SelectedGroup == null || !ChannelGroups.Contains(SelectedGroup))
                 SelectedGroup = ChannelGroups.FirstOrDefault();
         }
     }
@@ -130,9 +131,39 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     private void AddChannelGroup()
     {
+        var (lat, lon) = TheaterCoordinateConverter.GetCenterLatLon(_settings.SelectedTheater);
         var group = CreateChannelGroup(
-            new ChannelGroupData { Name = $"Channel Group #{AllChannelGroups.Count + 1}" },
+            new ChannelGroupData
+            {
+                Name = $"Channel Group #{AllChannelGroups.Count + 1}",
+                Latitude = lat,
+                Longitude = lon,
+                AltitudeFt = 30000
+            },
             editMode: true);
+        SelectedGroup = group;
+    }
+
+    public void EnsureDefaultGciGroup()
+    {
+        if (!_settings.ModeIsGci || ChannelGroups.Any()) return;
+
+        var (lat, lon) = TheaterCoordinateConverter.GetCenterLatLon(_settings.SelectedTheater);
+        var group = CreateChannelGroup(
+            new ChannelGroupData
+            {
+                Name = "Default",
+                Latitude = lat,
+                Longitude = lon,
+                AltitudeFt = 30000
+            });
+
+        var lobby1 = group.CreateChannel(1234, "BMS Lobby 1", false);
+        lobby1.PttHotKey = new KeyboardBinding(KeyCode.VcF1);
+
+        var lobby2 = group.CreateChannel(339750, "BMS Lobby 2", false);
+        lobby2.PttHotKey = new KeyboardBinding(KeyCode.VcF2);
+
         SelectedGroup = group;
     }
 
