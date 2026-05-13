@@ -637,23 +637,8 @@
 
                 <!-- Content Area - fills remaining space -->
                 <Grid ColumnDefinitions="*,Auto">
-                    <!-- Column 0: Your existing content -->
-                    <Grid Grid.Column="0">
-                        <ScrollViewer x:Name="ChannelGroupsScrollViewer">
-                            <views:ChannelCardListView DataContext="{Binding ChannelList}" />
-                        </ScrollViewer>
-
-                        <!-- Floating Action Button -->
-                        <controls:FloatingButton Click="AddChannelGroupButton_OnClick"
-                                                 IsVisible="{Binding Settings.ModeIsGci}"
-                                                 HorizontalAlignment="Right"
-                                                 VerticalAlignment="Bottom"
-                                                 Margin="24">
-                            <controls:FloatingButton.Content>
-                                <avalonia:MaterialIcon Kind="Plus" Width="24" Height="24" />
-                            </controls:FloatingButton.Content>
-                        </controls:FloatingButton>
-                    </Grid>
+                    <!-- Column 0: Channel list view -->
+                    <views:ChannelCardListView Grid.Column="0" DataContext="{Binding ChannelList}" />
 
                     <!-- Column 1: Participants Expander -->
                     <Expander Grid.Column="1"

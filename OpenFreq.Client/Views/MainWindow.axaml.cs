@@ -1,9 +1,6 @@
-using System.Collections.Specialized;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
-using Avalonia.Threading;
-using OpenFreqClient.Models;
 using OpenFreqClient.ViewModels;
 
 namespace OpenFreqClient.Views;
@@ -21,25 +18,6 @@ public partial class MainWindow : Window
     {
         base.OnLoaded(e);
         _viewModel = DataContext as MainWindowViewModel;
-        _viewModel?.ChannelList.AllChannelGroups.CollectionChanged += OnGroupsChanged;
-       
-    }
-    
-    private void OnGroupsChanged(object? sender, NotifyCollectionChangedEventArgs e)
-    {
-        if (e.NewItems != null)
-        {
-            Dispatcher.UIThread.Post(() =>
-            {
-                ChannelGroupsScrollViewer.ScrollToEnd();
-            });
-        }
-    }
-
-    private void AddChannelGroupButton_OnClick(object? sender, RoutedEventArgs e)
-    {
-        _viewModel?.ChannelList.CreateChannelGroup(
-            new ChannelGroupData { Name = $"Channel Group #{_viewModel.ChannelList.AllChannelGroups.Count + 1}" }, true);
     }
 
     private async void HeightmapButton_OnClick(object? sender, RoutedEventArgs e)
