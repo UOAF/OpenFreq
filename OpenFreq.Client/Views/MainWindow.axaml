@@ -6,8 +6,6 @@
         xmlns:controls="clr-namespace:Material.Styles.Controls;assembly=Material.Styles"
         xmlns:views="clr-namespace:OpenFreqClient.Views"
         xmlns:avalonia="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
-        xmlns:converters="clr-namespace:Avalonia.Controls.Converters;assembly=Avalonia.Controls"
-        xmlns:local="clr-namespace:OpenFreq.Utilities"
         xmlns:dialogHostAvalonia="clr-namespace:DialogHostAvalonia;assembly=DialogHost.Avalonia"
         xmlns:controls1="clr-namespace:OpenFreq.Client.Controls"
         mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="300"
@@ -694,9 +692,7 @@
                                                             <TextBlock
                                                                 Text="{Binding FrequencyMhzString, StringFormat='{}{0:F3} MHz'}"
                                                                 FontSize="13"
-                                                                FontWeight="Medium">
-
-                                                            </TextBlock>
+                                                                FontWeight="Medium" />
 
                                                             <TextBlock FontSize="10"
                                                                        Opacity="0.6"
