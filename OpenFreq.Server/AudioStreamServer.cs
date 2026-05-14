@@ -44,6 +44,10 @@ public class AudioStreamServer
     // Backpressure configuration
     private const int MaxPendingSendsPerClient = 3;
 
+    // UDP liveness watchdog
+    private const double UdpStaleThresholdSecs = 5.0;
+    private const double UdpStaleWarnIntervalSecs = 10.0;
+
     // High-performance logging delegates
     private static readonly Action<ILogger, string, string, Exception?> LogAudioSessionCreated =
         LoggerMessage.Define<string, string>(
@@ -68,6 +72,12 @@ public class AudioStreamServer
             LogLevel.Debug,
             new EventId(5, nameof(ReceiveAudioLoop)),
             "Mapped endpoint {Endpoint} to {DisplayName} ({ClientId})");
+
+    private static readonly Action<ILogger, string, string, double, Exception?> LogUdpStale =
+        LoggerMessage.Define<string, string, double>(
+            LogLevel.Warning,
+            new EventId(6, nameof(ForwardAudioToReceivers)),
+            "Relaying audio to {DisplayName} ({ClientId}) but no UDP received for {Seconds:F1}s — client may not be receiving");
 
 
     public AudioStreamServer(
@@ -380,7 +390,17 @@ public class AudioStreamServer
                     GetDisplayName(clientId), clientId);
                 continue;
             }
-            
+
+            var now = DateTime.UtcNow;
+            var staleSecs = (now - targetSession.LastReceived).TotalSeconds;
+            if (staleSecs > UdpStaleThresholdSecs &&
+                (targetSession.LastWarnedUdpStale == null ||
+                 (now - targetSession.LastWarnedUdpStale.Value).TotalSeconds > UdpStaleWarnIntervalSecs))
+            {
+                targetSession.LastWarnedUdpStale = now;
+                LogUdpStale(_logger, GetDisplayName(clientId), clientId, staleSecs, null);
+            }
+
             var rtpPacket = CreateRtpAudioPacket(clientId, originalRtpPacket, metadata, audioData);
             SendPacket(rtpPacket, targetSession.RemoteEndPoint);
         }
@@ -490,6 +510,7 @@ public class AudioStreamSession
     public int Port { get; set; }
     public IPEndPoint? RemoteEndPoint { get; set; }
     public DateTime LastReceived { get; set; } = DateTime.UtcNow;
+    public DateTime? LastWarnedUdpStale { get; set; }
 }
 
 [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]

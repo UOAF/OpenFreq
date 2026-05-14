@@ -25,6 +25,8 @@ public class SignalingServer
     private CancellationTokenSource _cts = new();
 
     private const double WebsocketTimeoutMillis = 1000;
+    private const int ClientIdleTimeoutSeconds = 120;
+    private Task? _idleWatchdogTask;
 
     // High-performance logging delegates
     private static readonly Action<ILogger, int, Exception?> LogServerStarted =
@@ -68,6 +70,12 @@ public class SignalingServer
             LogLevel.Information,
             new EventId(7, nameof(CleanupClient)),
             "{DisplayName} ({ClientId}) cleaned up");
+
+    private static readonly Action<ILogger, string, string, double, Exception?> LogClientIdleDisconnect =
+        LoggerMessage.Define<string, string, double>(
+            LogLevel.Warning,
+            new EventId(8, nameof(IdleWatchdogAsync)),
+            "{DisplayName} ({ClientId}) idle for {Seconds:F0}s, disconnecting");
 
     public ConcurrentDictionary<string, ClientSession> Clients => _clients;
     public FrequencyChannelManager ChannelManager => _channelManager;
@@ -149,6 +157,40 @@ public class SignalingServer
         {
             _logger.LogError(ex, "Failed to start server");
             throw;
+        }
+
+        _idleWatchdogTask = Task.Run(() => IdleWatchdogAsync(_cts.Token));
+    }
+
+    private async Task IdleWatchdogAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                var now = DateTime.UtcNow;
+                var stale = _clients.Values
+                    .Where(s => s.IsAuthenticated &&
+                                (now - s.LastActivity).TotalSeconds > ClientIdleTimeoutSeconds)
+                    .ToList();
+
+                foreach (var session in stale)
+                {
+                    LogClientIdleDisconnect(_logger,
+                        GetDisplayName(session), session.Id,
+                        (now - session.LastActivity).TotalSeconds, null);
+                    await CleanupClient(session.Id);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Normal shutdown
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Idle watchdog error");
         }
     }
 

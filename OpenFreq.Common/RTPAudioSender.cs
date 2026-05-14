@@ -146,50 +146,66 @@ public class RtpAudioSender : IDisposable
             var dspan = new Memory<short>(drainbuf);
             if (!_sendQueue.DrainExactly(dspan.Span)) return;
 
-            // Encode audio (happens here, not in audio callback)
-            encspan = new Memory<byte>(encoded);
-            if (_opusEnabled)
+            try
             {
-                var opusBytes = _opusEncoder.Encode(dspan.Span, dspan.Length, encspan.Span, encspan.Length);
-                if (opusBytes <= 0)
+                // Encode audio (happens here, not in audio callback)
+                encspan = new Memory<byte>(encoded);
+                if (_opusEnabled)
                 {
-                    throw new Exception("Opus encode failed");
+                    var opusBytes = _opusEncoder.Encode(dspan.Span, dspan.Length, encspan.Span, encspan.Length);
+                    if (opusBytes <= 0)
+                    {
+                        _logger.LogWarning("Opus encode returned {OpusBytes}, skipping frame", opusBytes);
+                        continue;
+                    }
+                    encspan = encspan[..opusBytes];
                 }
-                encspan = encspan[..opusBytes];
+                else
+                {
+                    MemoryMarshal.AsBytes(dspan.Span).CopyTo(encspan.Span);
+                }
+
+                // Build metadata
+                var metadata = new AudioPacketMetadata
+                {
+                    ClientId = _clientId,
+                    Frequencies = _frequencies,
+                };
+
+                var metadataJson = JsonSerializer.Serialize(metadata, OpenFreqJsonContext.Default.AudioPacketMetadata);
+                var metadataBytes = Encoding.UTF8.GetBytes(metadataJson);
+
+                // Build RTP packet — metadata in header extension, payload is pure audio
+                var rtpPacket = new RtpPacket
+                {
+                    Version = 2,
+                    PayloadType = _opusEnabled ? PAYLOAD_TYPE_OPUS : PAYLOAD_TYPE_PCMU,
+                    SequenceNumber = sequence,
+                    Timestamp = _timestamp,
+                    Ssrc = _ssrc,
+                    ExtensionProfile = RtpPacket.OpenFreqProfile,
+                    ExtensionData = metadataBytes,
+                    Payload = encspan.ToArray()
+                };
+
+                // Send the packet
+                var rtpBytes = rtpPacket.ToBytes();
+                _udpClient.Send(rtpBytes, rtpBytes.Length, _serverEndpoint);
+                Interlocked.Increment(ref _packetsSent);
             }
-            else
+            catch (SocketException ex)
             {
-                MemoryMarshal.AsBytes(dspan.Span).CopyTo(encspan.Span);
+                _logger.LogWarning(ex, "UDP send failed (seq {Seq}), skipping frame", sequence);
             }
-
-            // Build metadata
-            var metadata = new AudioPacketMetadata
+            catch (Exception ex)
             {
-                ClientId = _clientId,
-                Frequencies = _frequencies,
-            };
-
-            var metadataJson = JsonSerializer.Serialize(metadata, OpenFreqJsonContext.Default.AudioPacketMetadata);
-            var metadataBytes = Encoding.UTF8.GetBytes(metadataJson);
-
-            // Build RTP packet — metadata in header extension, payload is pure audio
-            var rtpPacket = new RtpPacket
+                _logger.LogError(ex, "Send thread error (seq {Seq}), skipping frame", sequence);
+            }
+            finally
             {
-                Version = 2,
-                PayloadType = _opusEnabled ? PAYLOAD_TYPE_OPUS : PAYLOAD_TYPE_PCMU,
-                SequenceNumber = sequence,
-                Timestamp = _timestamp,
-                Ssrc = _ssrc,
-                ExtensionProfile = RtpPacket.OpenFreqProfile,
-                ExtensionData = metadataBytes,
-                Payload = encspan.ToArray()
-            };
-
-            // Send the packet
-            var rtpBytes = rtpPacket.ToBytes();
-            _udpClient.Send(rtpBytes, rtpBytes.Length, _serverEndpoint);
-            _timestamp += OPUS_FRAME_SIZE;
-            sequence++;
+                _timestamp += OPUS_FRAME_SIZE;
+                sequence++;
+            }
         }
     }
 

@@ -41,6 +41,7 @@ public class OpenFreqRtcClient : IDisposable
     private readonly string _password;
     private ClientWebSocket? _webSocket;
     private CancellationTokenSource _cts = new();
+    private readonly SemaphoreSlim _wsSendLock = new(1, 1);
 
     // Transmission state
     private readonly Dictionary<int, bool> _frequencyTransmissionState = new();
@@ -475,15 +476,25 @@ public class OpenFreqRtcClient : IDisposable
     {
         if (_webSocket?.State != WebSocketState.Open) return;
 
+        await _wsSendLock.WaitAsync(_cts.Token).ConfigureAwait(false);
         try
         {
+            if (_webSocket?.State != WebSocketState.Open) return;
             var json = JsonSerializer.Serialize(message, OpenFreqJsonContext.Default.SignalingMessage);
             var buffer = Encoding.UTF8.GetBytes(json);
             await _webSocket.SendAsync(new ArraySegment<byte>(buffer), WebSocketMessageType.Text, true, _cts.Token);
         }
+        catch (OperationCanceledException)
+        {
+            // Shutting down
+        }
         catch (Exception ex)
         {
             OnError($"Error sending message: {ex.Message}");
+        }
+        finally
+        {
+            _wsSendLock.Release();
         }
     }
 
@@ -536,6 +547,7 @@ public class OpenFreqRtcClient : IDisposable
         }
 
         _webSocket?.Dispose();
+        _wsSendLock.Dispose();
     }
 }
 
