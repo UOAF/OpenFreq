@@ -906,7 +906,7 @@ public class OpenFreqService : IOpenFreqService
         var status = e.IsTransmitting
             ? Channel.ChannelTransmissionStatus.Transmitting
             : Channel.ChannelTransmissionStatus.Idle;
-        OnFrequencyTransmissionStatusChanged(e.FrequencyKhz, status);
+        OnFrequencyTransmissionStatusChanged(e.FrequencyKhz, status, Apply3dAudioEffects);
     }
 
     private void OnClientPeerTransmissionStatusChanged(object? sender, PeerTransmissionEventArgs e)
@@ -922,7 +922,8 @@ public class OpenFreqService : IOpenFreqService
                 ? Channel.ChannelTransmissionStatus.Transmitting
                 : e.IsTransmitting
                     ? Channel.ChannelTransmissionStatus.Receiving
-                    : Channel.ChannelTransmissionStatus.Idle);
+                    : Channel.ChannelTransmissionStatus.Idle,
+            e.Is3d);
     }
 
     /// <summary>
@@ -1113,11 +1114,11 @@ public class OpenFreqService : IOpenFreqService
     }
 
     private void OnFrequencyTransmissionStatusChanged(int frequencyKhz,
-        Channel.ChannelTransmissionStatus transmissionStatus)
+        Channel.ChannelTransmissionStatus transmissionStatus, bool is3d)
     {
         _logger.LogDebug("Frequency {FrequencyKhz}: {Status}", frequencyKhz, transmissionStatus);
         FrequencyTransmissionStatusChanged?.Invoke(this,
-            new FrequencyTransmissionStatusEventArgs(frequencyKhz, transmissionStatus));
+            new FrequencyTransmissionStatusEventArgs(frequencyKhz, transmissionStatus, is3d));
     }
 
     private void OnPeerActivity(object? sender, PeerActivityEventArgs args) =>
@@ -1181,10 +1182,12 @@ public class FrequencyConnectionStatusEventArgs(
 
 public class FrequencyTransmissionStatusEventArgs(
     int frequencyKhz,
-    Channel.ChannelTransmissionStatus transmissionStatus) : EventArgs
+    Channel.ChannelTransmissionStatus transmissionStatus,
+    bool is3d) : EventArgs
 {
     public int FrequencyKhz { get; } = frequencyKhz;
     public Channel.ChannelTransmissionStatus TransmissionStatus { get; } = transmissionStatus;
+    public bool Is3d { get; } = is3d;
 }
 
 public class PeerActivityEventArgs(int frequencyKhz, PeerData peerData, bool is3d) : EventArgs

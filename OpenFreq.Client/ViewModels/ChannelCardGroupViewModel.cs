@@ -74,6 +74,9 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
     [ObservableProperty] public partial bool IsTracking { get; set; }
     public bool IsBmsGroup => RadioStationData.Type == RadioStationData.RadioStationType.BMS;
 
+    [ObservableProperty] public partial bool AnyChannelTransmitting { get; set; }
+    [ObservableProperty] public partial bool AnyChannelReceiving { get; set; }
+
     public ChannelCardGroupViewModel(IOpenFreqService openFreqService, IHotkeyService hotkeyService,
         IAcmiClientService acmiClientService, SettingsViewModel settingsViewModel, string name,
         RadioStationPreset preset, RadioStationData.RadioStationType radioStationType, double latitude = 0,
@@ -205,6 +208,9 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
             {
                 channel.ConnectionStatus = Channel.ChannelConnectionStatus.Disconnected;
             }
+
+            AnyChannelTransmitting = false;
+            AnyChannelReceiving = false;
         }
         else if (Settings.ModeIsGci && state == ConnectionState.Connected && !IsAcmiConnected)
         {
@@ -229,8 +235,16 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
 
     private void OnFrequencyTransmissionStatusChanged(object? sender, FrequencyTransmissionStatusEventArgs e)
     {
+        var modeMatches = e.Is3d == Settings.Is3dMode;
+
         foreach (var channel in Channels.Where(c => c.FrequencyKhz == e.FrequencyKhz))
-            channel.TransmissionStatus = e.TransmissionStatus;
+        {
+            if (e.TransmissionStatus == Channel.ChannelTransmissionStatus.Idle || modeMatches)
+                channel.TransmissionStatus = e.TransmissionStatus;
+        }
+
+        AnyChannelTransmitting = Channels.Any(c => c.TransmissionStatus == Channel.ChannelTransmissionStatus.Transmitting);
+        AnyChannelReceiving = Channels.Any(c => c.TransmissionStatus == Channel.ChannelTransmissionStatus.Receiving);
     }
     
     

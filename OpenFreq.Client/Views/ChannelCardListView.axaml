@@ -94,21 +94,36 @@
                             <Setter Property="Padding" Value="0" />
                             <Setter Property="Margin" Value="0,0,0,6" />
                             <Setter Property="HorizontalAlignment" Value="Center" />
+                            <Setter Property="ClipToBounds" Value="False" />
                         </Style>
                     </ListBox.Styles>
                     <ListBox.ItemTemplate>
                         <DataTemplate DataType="viewModels:ChannelCardGroupViewModel">
-                            <Border Width="32" Height="32"
-                                    CornerRadius="6"
-                                    Background="{Binding AccentBrush}"
-                                    Opacity="0.75"
-                                    ToolTip.Tip="{Binding Name}">
-                                <avalonia:MaterialIcon Kind="RadioTower"
-                                                       Width="16" Height="16"
-                                                       Foreground="White"
-                                                       HorizontalAlignment="Center"
-                                                       VerticalAlignment="Center" />
-                            </Border>
+                            <Panel Width="32" Height="32"
+                                   ClipToBounds="False"
+                                   ToolTip.Tip="{Binding Name}">
+                                <Border CornerRadius="6"
+                                        Background="{Binding AccentBrush}"
+                                        Opacity="0.75">
+                                    <avalonia:MaterialIcon Kind="RadioTower"
+                                                           Width="16" Height="16"
+                                                           Foreground="White"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center" />
+                                </Border>
+                                <!-- RX indicator dot (rendered below TX so TX takes priority) -->
+                                <Ellipse Width="9" Height="9"
+                                         Fill="{DynamicResource ChannelStatusReceivingBrush}"
+                                         HorizontalAlignment="Left" VerticalAlignment="Top"
+                                         Margin="1,1,0,0"
+                                         IsVisible="{Binding AnyChannelReceiving}" />
+                                <!-- TX indicator dot -->
+                                <Ellipse Width="9" Height="9"
+                                         Fill="{DynamicResource ChannelStatusTransmittingBrush}"
+                                         HorizontalAlignment="Left" VerticalAlignment="Top"
+                                         Margin="1,1,0,0"
+                                         IsVisible="{Binding AnyChannelTransmitting}" />
+                            </Panel>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
@@ -137,9 +152,14 @@
                                     ClipToBounds="True">
                                 <Grid ColumnDefinitions="4,*">
 
-                                    <!-- Left accent — group color -->
-                                    <Rectangle Grid.Column="0"
-                                               Fill="{Binding AccentBrush}" />
+                                    <!-- Left accent — group color, overridden by TX/RX state -->
+                                    <Grid Grid.Column="0">
+                                        <Rectangle Fill="{Binding AccentBrush}" />
+                                        <Rectangle Fill="{DynamicResource ChannelStatusReceivingBrush}"
+                                                   IsVisible="{Binding AnyChannelReceiving}" />
+                                        <Rectangle Fill="{DynamicResource ChannelStatusTransmittingBrush}"
+                                                   IsVisible="{Binding AnyChannelTransmitting}" />
+                                    </Grid>
 
                                     <!-- Card content -->
                                     <Grid Grid.Column="1"
@@ -294,9 +314,14 @@
                             <Grid ColumnDefinitions="4,*,Auto"
                                   MinHeight="44">
 
-                                <!-- Left accent — group color -->
-                                <Rectangle Grid.Column="0"
-                                           Fill="{Binding AccentBrush}" />
+                                <!-- Left accent — group color, overridden by TX/RX state -->
+                                <Grid Grid.Column="0">
+                                    <Rectangle Fill="{Binding AccentBrush}" />
+                                    <Rectangle Fill="{DynamicResource ChannelStatusReceivingBrush}"
+                                               IsVisible="{Binding AnyChannelReceiving}" />
+                                    <Rectangle Fill="{DynamicResource ChannelStatusTransmittingBrush}"
+                                               IsVisible="{Binding AnyChannelTransmitting}" />
+                                </Grid>
 
                                 <!-- Group info -->
                                 <StackPanel Grid.Column="1"
