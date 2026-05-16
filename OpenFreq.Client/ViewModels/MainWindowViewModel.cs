@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -54,9 +55,14 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
     public bool HasGamePeers => GamePeerList.Count > 0;
     public int TotalChannels => LobbyPeerList.Concat(GamePeerList).Select(f => f.FrequencyKhz).Distinct().Count();
     public int DistinctPeers => LobbyPeerList.Concat(GamePeerList).SelectMany(freq => freq.Peers).Distinct().Count();
+    public int LobbyPeerCount => LobbyPeerList.SelectMany(f => f.Peers).Select(p => p.Id).Distinct().Count();
+    public int GamePeerCount => GamePeerList.SelectMany(f => f.Peers).Select(p => p.Id).Distinct().Count();
 
     private readonly Dictionary<(string peerId, int freqKhz), bool> _peerModes = new();
     private SortedDictionary<int, List<PeerData>> _latestAllPeers = new();
+
+    private ChannelCardGroupViewModel? _subscribedGroup;
+    private readonly Dictionary<ChannelCardViewModel, PropertyChangedEventHandler> _channelHandlers = new();
 
     [ObservableProperty] public partial bool OpenFreqConnected { get; set; }
 
@@ -152,16 +158,20 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         LobbyPeerList.CollectionChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(HasLobbyPeers));
+            OnPropertyChanged(nameof(LobbyPeerCount));
             OnPropertyChanged(nameof(DistinctPeers));
             OnPropertyChanged(nameof(TotalChannels));
         };
         GamePeerList.CollectionChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(HasGamePeers));
+            OnPropertyChanged(nameof(GamePeerCount));
             OnPropertyChanged(nameof(DistinctPeers));
             OnPropertyChanged(nameof(TotalChannels));
         };
         Settings.PropertyChanged += OnSettingsPropertyChanged;
+        ChannelList.PropertyChanged += OnChannelListPropertyChanged;
+        UpdateGroupSubscription();
 
         // Load config
         _ = LoadConfigurationAsync();
@@ -172,6 +182,11 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
     private void OnAllPeersChanged(object? sender, AllPeersStatusEventArgs e)
     {
         _latestAllPeers = e.AllPeers;
+        // Sync _peerModes from the authoritative server snapshot so late-joining
+        // clients get the correct lobby/game section for all existing peers.
+        foreach (var (frequency, peers) in e.AllPeers)
+            foreach (var peer in peers)
+                _peerModes[(peer.Id, frequency)] = peer.Is3d;
         Dispatcher.UIThread.Post(RebuildPeerLists);
     }
 
@@ -197,9 +212,9 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
             }
 
             if (lobbyPeers.Count > 0)
-                newLobby.Add(new ChannelFrequencyPeerViewModel(frequency, lobbyPeers, JoinFrequencyFromPeerList, false, !is3dMode));
+                newLobby.Add(new ChannelFrequencyPeerViewModel(frequency, lobbyPeers, JoinFrequencyFromPeerList, false, !is3dMode && !IsFrequencyAlreadyConnected(frequency)));
             if (gamePeers.Count > 0)
-                newGame.Add(new ChannelFrequencyPeerViewModel(frequency, gamePeers, JoinFrequencyFromPeerList, true, is3dMode));
+                newGame.Add(new ChannelFrequencyPeerViewModel(frequency, gamePeers, JoinFrequencyFromPeerList, true, is3dMode && !IsFrequencyAlreadyConnected(frequency)));
         }
 
         LobbyPeerList.Clear();
@@ -223,6 +238,78 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         {
             existing.Join();
         }
+    }
+
+    private bool IsFrequencyAlreadyConnected(int frequencyKhz)
+    {
+        var group = ChannelList.SelectedGroup;
+        return group?.Channels.Any(c => c.FrequencyKhz == frequencyKhz &&
+                                        c.ConnectionStatus == Channel.ChannelConnectionStatus.Connected) == true;
+    }
+
+    private void UpdateCanJoin()
+    {
+        bool is3dMode = Settings.Is3dMode;
+        foreach (var entry in LobbyPeerList)
+            entry.CanJoin = !is3dMode && !IsFrequencyAlreadyConnected(entry.FrequencyKhz);
+        foreach (var entry in GamePeerList)
+            entry.CanJoin = is3dMode && !IsFrequencyAlreadyConnected(entry.FrequencyKhz);
+    }
+
+    private void OnChannelListPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(ChannelCardListViewModel.SelectedGroup)) return;
+        UpdateGroupSubscription();
+        Dispatcher.UIThread.Post(UpdateCanJoin);
+    }
+
+    private void UpdateGroupSubscription()
+    {
+        if (_subscribedGroup != null)
+        {
+            _subscribedGroup.Channels.CollectionChanged -= OnSelectedGroupChannelsChanged;
+            foreach (var (ch, handler) in _channelHandlers)
+                ch.PropertyChanged -= handler;
+            _channelHandlers.Clear();
+        }
+
+        _subscribedGroup = ChannelList.SelectedGroup;
+
+        if (_subscribedGroup != null)
+        {
+            _subscribedGroup.Channels.CollectionChanged += OnSelectedGroupChannelsChanged;
+            foreach (var ch in _subscribedGroup.Channels)
+                SubscribeToChannelStatus(ch);
+        }
+    }
+
+    private void OnSelectedGroupChannelsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.NewItems != null)
+            foreach (ChannelCardViewModel ch in e.NewItems)
+                SubscribeToChannelStatus(ch);
+        if (e.OldItems != null)
+            foreach (ChannelCardViewModel ch in e.OldItems)
+                UnsubscribeFromChannelStatus(ch);
+        Dispatcher.UIThread.Post(UpdateCanJoin);
+    }
+
+    private void SubscribeToChannelStatus(ChannelCardViewModel ch)
+    {
+        PropertyChangedEventHandler handler = (_, args) =>
+        {
+            if (args.PropertyName == nameof(ChannelCardViewModel.ConnectionStatus))
+                Dispatcher.UIThread.Post(UpdateCanJoin);
+        };
+        _channelHandlers[ch] = handler;
+        ch.PropertyChanged += handler;
+    }
+
+    private void UnsubscribeFromChannelStatus(ChannelCardViewModel ch)
+    {
+        if (!_channelHandlers.TryGetValue(ch, out var handler)) return;
+        ch.PropertyChanged -= handler;
+        _channelHandlers.Remove(ch);
     }
 
     private async void OnFalconSharedMemoryStateChanged(object? sender, ServiceStateChangedEventArgs e)
@@ -718,6 +805,14 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         _openFreqService.AllPeersStatusChanged -= OnAllPeersChanged;
         _openFreqService.FrequencyTransmissionStatusChanged -= OnFrequencyTransmissionStatusChanged;
         Settings.PropertyChanged -= OnSettingsPropertyChanged;
+        ChannelList.PropertyChanged -= OnChannelListPropertyChanged;
+        if (_subscribedGroup != null)
+        {
+            _subscribedGroup.Channels.CollectionChanged -= OnSelectedGroupChannelsChanged;
+            foreach (var (ch, handler) in _channelHandlers)
+                ch.PropertyChanged -= handler;
+            _channelHandlers.Clear();
+        }
 
         _falconRadioSharedMemoryService.ConnectionParametersChanged -=
             FalconRadioSharedMemoryServiceOnConnectionParametersChanged;

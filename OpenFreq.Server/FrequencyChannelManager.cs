@@ -75,12 +75,26 @@ public class FrequencyChannelManager
             if (peers.TryGetValue(clientId, out var currentPeerData))
             {
                 var updatedPeerData = new PeerData(
-                    currentPeerData.Id, 
-                    newDisplayName, 
-                    currentPeerData.Status);
-                
+                    currentPeerData.Id,
+                    newDisplayName,
+                    currentPeerData.Status,
+                    currentPeerData.Is3d);
+
                 peers.TryUpdate(clientId, updatedPeerData, currentPeerData);
             }
+        }
+    }
+
+    /// <summary>
+    /// Update the last-known 3D mode for a peer on a specific frequency
+    /// </summary>
+    public void UpdateIs3d(int frequencyKhz, string clientId, bool is3d)
+    {
+        if (_channels.TryGetValue(frequencyKhz, out var peers) &&
+            peers.TryGetValue(clientId, out var current))
+        {
+            var updated = new PeerData(current.Id, current.Name, current.Status, is3d);
+            peers.TryUpdate(clientId, updated, current);
         }
     }
 

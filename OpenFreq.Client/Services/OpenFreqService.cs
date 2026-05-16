@@ -526,6 +526,12 @@ public class OpenFreqService : IOpenFreqService
         OnStatusMessage($"Stopped transmitting on {frequencyKhz / 1000d:F3} MHz");
     }
 
+    public async Task NotifyModeAsync(bool is3d)
+    {
+        if (_client == null || !_client.IsConnected) return;
+        await _client.SendModeUpdateAsync(is3d);
+    }
+
     public async Task UpdateDisplayNameAsync(string newDisplayName)
     {
         if (_client is not { IsAuthenticated: true }) return;
@@ -836,9 +842,7 @@ public class OpenFreqService : IOpenFreqService
     {
         FrequencyJoined?.Invoke(this, e);
         foreach (var peer in e.Peers)
-        {
             CreateAudioStreamForPeer(e.FrequencyKhz, peer.Id);
-        }
 
         // Update all slots tuned to this frequency to Connected.
         OnFrequencyConnectionStatusChanged(e.FrequencyKhz, Channel.ChannelConnectionStatus.Connected, e.Peers);

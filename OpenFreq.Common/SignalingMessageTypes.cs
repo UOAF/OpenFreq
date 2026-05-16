@@ -16,4 +16,5 @@ public static class SignalingMessageTypes
     public const string ChannelState = "channel-state";
     public const string SetDisplayName = "set-display-name";
     public const string AllPeersStatus = "all-peers-status";
+    public const string ModeUpdate = "mode-update";
 }

@@ -47,6 +47,7 @@ public interface IOpenFreqService : IDisposable
     Task StartTransmissionAsync(int frequencyKhz, Guid slotId, List<int> mutedFrequencies);
     Task StopTransmissionAsync(int frequencyKhz);
     Task UpdateDisplayNameAsync(string newDisplayName);
+    Task NotifyModeAsync(bool is3d);
 
     void SetVolume(int frequencyKhz, Guid slotId, float volumeValue);
     void SetPan(int frequencyKhz, Guid slotId, int pan);

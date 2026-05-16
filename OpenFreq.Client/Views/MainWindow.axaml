@@ -681,7 +681,7 @@
                                     <StackPanel IsVisible="{Binding HasLobbyPeers}">
                                         <Border Padding="10,6,10,4"
                                                 BorderThickness="0,0,0,1">
-                                            <TextBlock Text="LOBBY"
+                                            <TextBlock Text="{Binding LobbyPeerCount, StringFormat='LOBBY - {0}'}"
                                                        FontSize="10"
                                                        FontWeight="SemiBold"
                                                        Opacity="0.5"
@@ -765,7 +765,7 @@
                                     <StackPanel IsVisible="{Binding HasGamePeers}">
                                         <Border Padding="10,6,10,4"
                                                 BorderThickness="0,0,0,1">
-                                            <TextBlock Text="IN FLIGHT"
+                                            <TextBlock Text="{Binding GamePeerCount, StringFormat='IN FLIGHT · {0}'}"
                                                        FontSize="10"
                                                        FontWeight="SemiBold"
                                                        Opacity="0.5"

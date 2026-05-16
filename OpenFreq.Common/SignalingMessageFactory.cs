@@ -171,6 +171,17 @@ public static class SignalingMessageFactory
         };
     }
 
+    public static SignalingMessage CreateModeUpdate(bool is3d)
+    {
+        return new SignalingMessage
+        {
+            Type = SignalingMessageTypes.ModeUpdate,
+            Payload = JsonSerializer.SerializeToElement(
+                new ModeUpdateMessage { Is3d = is3d },
+                OpenFreqJsonContext.Default.ModeUpdateMessage)
+        };
+    }
+
     public static T? DeserializePayload<T>(JsonElement? payload) where T : class
     {
         if (payload == null)

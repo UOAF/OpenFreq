@@ -130,6 +130,7 @@ public partial class SettingsViewModel : ViewModelBase
     partial void OnIs3dModeChanged(bool value)
     {
         _openFreqService.Apply3dAudioEffects = value;
+        _ = _openFreqService.NotifyModeAsync(value);
     }
 
     partial void OnConnectionModeChanged(IOpenFreqService.Mode value)

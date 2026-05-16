@@ -244,6 +244,16 @@ public class OpenFreqRtcClient : IDisposable
     }
 
     /// <summary>
+    /// Notifies the server of the local client's current 3D mode.
+    /// The server updates its state and broadcasts AllPeersStatusMessage to all clients.
+    /// </summary>
+    public async Task SendModeUpdateAsync(bool is3d)
+    {
+        if (!IsAuthenticated) return;
+        await SendMessageAsync(SignalingMessageFactory.CreateModeUpdate(is3d));
+    }
+
+    /// <summary>
     /// Sets the Display Name (=Nickname)
     /// </summary>
     public async Task SetDisplayNameAsync(string displayName)

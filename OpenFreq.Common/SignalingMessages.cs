@@ -146,3 +146,11 @@ public class AllPeersStatusMessage
 {
     [JsonPropertyName("frequencies")] public SortedDictionary<int, List<PeerData>> FrequenciesPeers { get; set; } = [];
 }
+
+/// <summary>
+/// Client notifies server of its current 3D mode
+/// </summary>
+public class ModeUpdateMessage
+{
+    [JsonPropertyName("3d")] public bool Is3d { get; set; }
+}

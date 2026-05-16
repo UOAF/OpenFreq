@@ -256,6 +256,9 @@ public class SignalingServer
                 case "transmission":
                     await HandleTransmission(session, message);
                     break;
+                case "mode-update":
+                    await HandleModeUpdate(session, message);
+                    break;
                 case "set-display-name":
                     await SetDisplayName(session, message);
                     break;
@@ -352,17 +355,12 @@ public class SignalingServer
         session.CurrentFrequencies.TryAdd(joinMsg.FrequencyKhz, ClientSession.FrequencyClientStatus.Receiving);
 
         List<ChannelStateMessage.Peer> peers = [];
-        // Iterate through all clients on this freq (except our own)
         foreach (var clientId in _channelManager.GetClientsInChannel(joinMsg.FrequencyKhz))
         {
             if (clientId == session.Id) continue;
-
             _clients.TryGetValue(clientId, out var clientSession);
             if (clientSession == null) continue;
-            peers.Add(new ChannelStateMessage.Peer(
-                clientSession.Id,
-                clientSession.DisplayName ?? "Unnamed"
-            ));
+            peers.Add(new ChannelStateMessage.Peer(clientSession.Id, clientSession.DisplayName ?? "Unnamed"));
         }
 
         await SendChannelState(session, joinMsg.FrequencyKhz, peers);
@@ -453,6 +451,8 @@ public class SignalingServer
         }
         else return;
 
+        _channelManager.UpdateIs3d(transmissionMsg.FrequencyKhz, session.Id, transmissionMsg.Is3d);
+
         if (!session.CurrentFrequencies.ContainsKey(transmissionMsg.FrequencyKhz)) return;
 
         var peersInChannel = _channelManager.GetClientsInChannel(transmissionMsg.FrequencyKhz)
@@ -470,6 +470,20 @@ public class SignalingServer
                 transmissionMsg.FrequencyKhz,
                 transmissionMsg.Transmitting,
                 transmissionMsg.Is3d));
+    }
+
+    private async Task HandleModeUpdate(ClientSession session, SignalingMessage message)
+    {
+        if (!session.IsAuthenticated) return;
+
+        var modeMsg = SignalingMessageFactory.DeserializePayload<ModeUpdateMessage>(message.Payload);
+        if (modeMsg == null) return;
+
+        foreach (var frequencyKhz in session.CurrentFrequencies.Keys)
+            _channelManager.UpdateIs3d(frequencyKhz, session.Id, modeMsg.Is3d);
+
+        await BroadcastToAllChannels(
+            SignalingMessageFactory.CreateAllPeersStatusMessage(_channelManager.GetAllChannelStates()));
     }
 
     private async Task SetDisplayName(ClientSession session, SignalingMessage message)
