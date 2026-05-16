@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Media;
@@ -12,14 +14,12 @@ using FalconRadioService.Models;
 using FalconRadioService.Services;
 using Material.Styles.Controls;
 using Microsoft.Extensions.Logging;
-using OpenFreq.Client.Models;
 using OpenFreq.Common;
 using OpenFreq.Services.Acmi;
 using OpenFreqClient.Models;
 using OpenFreqClient.Services;
 using OpenFreqClient.Services.Interfaces;
 using OpenFreqClient.Views.Util;
-using SharpHook.Data;
 
 namespace OpenFreqClient.ViewModels;
 
@@ -47,12 +47,16 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
 
     [ObservableProperty] public partial SettingsViewModel Settings { get; set; }
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(TotalChannels), nameof(DistinctPeers))]
-    public partial ObservableCollection<ChannelFrequencyPeerViewModel> PeerList { get; set; } = [];
+    [ObservableProperty] public partial ObservableCollection<ChannelFrequencyPeerViewModel> LobbyPeerList { get; set; } = [];
+    [ObservableProperty] public partial ObservableCollection<ChannelFrequencyPeerViewModel> GamePeerList { get; set; } = [];
 
-    public int TotalChannels => PeerList.Count;
-    public int DistinctPeers => PeerList.SelectMany(freq => freq.Peers).Distinct().Count();
+    public bool HasLobbyPeers => LobbyPeerList.Count > 0;
+    public bool HasGamePeers => GamePeerList.Count > 0;
+    public int TotalChannels => LobbyPeerList.Concat(GamePeerList).Select(f => f.FrequencyKhz).Distinct().Count();
+    public int DistinctPeers => LobbyPeerList.Concat(GamePeerList).SelectMany(freq => freq.Peers).Distinct().Count();
+
+    private readonly Dictionary<(string peerId, int freqKhz), bool> _peerModes = new();
+    private SortedDictionary<int, List<PeerData>> _latestAllPeers = new();
 
     [ObservableProperty] public partial bool OpenFreqConnected { get; set; }
 
@@ -145,6 +149,20 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         // manually start it so we can be sure to get a notification if its already running
         _ivcMonitorService.Start();
 
+        LobbyPeerList.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasLobbyPeers));
+            OnPropertyChanged(nameof(DistinctPeers));
+            OnPropertyChanged(nameof(TotalChannels));
+        };
+        GamePeerList.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasGamePeers));
+            OnPropertyChanged(nameof(DistinctPeers));
+            OnPropertyChanged(nameof(TotalChannels));
+        };
+        Settings.PropertyChanged += OnSettingsPropertyChanged;
+
         // Load config
         _ = LoadConfigurationAsync();
 
@@ -153,23 +171,41 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
 
     private void OnAllPeersChanged(object? sender, AllPeersStatusEventArgs e)
     {
-        Dispatcher.UIThread.Post(() =>
-        {
-            PeerList.Clear();
-            foreach (var frequency in e.AllPeers.Keys)
-            {
-                ObservableCollection<ChannelPeerViewModel> peers = [];
-                foreach (var peer in e.AllPeers[frequency])
-                {
-                    peers.Add(new ChannelPeerViewModel(peer.Id, peer.Name ?? string.Empty,
-                        peer.Status == PeerData.PeerStatus.Transmitting, peer.Id == _openFreqService.PeerId));
-                }
+        _latestAllPeers = e.AllPeers;
+        Dispatcher.UIThread.Post(RebuildPeerLists);
+    }
 
-                PeerList.Add(new ChannelFrequencyPeerViewModel(frequency, peers, JoinFrequencyFromPeerList));
+    private void RebuildPeerLists()
+    {
+        bool is3dMode = Settings.Is3dMode;
+        var newLobby = new List<ChannelFrequencyPeerViewModel>();
+        var newGame = new List<ChannelFrequencyPeerViewModel>();
+
+        foreach (var (frequency, peerDatas) in _latestAllPeers)
+        {
+            ObservableCollection<ChannelPeerViewModel> lobbyPeers = [];
+            ObservableCollection<ChannelPeerViewModel> gamePeers = [];
+
+            foreach (var peer in peerDatas)
+            {
+                bool is3d = _peerModes.TryGetValue((peer.Id, frequency), out var mode) && mode;
+                bool isTransmitting = (is3dMode == is3d) && peer.Status == PeerData.PeerStatus.Transmitting;
+                var vm = new ChannelPeerViewModel(peer.Id, peer.Name ?? string.Empty, isTransmitting,
+                    peer.Id == _openFreqService.PeerId);
+                if (is3d) gamePeers.Add(vm);
+                else lobbyPeers.Add(vm);
             }
 
-            OnPropertyChanged(nameof(DistinctPeers));
-        });
+            if (lobbyPeers.Count > 0)
+                newLobby.Add(new ChannelFrequencyPeerViewModel(frequency, lobbyPeers, JoinFrequencyFromPeerList, false, !is3dMode));
+            if (gamePeers.Count > 0)
+                newGame.Add(new ChannelFrequencyPeerViewModel(frequency, gamePeers, JoinFrequencyFromPeerList, true, is3dMode));
+        }
+
+        LobbyPeerList.Clear();
+        foreach (var e in newLobby) LobbyPeerList.Add(e);
+        GamePeerList.Clear();
+        foreach (var e in newGame) GamePeerList.Add(e);
     }
 
     private void JoinFrequencyFromPeerList(int frequencyKhz)
@@ -504,19 +540,56 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
 
     private void OnPeerActivityReceived(object? sender, PeerActivityEventArgs e)
     {
+        bool? prevMode = _peerModes.TryGetValue((e.PeerData.Id, e.FrequencyKhz), out var m) ? m : null;
+        _peerModes[(e.PeerData.Id, e.FrequencyKhz)] = e.Is3d;
+
+        // Update status in snapshot so a subsequent RebuildPeerLists call uses fresh status
+        if (_latestAllPeers.TryGetValue(e.FrequencyKhz, out var peerList))
+        {
+            var snapPeer = peerList.FirstOrDefault(p => p.Id == e.PeerData.Id);
+            if (snapPeer != null) snapPeer.Status = e.PeerData.Status;
+        }
+
+        bool modeChanged = prevMode == null ? e.Is3d : prevMode != e.Is3d;
+
         Dispatcher.UIThread.Post(() =>
         {
-            // This isn't ideal performance-wise, but we don't have too many peers and there is no ObservableDictionary
-            foreach (var peer in PeerList
+            if (modeChanged)
+            {
+                RebuildPeerLists();
+                return;
+            }
+
+            foreach (var peer in LobbyPeerList.Concat(GamePeerList)
                          .Where(f => f.FrequencyKhz == e.FrequencyKhz)
                          .SelectMany(f => f.Peers)
                          .Where(p => p.Id == e.PeerData.Id))
             {
-                // Only show transmitting if the client is in the same mode as we are
-                peer.IsTransmitting =
-                    (Settings.Is3dMode == e.Is3d) && e.PeerData.Status == PeerData.PeerStatus.Transmitting;
+                peer.IsTransmitting = (Settings.Is3dMode == e.Is3d) && e.PeerData.Status == PeerData.PeerStatus.Transmitting;
             }
         });
+    }
+
+    private void OnSettingsPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(Settings.Is3dMode)) return;
+        Dispatcher.UIThread.Post(UpdateModeDependent);
+    }
+
+    private void UpdateModeDependent()
+    {
+        bool is3d = Settings.Is3dMode;
+        string? ownId = _openFreqService.PeerId;
+
+        // Stamp own player's mode into _peerModes for every frequency they appear on,
+        // so RebuildPeerLists places them in the correct section.
+        if (!string.IsNullOrEmpty(ownId))
+        {
+            foreach (var frequency in _latestAllPeers.Keys)
+                _peerModes[(ownId, frequency)] = is3d;
+        }
+
+        RebuildPeerLists();
     }
 
     private void OnFrequencyTransmissionStatusChanged(object? sender, FrequencyTransmissionStatusEventArgs e)
@@ -524,11 +597,9 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         // Only interested in channels we are transmitting or idling in
         if (e.TransmissionStatus == Channel.ChannelTransmissionStatus.Receiving) return;
 
-Dispatcher.UIThread.Post(() =>
-
+        Dispatcher.UIThread.Post(() =>
         {
-            // This isn't ideal performance-wise, but we don't have too many peers and there is no ObservableDictionary
-            foreach (var peer in PeerList
+            foreach (var peer in LobbyPeerList.Concat(GamePeerList)
                          .Where(f => f.FrequencyKhz == e.FrequencyKhz)
                          .SelectMany(f => f.Peers)
                          .Where(p => p.Id == _openFreqService.PeerId))
@@ -644,7 +715,9 @@ Dispatcher.UIThread.Post(() =>
         _openFreqService.ConnectionStateChanged -= OnConnectionStateChanged;
         _openFreqService.StatusMessageReceived -= OnStatusMessageReceived;
         _openFreqService.PeerActivityReceived -= OnPeerActivityReceived;
-        _openFreqService.FrequencyTransmissionStatusChanged += OnFrequencyTransmissionStatusChanged;
+        _openFreqService.AllPeersStatusChanged -= OnAllPeersChanged;
+        _openFreqService.FrequencyTransmissionStatusChanged -= OnFrequencyTransmissionStatusChanged;
+        Settings.PropertyChanged -= OnSettingsPropertyChanged;
 
         _falconRadioSharedMemoryService.ConnectionParametersChanged -=
             FalconRadioSharedMemoryServiceOnConnectionParametersChanged;

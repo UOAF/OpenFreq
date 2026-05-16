@@ -143,6 +143,7 @@ public partial class SettingsViewModel : ViewModelBase
                 _acmiClientService.Stop();
                 break;
             case IOpenFreqService.Mode.GCI:
+                Is3dMode = false;
                 _falconSharedMemoryService.Stop();
                 _falconRadioSharedMemoryService.Stop();
                 _hotkeyService.UnregisterHotkeys(IHotkeyService.HotkeyType.SquelchToggle);

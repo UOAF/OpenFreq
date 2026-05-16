@@ -17,7 +17,7 @@ public partial class ChannelPeerViewModel : ViewModelBase
 
     [ObservableProperty] public partial string Id { get; set; }
     [ObservableProperty] public partial string Name { get; set; }
-
+    
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(TransmitBorderColor), nameof(TransmitBorderThickness),
         nameof(TransmitHighlightColor))]

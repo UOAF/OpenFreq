@@ -9,13 +9,17 @@ public partial class ChannelFrequencyPeerViewModel: ViewModelBase
 {
     [ObservableProperty][NotifyPropertyChangedFor(nameof(FrequencyMhzString))] public partial int FrequencyKhz { get; set; }
     [ObservableProperty] public partial ObservableCollection<ChannelPeerViewModel> Peers { get; set; }
+    [ObservableProperty] public partial bool CanJoin { get; set; }
 
+    public bool Is3dFrequency { get; }
     public IRelayCommand JoinCommand { get; }
 
-    public ChannelFrequencyPeerViewModel(int frequencyKhz, ObservableCollection<ChannelPeerViewModel> peers, Action<int> joinFrequency)
+    public ChannelFrequencyPeerViewModel(int frequencyKhz, ObservableCollection<ChannelPeerViewModel> peers, Action<int> joinFrequency, bool is3dFrequency, bool canJoin)
     {
         FrequencyKhz = frequencyKhz;
         Peers = peers;
+        Is3dFrequency = is3dFrequency;
+        CanJoin = canJoin;
         JoinCommand = new RelayCommand(() => joinFrequency(frequencyKhz));
     }
     

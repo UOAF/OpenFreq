@@ -673,115 +673,179 @@
                         
                         <!-- Expanded Content -->
                         <DockPanel Width="280">
-                            <!-- Expanded Header -->
                             <!-- Peers List -->
                             <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                <ItemsControl ItemsSource="{Binding PeerList}"
-                                              Margin="0,8,0,8">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <StackPanel Margin="0,0,0,16">
-                                                <!-- Frequency Header -->
-                                                <Border Padding="6,6,6,6"
-                                                        BorderThickness="0,0,0,0.5"
-                                                        Opacity="0.7">
+                                <StackPanel>
 
-                                                    <Grid ColumnDefinitions="*,Auto" Margin="10,0">
-                                                        <StackPanel Grid.Column="0">
+                                    <!-- Lobby Section -->
+                                    <StackPanel IsVisible="{Binding HasLobbyPeers}">
+                                        <Border Padding="10,6,10,4"
+                                                BorderThickness="0,0,0,1">
+                                            <TextBlock Text="LOBBY"
+                                                       FontSize="10"
+                                                       FontWeight="SemiBold"
+                                                       Opacity="0.5"
+                                                       LetterSpacing="1" />
+                                        </Border>
 
-                                                            <TextBlock
-                                                                Text="{Binding FrequencyMhzString, StringFormat='{}{0:F3} MHz'}"
-                                                                FontSize="13"
-                                                                FontWeight="Medium" />
-
-                                                            <TextBlock FontSize="10"
-                                                                       Opacity="0.6"
-                                                                       Margin="0,1,0,0">
-                                                                <Run Text="{Binding Peers.Count}" />
-                                                                <Run Text="clients" />
-                                                            </TextBlock>
-
-                                                        </StackPanel>
-
-                                                        <Button Grid.Column="1"
-                                                                Classes="Flat"
-                                                                Padding="6,2"
-                                                                VerticalAlignment="Center"
-                                                                ToolTip.Tip="Join in active channel group"
-                                                                Command="{Binding JoinCommand}">
-                                                            <TextBlock Text="+" FontSize="16" FontWeight="Medium" />
-                                                        </Button>
-                                                    </Grid>
-                                                </Border>
-
-                                                <!-- Participant List -->
-                                                <ItemsControl ItemsSource="{Binding Peers}">
-                                                    <ItemsControl.ItemTemplate>
-                                                        <DataTemplate>
-                                                            <Border Padding="6,6,16,6"
-                                                                    BorderThickness="{Binding TransmitBorderThickness}">
-                                                                <!-- Highlight when transmitting -->
-                                                                <Border.Background>
-                                                                    <SolidColorBrush
-                                                                        Color="{Binding TransmitHighlightColor}" />
-                                                                </Border.Background>
-                                                                <Border.BorderBrush>
-                                                                    <SolidColorBrush
-                                                                        Color="{Binding TransmitBorderColor}" />
-                                                                </Border.BorderBrush>
-
-                                                                <Grid ColumnDefinitions="Auto,*,Auto">
-                                                                    <!-- Status Dot -->
-                                                                    <Ellipse Grid.Column="0"
-                                                                             Width="5" Height="5"
-                                                                             VerticalAlignment="Center"
-                                                                             Margin="10,0,8,0"
-                                                                             IsVisible="{Binding IsOwnUser}">
-                                                                        <Ellipse.Fill>
-                                                                            <SolidColorBrush Color="Green" />
-                                                                        </Ellipse.Fill>
-                                                                    </Ellipse>
-                                                                    
-                                                                    <Ellipse Grid.Column="0"
-                                                                             Width="5" Height="5"
-                                                                             VerticalAlignment="Center"
-                                                                             Margin="10,0,8,0"
-                                                                             IsVisible="{Binding !IsOwnUser}">
-                                                                        <Ellipse.Fill>
-                                                                            <SolidColorBrush Color="Transparent" />
-                                                                        </Ellipse.Fill>
-                                                                    </Ellipse>
-
-                                                                    <!-- Callsign -->
-                                                                    <TextBlock Grid.Column="1"
-                                                                               VerticalAlignment="Center"
-                                                                               Classes="Caption"
-                                                                               FontWeight="{Binding PeerFontWeight}"
-                                                                               Text="{Binding Name}"/>
-                                                                        
-                                                                    <!-- TX Badge (only when transmitting) -->
-                                                                    <Border Grid.Column="2"
-                                                                            Background="Gold"
-                                                                            CornerRadius="3"
-                                                                            Padding="4,2"
-                                                                            Margin="0,0,8,0"
-                                                                            VerticalAlignment="Center"
-                                                                            IsVisible="{Binding IsTransmitting}"
-                                                                            Opacity="0.2">
-                                                                        <TextBlock Text="TX"
-                                                                                FontSize="9"
-                                                                                FontWeight="Bold" />
+                                        <ItemsControl ItemsSource="{Binding LobbyPeerList}"
+                                                      Margin="0,4,0,8">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel Margin="0,0,0,12">
+                                                        <Border Padding="6,6,6,6"
+                                                                BorderThickness="0,0,0,0.5"
+                                                                Opacity="0.7">
+                                                            <Grid ColumnDefinitions="*,Auto" Margin="10,0">
+                                                                <StackPanel Grid.Column="0">
+                                                                    <TextBlock
+                                                                        Text="{Binding FrequencyMhzString, StringFormat='{}{0:F3} MHz'}"
+                                                                        FontSize="13"
+                                                                        FontWeight="Medium" />
+                                                                    <TextBlock FontSize="10"
+                                                                               Opacity="0.6"
+                                                                               Margin="0,1,0,0">
+                                                                        <Run Text="{Binding Peers.Count}" />
+                                                                        <Run Text="clients" />
+                                                                    </TextBlock>
+                                                                </StackPanel>
+                                                                <Button Grid.Column="1"
+                                                                        Classes="Flat"
+                                                                        Padding="6,2"
+                                                                        VerticalAlignment="Center"
+                                                                        ToolTip.Tip="Join in active channel group"
+                                                                        IsVisible="{Binding CanJoin}"
+                                                                        Command="{Binding JoinCommand}">
+                                                                    <TextBlock Text="+" FontSize="16" FontWeight="Medium" />
+                                                                </Button>
+                                                            </Grid>
+                                                        </Border>
+                                                        <ItemsControl ItemsSource="{Binding Peers}">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Border Padding="6,6,16,6"
+                                                                            BorderThickness="{Binding TransmitBorderThickness}">
+                                                                        <Border.Background>
+                                                                            <SolidColorBrush Color="{Binding TransmitHighlightColor}" />
+                                                                        </Border.Background>
+                                                                        <Border.BorderBrush>
+                                                                            <SolidColorBrush Color="{Binding TransmitBorderColor}" />
+                                                                        </Border.BorderBrush>
+                                                                        <Grid ColumnDefinitions="Auto,*,Auto">
+                                                                            <Ellipse Grid.Column="0" Width="5" Height="5"
+                                                                                     VerticalAlignment="Center" Margin="10,0,8,0"
+                                                                                     IsVisible="{Binding IsOwnUser}">
+                                                                                <Ellipse.Fill><SolidColorBrush Color="Green" /></Ellipse.Fill>
+                                                                            </Ellipse>
+                                                                            <Ellipse Grid.Column="0" Width="5" Height="5"
+                                                                                     VerticalAlignment="Center" Margin="10,0,8,0"
+                                                                                     IsVisible="{Binding !IsOwnUser}">
+                                                                                <Ellipse.Fill><SolidColorBrush Color="Transparent" /></Ellipse.Fill>
+                                                                            </Ellipse>
+                                                                            <TextBlock Grid.Column="1" VerticalAlignment="Center"
+                                                                                       Classes="Caption" FontWeight="{Binding PeerFontWeight}"
+                                                                                       Text="{Binding Name}" />
+                                                                            <Border Grid.Column="2" Background="Gold" CornerRadius="3"
+                                                                                    Padding="4,2" Margin="0,0,8,0" VerticalAlignment="Center"
+                                                                                    IsVisible="{Binding IsTransmitting}" Opacity="0.2">
+                                                                                <TextBlock Text="TX" FontSize="9" FontWeight="Bold" />
+                                                                            </Border>
+                                                                        </Grid>
                                                                     </Border>
-                                                                </Grid>
-                                                            </Border>
-                                                        </DataTemplate>
-                                                    </ItemsControl.ItemTemplate>
-                                                </ItemsControl>
-                                            </StackPanel>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
 
-                                </ItemsControl>
+                                    <!-- In Flight Section -->
+                                    <StackPanel IsVisible="{Binding HasGamePeers}">
+                                        <Border Padding="10,6,10,4"
+                                                BorderThickness="0,0,0,1">
+                                            <TextBlock Text="IN FLIGHT"
+                                                       FontSize="10"
+                                                       FontWeight="SemiBold"
+                                                       Opacity="0.5"
+                                                       LetterSpacing="1" />
+                                        </Border>
+
+                                        <ItemsControl ItemsSource="{Binding GamePeerList}"
+                                                      Margin="0,4,0,8">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel Margin="0,0,0,12">
+                                                        <Border Padding="6,6,6,6"
+                                                                BorderThickness="0,0,0,0.5"
+                                                                Opacity="0.7">
+                                                            <Grid ColumnDefinitions="*,Auto" Margin="10,0">
+                                                                <StackPanel Grid.Column="0">
+                                                                    <TextBlock
+                                                                        Text="{Binding FrequencyMhzString, StringFormat='{}{0:F3} MHz'}"
+                                                                        FontSize="13"
+                                                                        FontWeight="Medium" />
+                                                                    <TextBlock FontSize="10"
+                                                                               Opacity="0.6"
+                                                                               Margin="0,1,0,0">
+                                                                        <Run Text="{Binding Peers.Count}" />
+                                                                        <Run Text="clients" />
+                                                                    </TextBlock>
+                                                                </StackPanel>
+                                                                <Button Grid.Column="1"
+                                                                        Classes="Flat"
+                                                                        Padding="6,2"
+                                                                        VerticalAlignment="Center"
+                                                                        ToolTip.Tip="Join in active channel group"
+                                                                        IsVisible="{Binding CanJoin}"
+                                                                        Command="{Binding JoinCommand}">
+                                                                    <TextBlock Text="+" FontSize="16" FontWeight="Medium" />
+                                                                </Button>
+                                                            </Grid>
+                                                        </Border>
+                                                        <ItemsControl ItemsSource="{Binding Peers}">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Border Padding="6,6,16,6"
+                                                                            BorderThickness="{Binding TransmitBorderThickness}">
+                                                                        <Border.Background>
+                                                                            <SolidColorBrush Color="{Binding TransmitHighlightColor}" />
+                                                                        </Border.Background>
+                                                                        <Border.BorderBrush>
+                                                                            <SolidColorBrush Color="{Binding TransmitBorderColor}" />
+                                                                        </Border.BorderBrush>
+                                                                        <Grid ColumnDefinitions="Auto,*,Auto">
+                                                                            <Ellipse Grid.Column="0" Width="5" Height="5"
+                                                                                     VerticalAlignment="Center" Margin="10,0,8,0"
+                                                                                     IsVisible="{Binding IsOwnUser}">
+                                                                                <Ellipse.Fill><SolidColorBrush Color="Green" /></Ellipse.Fill>
+                                                                            </Ellipse>
+                                                                            <Ellipse Grid.Column="0" Width="5" Height="5"
+                                                                                     VerticalAlignment="Center" Margin="10,0,8,0"
+                                                                                     IsVisible="{Binding !IsOwnUser}">
+                                                                                <Ellipse.Fill><SolidColorBrush Color="Transparent" /></Ellipse.Fill>
+                                                                            </Ellipse>
+                                                                            <TextBlock Grid.Column="1" VerticalAlignment="Center"
+                                                                                       Classes="Caption" FontWeight="{Binding PeerFontWeight}"
+                                                                                       Text="{Binding Name}" />
+                                                                            <Border Grid.Column="2" Background="Gold" CornerRadius="3"
+                                                                                    Padding="4,2" Margin="0,0,8,0" VerticalAlignment="Center"
+                                                                                    IsVisible="{Binding IsTransmitting}" Opacity="0.2">
+                                                                                <TextBlock Text="TX" FontSize="9" FontWeight="Bold" />
+                                                                            </Border>
+                                                                        </Grid>
+                                                                    </Border>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+
+                                </StackPanel>
                             </ScrollViewer>
                         </DockPanel>
                     </Expander>
