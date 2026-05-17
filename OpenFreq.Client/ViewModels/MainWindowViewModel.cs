@@ -765,6 +765,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
                             Latitude = cg.Latitude,
                             Longitude = cg.Longitude,
                             AltitudeFt = cg.AltitudeFeet,
+                            IsEnabled = cg.IsEnabled,
                             RadioStationData = cg.RadioStationData,
                             Channels = cg.Channels.Select(c => new ChannelData
                             {

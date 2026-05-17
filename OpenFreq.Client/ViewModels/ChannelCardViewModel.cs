@@ -8,6 +8,7 @@ using FalconBmsDataService.Models;
 using OpenFreq.Client.Models;
 using OpenFreqAudio;
 using OpenFreqClient.Models;
+using OpenFreq.Common;
 using OpenFreqClient.Services;
 using OpenFreqClient.Services.Interfaces;
 using SharpHook.Data;
@@ -68,8 +69,12 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     [ObservableProperty] public partial double SignalStrengthDbm { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsChannelConnected))]
+    [NotifyPropertyChangedFor(nameof(CanToggleJoinLeave))]
     public partial Channel.ChannelConnectionStatus ConnectionStatus { get; set; } =
         Channel.ChannelConnectionStatus.Disconnected;
+
+    public bool IsChannelConnected => ConnectionStatus == Channel.ChannelConnectionStatus.Connected;
 
     [ObservableProperty]
     public partial Channel.ChannelTransmissionStatus TransmissionStatus { get; set; } =
@@ -79,7 +84,6 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty] private bool _channelWasChanged;
 
-    // Hotkey binding
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HotkeyDisplay), nameof(HasPttHotkey))]
     public partial HotkeyBinding? PttHotKey { get; set; } = null;
@@ -96,7 +100,28 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     // Reference to the data of the RadioStationGroup
     [ObservableProperty] public partial RadioStationData RadioStationData { get; set; }
 
-    [ObservableProperty] public partial bool IsEditable { get; set; }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanToggleJoinLeave))]
+    public partial bool IsEditable { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanToggleJoinLeave))]
+    public partial bool IsGroupEnabled { get; set; } = true;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanToggleJoinLeave))]
+    public partial bool IsServiceConnected { get; set; }
+
+    // True when another (non-BMS) group has this frequency actively joined in the service.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanToggleJoinLeave))]
+    public partial bool IsFrequencyBlockedByOtherGroup { get; set; }
+
+    // Always allow disconnect; only allow connect when authenticated, group enabled, editable,
+    // and frequency not already connected in another group.
+    public bool CanToggleJoinLeave =>
+        IsChannelConnected ||
+        (IsEditable && IsGroupEnabled && IsServiceConnected && !IsFrequencyBlockedByOtherGroup);
 
     /// <summary>Pan: -100 = full left, 0 = center, +100 = full right.</summary>
     [ObservableProperty]
@@ -145,6 +170,10 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         Settings = settings;
         IsEditable = isEditable;
         BmsRadioType = bmsRadioType;
+        IsGroupEnabled = parentChannelCardGroupViewModel.IsEnabled;
+        IsServiceConnected = openFreqService.IsAuthenticated;
+        parentChannelCardGroupViewModel.PropertyChanged += OnParentGroupPropertyChanged;
+        openFreqService.ConnectionStateChanged += OnServiceConnectionStateChanged;
 
         WeakReferenceMessenger.Default.Register<SignalStrengthTracker.SignalStrengthUpdateMessage>(this,
             (_, m) =>
@@ -318,8 +347,21 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
             frequencyKhz: FrequencyKhz, squelchEnabled: IsSquelchEnabled));
     }
 
+    private void OnParentGroupPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ChannelCardGroupViewModel.IsEnabled))
+            IsGroupEnabled = _parentChannelCardGroupViewModel.IsEnabled;
+    }
+
+    private void OnServiceConnectionStateChanged(object? sender, ConnectionState e)
+    {
+        IsServiceConnected = e == ConnectionState.Authenticated;
+    }
+
     public void Dispose()
     {
+        _parentChannelCardGroupViewModel.PropertyChanged -= OnParentGroupPropertyChanged;
+        _openFreqService.ConnectionStateChanged -= OnServiceConnectionStateChanged;
         if (PttHotKey != null)
         {
             _hotkeyService.UnregisterHotkey(IHotkeyService.HotkeyType.Ptt, PttHotKey, Id);

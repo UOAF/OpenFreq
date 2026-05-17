@@ -575,6 +575,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         var channelGroup = new ChannelCardGroupViewModel(_openFreqService, _hotkeyService, _acmiClientService,
             _settings, name,
             preset, radioStationType, editMode: editMode);
+        AttachFrequencyBlockCheck(channelGroup);
         AllChannelGroups.Add(channelGroup);
         return channelGroup;
     }
@@ -585,8 +586,24 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
             _settings, channelGroupData.Name, channelGroupData.RadioStationData.Preset,
             channelGroupData.RadioStationData.Type, channelGroupData.Latitude, channelGroupData.Longitude,
             channelGroupData.AltitudeFt, editMode);
+        channelGroup.IsEnabled = channelGroupData.IsEnabled;
+        AttachFrequencyBlockCheck(channelGroup);
         AllChannelGroups.Add(channelGroup);
         return channelGroup;
+    }
+
+    private void AttachFrequencyBlockCheck(ChannelCardGroupViewModel group)
+    {
+        // Use IsFrequencyJoined (checks _tunedSlots synchronously) rather than ConnectionStatus
+        // (updated async from server) to avoid a race during reconnect where all channels still
+        // show Disconnected while slots are being re-added to the service one by one.
+        group.IsFrequencyBlockedByOtherGroup = freqKhz =>
+            !group.IsBmsGroup && AllChannelGroups
+                .Where(g => g.Id != group.Id && !g.IsBmsGroup)
+                .SelectMany(g => g.Channels)
+                .Any(c => c.FrequencyKhz == freqKhz
+                          && _openFreqService.IsFrequencyJoined(freqKhz, c.Id));
+        group.UpdateChannelBlockedStates();
     }
 
 

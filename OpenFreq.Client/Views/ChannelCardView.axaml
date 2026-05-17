@@ -19,6 +19,7 @@
         <converters:ChannelTransmissionStatusToColorConverter x:Key="ChannelTransmissionStatusToColorConverter" />
         <converters:BoolToGreenGrayConverter x:Key="BoolToGreenGrayConverter" />
         <converters:HotkeyTooltipConverter x:Key="HotkeyTooltipConverter" />
+        <converters:BoolToOpacityConverter x:Key="ConnectedOpacityConverter" TrueValue="1.0" FalseValue="0.4" />
         <converters1:EnumToBoolConverter x:Key="EnumToBoolConverter" />
         <converters2:InvertedEnumToBoolConverter x:Key="InvertedEnumToBoolConverter" />
     </UserControl.Resources>
@@ -54,7 +55,8 @@
                                Text="{Binding Name}"
                                Classes="Subtitle2"
                                VerticalAlignment="Center"
-                               TextWrapping="NoWrap" />
+                               TextWrapping="NoWrap"
+                               Opacity="{Binding IsChannelConnected, Converter={StaticResource ConnectedOpacityConverter}}" />
 
                     <!-- Edit Button -->
                     <Button Grid.Column="3"
@@ -76,8 +78,9 @@
                         Classes="Headline5"
                         FontWeight="SemiBold"
                         TextWrapping="NoWrap"
-                        Background="{Binding TransmissionStatus,  Converter={StaticResource ChannelTransmissionStatusToColorConverter}}"
-                        IsEnabled="{Binding IsEditable}" />
+                        Background="{Binding TransmissionStatus, Converter={StaticResource ChannelTransmissionStatusToColorConverter}}"
+                        IsEnabled="{Binding IsEditable}"
+                        Opacity="{Binding IsChannelConnected, Converter={StaticResource ConnectedOpacityConverter}}" />
 
                 </StackPanel>
 
@@ -94,8 +97,10 @@
                             CornerRadius="4"
                             Padding="6,4"
                             Classes="Flat"
-                            IsEnabled="{Binding IsEditable}"
                             Command="{Binding ToggleJoinLeaveCommand}">
+                                        <Button.IsEnabled>
+                            <Binding Path="CanToggleJoinLeave" />
+                        </Button.IsEnabled>
 
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <!-- Connected Dot -->

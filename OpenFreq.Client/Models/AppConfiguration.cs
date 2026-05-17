@@ -18,6 +18,7 @@ public class ChannelGroupData
     public double Longitude { get; set; }
     public double AltitudeFt { get; set; }
     public string? AcmiTrackingId { get; set; }
+    public bool IsEnabled { get; set; } = true;
     public List<ChannelData> Channels { get; set; } = [];
 
     public RadioStationData RadioStationData { get; set; } = new()

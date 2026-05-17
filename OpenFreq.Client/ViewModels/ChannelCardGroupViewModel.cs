@@ -76,6 +76,19 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty] public partial bool AnyChannelTransmitting { get; set; }
     [ObservableProperty] public partial bool AnyChannelReceiving { get; set; }
+    [ObservableProperty] public partial bool IsEnabled { get; set; } = true;
+
+    // Set by ChannelCardListViewModel; returns true when the frequency is already
+    // connected in a different (non-BMS) channel group and must not be joined here.
+    public Func<int, bool>? IsFrequencyBlockedByOtherGroup { get; set; }
+
+    // Refreshes each channel's IsFrequencyBlockedByOtherGroup to match current service state.
+    public void UpdateChannelBlockedStates()
+    {
+        if (IsFrequencyBlockedByOtherGroup is null) return;
+        foreach (var channel in Channels)
+            channel.IsFrequencyBlockedByOtherGroup = IsFrequencyBlockedByOtherGroup(channel.FrequencyKhz);
+    }
 
     public ChannelCardGroupViewModel(IOpenFreqService openFreqService, IHotkeyService hotkeyService,
         IAcmiClientService acmiClientService, SettingsViewModel settingsViewModel, string name,
@@ -128,8 +141,10 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
     private async void OnChannelJoinLeaveRequested(object recipient, ChannelJoinLeaveRequestedMessage message)
     {
         if (!_openFreqService.IsAuthenticated) return;
+        if (!Channels.Any(c => c.Id == message.ChannelId)) return;
         if (message.Join)
         {
+            if (IsFrequencyBlockedByOtherGroup?.Invoke(message.FrequencyKhz) == true) return;
             await _openFreqService.JoinFrequencyAsync(message.FrequencyKhz, message.ChannelId, message.RadioStationData);
         }
         else
@@ -161,7 +176,8 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         channel.FrequencyKhz = frequencyKhz;
         channel.IsEditing = isInEditMode;
         channel.BmsRadioType = bmsRadioType;
-        
+        channel.IsFrequencyBlockedByOtherGroup = IsFrequencyBlockedByOtherGroup?.Invoke(frequencyKhz) ?? false;
+
         // 9999 is BMS's "radio off" parking frequency - always ensure it's disconnected
         if (frequencyKhz == IFalconRadioSharedMemoryService.BmsRadioOffFrequency)
         {
@@ -220,10 +236,13 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
 
     private void OnFrequencyConnectionStatusChanged(object? sender, FrequencyConnectionStatusEventArgs e)
     {
-        // If a slotId is specified, update only that channel; otherwise update all channels on the frequency.
+        // If a slotId is specified, update only that channel.
+        // For broadcast events (no slotId), restrict to channels whose slot is actually joined in the
+        // service — this prevents disabled groups from being marked Connected when another group joins.
         var targets = e.SlotId.HasValue
             ? Channels.Where(c => c.Id == e.SlotId.Value)
-            : Channels.Where(c => c.FrequencyKhz == e.FrequencyKhz);
+            : Channels.Where(c => c.FrequencyKhz == e.FrequencyKhz
+                                  && _openFreqService.IsFrequencyJoined(e.FrequencyKhz, c.Id));
 
         foreach (var channel in targets)
         {
@@ -231,6 +250,8 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
                 ? Channel.ChannelConnectionStatus.Disconnected
                 : e.ConnectionStatus;
         }
+
+        UpdateChannelBlockedStates();
     }
 
     private void OnFrequencyTransmissionStatusChanged(object? sender, FrequencyTransmissionStatusEventArgs e)
@@ -275,6 +296,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
 
     private async void OnHotkeyPressed(object? sender, HotkeyPressedEventArgs e)
     {
+        if (!IsEnabled) return;
         try
         {
             foreach (var channelId in e.ChannelIds)
@@ -355,10 +377,30 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
 
     public async Task JoinAllChannelsAsync()
     {
+        if (!IsEnabled) return;
         foreach (var channel in Channels)
         {
+            if (IsFrequencyBlockedByOtherGroup?.Invoke(channel.FrequencyKhz) == true) continue;
             await _openFreqService.JoinFrequencyAsync(channel.FrequencyKhz, channel.Id, RadioStationData);
             _openFreqService.SetPan(channel.FrequencyKhz, channel.Id, channel.Pan);
+        }
+    }
+
+    [RelayCommand]
+    private async Task ToggleEnabledAsync()
+    {
+        if (IsBmsGroup) return;
+        if (IsEnabled)
+        {
+            IsEnabled = false;
+            await LeaveAllChannelsAsync();
+        }
+        else
+        {
+            UpdateChannelBlockedStates();
+            IsEnabled = true;
+            if (_openFreqService.IsAuthenticated)
+                await JoinAllChannelsAsync();
         }
     }
 
