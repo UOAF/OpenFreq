@@ -283,6 +283,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         {
             SyncBmsChannelPowerStates();
         }
+
     }
 
     private void SyncBmsChannelPowerStates()
@@ -341,7 +342,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
             {
                 if (FalconChannelGroup == null)
                 {
-                    FalconChannelGroup = CreateChannelGroup(BmsGroupName, RadioStationPresets.Fighter,
+                    FalconChannelGroup = CreateChannelGroup(BmsGroupName, RadioStationPresets.FighterF16,
                         RadioStationData.RadioStationType.BMS);
                 }
                 else

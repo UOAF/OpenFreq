@@ -41,6 +41,10 @@ sealed class Program
 
             // Outputs the packet timings (playback queue)
             .MinimumLevel.Override("OpenFreq.Common.RtpAudioReceiver", LogEventLevel.Warning)
+            
+            // Outputs the RTP receiver
+            .MinimumLevel.Override("OpenFreq.Common.RtpSourceContext", LogEventLevel.Warning)
+
 
             .Enrich.FromLogContext()
             .Enrich.WithProperty("Application", "OpenFreqClient")
