@@ -210,33 +210,30 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         }
     }
 
+    private static float ComputeGainFromBmsVolume(int rawVolume)
+    {
+        // BMS knob: 1000 = loudest, 10000 = mute (inverted scale)
+        const float dxMin = 1000f;
+        const float dxMax = 10000f;
+        // dB range calibrated so mid-knob (~5500) gives -17 dB (14%) rather than
+        // the former -37 dB (1.4%), which made any knob asymmetry catastrophic.
+        const float dbMin = -40f;
+        const float dbMax = 6f;
+
+        var clampedDx = Math.Clamp(rawVolume, dxMin, dxMax);
+        var t = (dxMax - clampedDx) / (dxMax - dxMin);
+        var db = dbMin + t * (dbMax - dbMin);
+        var gain = (float)Math.Pow(10.0, db / 20.0);
+        return gain < 0.00001f ? 0f : gain;
+    }
+
     private void OnRadioVolumeChanged(object? sender, RadioVolumeChangedEventArgs e)
     {
         if (_settings.ModeIsGci || FalconChannelGroup == null) return;
 
         _logger.LogDebug($"VOLUME {e.OldVolume} -> {e.NewVolume}");
 
-        const float dxMin = 1000f; // loudest position
-        const float dxMax = 10000f; // mute position
-
-        const float dbMin = -80f; // silence
-        const float dbMax = 6f; // 2x boost
-
-        // Clamp input
-        var clampedDx = Math.Clamp(e.NewVolume, dxMin, dxMax);
-
-        // Invert and normalize knob position (0..1)
-        var t = (dxMax - clampedDx) / (dxMax - dxMin);
-
-        // Convert to dB
-        var db = dbMin + t * (dbMax - dbMin);
-
-        // Convert dB → linear gain
-        var gain = (float)Math.Pow(10.0f, db / 20.0f);
-
-        // Prevent denormals / tiny noise
-        if (gain < 0.00001f)
-            gain = 0f;
+        var gain = ComputeGainFromBmsVolume(e.NewVolume);
 
         var channels = FalconChannelGroup?.Channels.Where(c => c.BmsRadioType == e.RadioType).ToList();
         if (channels == null) return;
@@ -303,6 +300,22 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                 var isConnected = channel.ConnectionStatus == Channel.ChannelConnectionStatus.Connected;
                 if (isPowerOn != isConnected)
                     channel.ToggleJoinLeave();
+            }
+        }
+        SyncBmsChannelVolumeStates();
+    }
+
+    private void SyncBmsChannelVolumeStates()
+    {
+        if (FalconChannelGroup == null) return;
+        foreach (var type in Enum.GetValues<RadioType>())
+        {
+            var radioChannel = _falconRadioSharedMemoryService.GetRadioChannel(type);
+            if (radioChannel == null || radioChannel.RxVolume <= 0) continue;
+            var gain = ComputeGainFromBmsVolume(radioChannel.RxVolume);
+            foreach (var channel in FalconChannelGroup.Channels.Where(c => c.BmsRadioType == type).ToList())
+            {
+                _openFreqService.SetVolume(channel.FrequencyKhz, channel.Id, gain);
             }
         }
     }
