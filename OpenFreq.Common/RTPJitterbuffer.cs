@@ -12,6 +12,11 @@ public record SequencedPacket
     public required long Timestamp { get; set; }
     public required byte[] Payload { get; set; }
     public required byte[]? Metadata { get; set; }
+    /// <summary>
+    /// True when injected by the drain thread as a proactive-PLC sentinel.
+    /// No Payload/Metadata; the decoder generates concealment for this slot.
+    /// </summary>
+    public bool IsConcealment { get; set; } = false;
 }
 
 /// <summary>
@@ -61,9 +66,16 @@ public class RtpJitterBuffer
 
     // Adaptive jitter buffer parameters
     private double _targetBufferMs = 60; // Start with 60ms
+    // Active delay used by the playout clock — frozen when someone is transmitting.
+    private double _activeBufferMs = 60;
     private double _measuredJitterMs;
     private const double MIN_BUFFER_MS = 20;
     private const double MAX_BUFFER_MS = 500;
+    
+    // _lastReleasedPt: relative timestamp (ts - _baseTimestamp) of the last slot we delivered (real packet or concealment)
+    // _lastReceivedPt: relative timestamp of the latest packet we have ever received.
+    private long? _lastReleasedPt;
+    private long _lastReceivedPt = -1;
         
     // Statistics
     private int _packetsReceived;
@@ -151,6 +163,14 @@ public class RtpJitterBuffer
         }
         long ts = (long)tsEpoch << 32 | (long)packet.Timestamp;
 
+        // Track the highest relative timestamp we've seen.
+        // Only update for non-late packets (tsDelta >= 0 means new/current).
+        if (tsDelta >= 0)
+        {
+            long pt = ts - _baseTimestamp;
+            if (pt > _lastReceivedPt) _lastReceivedPt = pt;
+        }
+
         var sp = new SequencedPacket
         {
             Ssrc = packet.Ssrc,
@@ -192,44 +212,130 @@ public class RtpJitterBuffer
     public record NoPackets : PacketsReadyResult;
     public record PacketsReady(List<SequencedPacket> Packets) : PacketsReadyResult;
     public record WaitFor(long Ticks) : PacketsReadyResult;
+    /// <summary>
+    /// A playout slot is overdue with no real packet in the buffer.
+    /// The drain thread must inject a PLC/FEC sentinel into the decode channel
+    /// so the decoder fills the hole at the correct clock position.
+    /// <para>
+    /// <paramref name="FecPayload"/> is set when the packet immediately after
+    /// the missing one (N+1) is already buffered: its LBRR bits can recover N
+    /// without falling back to pure PLC.  Null means pure PLC.
+    /// </para>
+    /// </summary>
+    public record ConcealmentNeeded(byte[]? FecPayload) : PacketsReadyResult;
 
 
     public PacketsReadyResult GetReadyPackets(long now)
     {
-        // Bail if we've got nothing to play
-        if (_buffer.Count == 0)return new NoPackets();
+        // Discard packets that arrived after their playout slot has already passed.
+        if (_lastReleasedPt.HasValue)
+        {
+            while (_buffer.Count > 0)
+            {
+                var front = _buffer.First();
+                long frontPt = front.Value.Timestamp - _baseTimestamp;
+                if (frontPt < _lastReleasedPt.Value)
+                {
+                    _buffer.Remove(front.Key);
+                    _packetsLate++;
+                }
+                else break;
+            }
+        }
+
+        // Truly empty and no cursor — nothing to do.
+        if (_buffer.Count == 0 && !_lastReleasedPt.HasValue)
+        {
+            _activeBufferMs = _targetBufferMs;
+            return new NoPackets();
+        }
 
         long elapsedTicks = now - _baseTimeTicks;
-        // The current jitter buffer length, in ticks.
-        long bufferDelayTicks = (long)(_targetBufferMs / 1000.0 * Stopwatch.Frequency);
-        // How many samples have elapsed, after applying the buffer delay?
+        // Use the frozen active delay, not the (possibly mid-talkspurt adapted) target.
+        long bufferDelayTicks = (long)(_activeBufferMs / 1000.0 * Stopwatch.Frequency);
         long jitterAdjustedElapsedSamples = (long)(
             (double)(elapsedTicks - bufferDelayTicks) /
                 Stopwatch.Frequency * OpenFreqRtcClient.SAMPLE_RATE);
+        
+        // When the playout clock passes a slot and no real packet is in the buffer,
+        // signal the drain thread to inject PLC now rather than waiting for the
+        // next real packet to arrive (which would be a full frame too late).
+        if (_lastReleasedPt.HasValue)
+        {
+            long nextExpectedPt = _lastReleasedPt.Value + OpenFreqRtcClient.OPUS_SAMPLES_PER_FRAME;
 
+            if (jitterAdjustedElapsedSamples >= nextExpectedPt)
+            {
+                bool nextPacketMissing = _buffer.Count == 0 ||
+                    (_buffer.First().Value.Timestamp - _baseTimestamp) > nextExpectedPt;
+
+                if (nextPacketMissing)
+                {
+                    // Distinguish mid-talkspurt loss from talkspurt end:
+                    // if the remote has never sent anything at/after nextExpectedPt,
+                    // the talkspurt is over — don't generate trailing PLC.
+                    if (_lastReceivedPt < nextExpectedPt)
+                    {
+                        _lastReleasedPt = null;
+                        _activeBufferMs = _targetBufferMs;
+                        return new NoPackets();
+                    }
+
+                    // If N+1 is already in the buffer, pass its payload so the decoder
+                    // can use LBRR FEC to recover N instead of falling back to PLC.
+                    byte[]? fecPayload = null;
+                    if (_buffer.Count > 0)
+                    {
+                        var candidate = _buffer.First().Value;
+                        long candidatePt = candidate.Timestamp - _baseTimestamp;
+                        if (candidatePt == nextExpectedPt + OpenFreqRtcClient.OPUS_SAMPLES_PER_FRAME)
+                            fecPayload = candidate.Payload;
+                    }
+
+                    // Remote sent something at or after the missing slot → it was lost.
+                    // Advance cursor and tell the drain thread to generate FEC/PLC.
+                    _lastReleasedPt = nextExpectedPt;
+                    _packetsLost++;
+                    return new ConcealmentNeeded(fecPayload);
+                }
+                // Real packet IS at the expected slot and is due — fall through to release it.
+            }
+            else if (_buffer.Count == 0)
+            {
+                // Cursor set, next slot not yet due, buffer empty — wait.
+                long ticksUntilNext = (long)(
+                    (double)(nextExpectedPt - jitterAdjustedElapsedSamples) /
+                        OpenFreqRtcClient.SAMPLE_RATE * Stopwatch.Frequency);
+                return new WaitFor(ticksUntilNext);
+            }
+            // Cursor set, next slot not yet due, buffer has packets:
+            // fall through to the release loop which will produce a WaitFor.
+        }
+
+        if (_buffer.Count == 0)
+        {
+            _activeBufferMs = _targetBufferMs;
+            return new NoPackets();
+        }
+
+        // Release any packets whose playout time has arrived.
         List<SequencedPacket> readies = [];
         while (_buffer.Count > 0)
         {
             var first = _buffer.First();
             var packet = first.Value;
             var pt = packet.Timestamp - _baseTimestamp;
-            var samplesUntilReady = (long)pt - jitterAdjustedElapsedSamples;
+            var samplesUntilReady = pt - jitterAdjustedElapsedSamples;
             if (samplesUntilReady > 0)
             {
-                // If no packets are ready,
-                // return the amount of time to wait until the first is.
                 if (readies.Count == 0)
                 {
-                    // Back to ticks
                     var ticksUntilReady = (long)(
                         (double)samplesUntilReady /
                             OpenFreqRtcClient.SAMPLE_RATE * Stopwatch.Frequency);
                     return new WaitFor(ticksUntilReady);
                 }
-                else
-                {
-                    break;
-                }
+                else break;
             }
             else
             {
@@ -237,15 +343,18 @@ public class RtpJitterBuffer
                 readies.Add(packet);
             }
         }
+
+        if (readies.Count == 0)
+        {
+            _activeBufferMs = _targetBufferMs;
+            return new NoPackets();
+        }
+
         _packetsPlayed += readies.Count;
         foreach (var p in readies)
         {
-            if (_lastReturnedPacket is long last)
-            {
-                long gap = p.SequenceNumber - last - 1;
-                if (gap > 0) _packetsLost += (int)gap;
-            }
             _lastReturnedPacket = p.SequenceNumber;
+            _lastReleasedPt = p.Timestamp - _baseTimestamp; // advance playout cursor
         }
         return new PacketsReady(readies);
     }
@@ -276,6 +385,8 @@ public class RtpJitterBuffer
             _measuredJitterMs = 0;
             _lastPacketReceivedTicks = ticksElapsed;
             _lastPacketTimestamp = samplesElapsed;
+            // New talkspurt starting — safe to apply pending adaptation now.
+            _activeBufferMs = _targetBufferMs;
             return;
         }
     
@@ -346,11 +457,13 @@ public class RtpJitterBuffer
     }
 
     /// <summary>
-    /// Set target buffer size (for manual override)
+    /// Set target buffer size (for manual override).
+    /// Applied to both target and active delay — safe to call before any talkspurt.
     /// </summary>
     public void SetTargetBufferSize(double milliseconds)
     {
         _targetBufferMs = Math.Clamp(milliseconds, MIN_BUFFER_MS, MAX_BUFFER_MS);
+        _activeBufferMs = _targetBufferMs;
         _logger.LogInformation("Manual buffer size: {BufferMs:F0}ms", _targetBufferMs);
     }
 }

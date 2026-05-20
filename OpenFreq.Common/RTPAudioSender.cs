@@ -28,10 +28,11 @@ public class RtpAudioSender : IDisposable
     private readonly bool _opusEnabled;
 
 #pragma warning disable CS0618 // Do not use the factory - it does not work with Linux
+    // VOIP mode enables SILK codec and in-band FEC (LBRR).
     private readonly OpusEncoder _opusEncoder = new OpusEncoder(
             OpenFreqRtcClient.SAMPLE_RATE,
             1,
-            OpusApplication.OPUS_APPLICATION_RESTRICTED_LOWDELAY
+            OpusApplication.OPUS_APPLICATION_VOIP
         );
 #pragma warning restore CS0618 // Type or member is obsolete
 
@@ -70,7 +71,9 @@ public class RtpAudioSender : IDisposable
         SendKeepalive();
         _heartbeatTimer = new Timer(_ => SendKeepalive(), null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
 
-        _opusEncoder.Bitrate = 24000;
+        // 32 kbps so we use wideband SILK / SILK+CELT (and it sounds horrible otherwise)
+        _opusEncoder.Bitrate = 32000;
+        // _opusEncoder.MaxBandwidth = OpusBandwidth.OPUS_BANDWIDTH_WIDEBAND;
         _opusEncoder.Complexity = 8;
         _opusEncoder.SignalType = OpusSignal.OPUS_SIGNAL_VOICE;
         _opusEncoder.UseInbandFEC = true;
