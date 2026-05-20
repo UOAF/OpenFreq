@@ -61,6 +61,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
     public event EventHandler<RadioPttChangedEventArgs>? PttChanged;
     public event EventHandler<RadioPowerChangedEventArgs>? PowerChanged;
     public event EventHandler<ConnectionParametersChangedEventArgs>? ConnectionParametersChanged;
+    public event EventHandler<LogbookNameChangedEventArgs>? LogbookNameChanged;
 
     public FalconRadioSharedMemoryService(ILogger<FalconRadioSharedMemoryService> logger)
     {
@@ -479,7 +480,16 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
             // Update state and detect changes
             lock (_dataLock)
             {
+                var previousLogbookName = _logbookName;
                 _logbookName = logbookName;
+
+                if (_initialReadDone &&
+                    !string.IsNullOrEmpty(logbookName) &&
+                    logbookName != previousLogbookName)
+                {
+                    Task.Run(() => LogbookNameChanged?.Invoke(this,
+                        new LogbookNameChangedEventArgs(previousLogbookName, logbookName)));
+                }
 
                 // Update channels and detect changes
                 foreach (var kvp in channels)
@@ -692,6 +702,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
     public event EventHandler<RadioPttChangedEventArgs>? PttChanged;
     public event EventHandler<RadioPowerChangedEventArgs>? PowerChanged;
     public event EventHandler<ConnectionParametersChangedEventArgs>? ConnectionParametersChanged;
+    public event EventHandler<LogbookNameChangedEventArgs>? LogbookNameChanged;
 #pragma warning restore CS0067
 
     public void Start()

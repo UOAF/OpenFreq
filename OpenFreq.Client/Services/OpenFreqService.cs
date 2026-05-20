@@ -323,7 +323,7 @@ public class OpenFreqService : IOpenFreqService
     /// <summary>
     /// Connect to the OpenFreq server
     /// </summary>
-    public async Task ConnectAsync()
+    public async Task ConnectAsync(TimeSpan? connectTimeout = null)
     {
         if (!_isInitialized || _client == null)
         {
@@ -332,7 +332,7 @@ public class OpenFreqService : IOpenFreqService
 
         OnStatusMessage($"Connecting to OpenFreq server {_client.ServerIp}...");
         Status = IOpenFreqService.OpenFreqStatus.Connecting;
-        await _client.ConnectAsync();
+        await _client.ConnectAsync(connectTimeout);
     }
 
     /// <summary>

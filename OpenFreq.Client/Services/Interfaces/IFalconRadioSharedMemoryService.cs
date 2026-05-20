@@ -34,6 +34,9 @@ public interface IFalconRadioSharedMemoryService : IDisposable, ILifecycleServic
 
     // Connection parameter changes
     event EventHandler<ConnectionParametersChangedEventArgs>? ConnectionParametersChanged;
+
+    // Logbook name change (mPlayerMap[0].LogBookName — populated once in-game)
+    event EventHandler<LogbookNameChangedEventArgs>? LogbookNameChanged;
     
     // Constant
     public const int BmsRadioOffFrequency = 9999;

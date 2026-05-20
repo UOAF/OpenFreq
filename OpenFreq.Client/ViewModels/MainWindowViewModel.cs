@@ -4,6 +4,8 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
+using System.Net.Sockets;
+using System.Security.Authentication;
 using System.Threading.Tasks;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -147,6 +149,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         // Falcon Radio Shared Memory
         _falconRadioSharedMemoryService.ConnectionParametersChanged +=
             FalconRadioSharedMemoryServiceOnConnectionParametersChanged;
+        _falconRadioSharedMemoryService.LogbookNameChanged += OnLogbookNameChanged;
         _falconSharedMemoryService.FlyingStateChanged += OnFlyingStateChanged;
         _falconSharedMemoryService.StateChanged += OnFalconSharedMemoryStateChanged;
 
@@ -377,19 +380,34 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         // BMS wants us to connect
         if (e.NewParameters.AttemptingToConnect)
         {
+            _falconRadioSharedMemoryService.RemoveClientStatus(ClientStatusFlags.ConnectionFail);
+            _falconRadioSharedMemoryService.AddClientStatus(ClientStatusFlags.ClientActive);
             _falconRadioSharedMemoryService.AddClientStatus(ClientStatusFlags.TryingToConnect);
             Settings.OpenFreqPassword = e.NewParameters.Password;
             Settings.OpenFreqServerAddress = e.NewParameters.Address + ":" + e.NewParameters.Port;
-            _ = ConnectAsync().Wait(TimeSpan.FromSeconds(3));
+            var failFlag = ClientStatusFlags.ConnectionFail;
+            try { ConnectWithTimeoutAsync(TimeSpan.FromSeconds(2)).Wait(TimeSpan.FromSeconds(2.5)); }
+            catch (AggregateException ae)
+            {
+                var flat = ae.Flatten();
+                if (flat.InnerExceptions.Any(ex => ex is AuthenticationException))
+                    failFlag = ClientStatusFlags.BadPassword;
+                else if (flat.InnerExceptions.Any(IsHostUnknownException))
+                    failFlag = ClientStatusFlags.HostUnknown;
+            }
 
             if (_openFreqService.IsConnected)
             {
                 _falconRadioSharedMemoryService.AddClientStatus(ClientStatusFlags.Connected);
                 Settings.Is3dMode = _falconSharedMemoryService.IsFlying ?? false;
+                var bestName = _falconRadioSharedMemoryService.LogbookName;
+                if (!string.IsNullOrEmpty(bestName))
+                    _openFreqService.UpdateDisplayNameAsync(bestName);
             }
             else
             {
-                _falconRadioSharedMemoryService.AddClientStatus(ClientStatusFlags.ConnectionFail);
+                _falconRadioSharedMemoryService.AddClientStatus(failFlag);
+                _falconRadioSharedMemoryService.RemoveClientStatus(ClientStatusFlags.ClientActive);
             }
 
             _falconRadioSharedMemoryService.RemoveClientStatus(ClientStatusFlags.TryingToConnect);
@@ -403,13 +421,17 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         }
 
         // Update display name when ReadyToTransmit becomes true or nickname changes mid-session.
-        // Always fire on ReadyToTransmit transition because mPlayerMap[0] (LogbookName) is only
-        // populated once in-game, and the cached OldNickname may equal NewNickname on reconnect.
         if (e.NewParameters.ReadyToTransmit &&
             (!e.OldParameters.ReadyToTransmit || e.OldParameters.Nickname != e.NewParameters.Nickname))
         {
             _openFreqService.UpdateDisplayNameAsync(e.NewParameters.Nickname);
         }
+    }
+
+    private void OnLogbookNameChanged(object? sender, LogbookNameChangedEventArgs e)
+    {
+        if (!string.IsNullOrEmpty(e.NewName))
+            _openFreqService.UpdateDisplayNameAsync(e.NewName);
     }
 
 
@@ -470,6 +492,26 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         {
             ShowError($"Connection failed: {ex.Message}");
         }
+    }
+
+    private static bool IsHostUnknownException(Exception ex) => ex switch
+    {
+        SocketException se => se.SocketErrorCode is SocketError.HostNotFound
+            or SocketError.HostUnreachable
+            or SocketError.NetworkUnreachable,
+        _ => ex.InnerException != null && IsHostUnknownException(ex.InnerException)
+    };
+
+    private async Task ConnectWithTimeoutAsync(TimeSpan connectTimeout)
+    {
+        if (_openFreqService.IsConnected) return;
+        if (string.IsNullOrWhiteSpace(Settings.OpenFreqServerAddress)) return;
+
+        await _openFreqService.Initialize(Settings.GetSettings(),
+            _audioService.GetRecordingBassIndex(Settings.RecordingDeviceIndex),
+            _audioService.GetPlaybackBassIndex(Settings.PlaybackDeviceIndex));
+
+        await _openFreqService.ConnectAsync(connectTimeout);
     }
 
     [RelayCommand]
@@ -819,6 +861,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
 
         _falconRadioSharedMemoryService.ConnectionParametersChanged -=
             FalconRadioSharedMemoryServiceOnConnectionParametersChanged;
+        _falconRadioSharedMemoryService.LogbookNameChanged -= OnLogbookNameChanged;
         _falconSharedMemoryService.FlyingStateChanged -= OnFlyingStateChanged;
 
         await DisconnectAsync();
