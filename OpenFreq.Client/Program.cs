@@ -40,10 +40,10 @@ sealed class Program
             .MinimumLevel.Override("OpenFreqAudio.FastPathAudioSim", LogEventLevel.Warning)
 
             // Outputs the packet timings (playback queue)
-            .MinimumLevel.Override("OpenFreq.Common.RtpAudioReceiver", LogEventLevel.Warning)
+            .MinimumLevel.Override("OpenFreq.Common.RtpAudioReceiver", LogEventLevel.Debug)
             
             // Outputs the RTP receiver
-            .MinimumLevel.Override("OpenFreq.Common.RtpSourceContext", LogEventLevel.Warning)
+            .MinimumLevel.Override("OpenFreq.Common.RtpSourceContext", LogEventLevel.Debug)
 
 
             .Enrich.FromLogContext()
