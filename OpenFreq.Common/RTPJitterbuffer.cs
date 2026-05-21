@@ -32,6 +32,8 @@ public class RtpJitterBuffer
     /// </summary>
     private readonly SortedDictionary<long, SequencedPacket> _buffer = new();
     private readonly Queue<double> _jitterSamples = new(50);
+    // Per-packet playout margin (intrinsic — buffer backed out). Drives AdaptBufferSize.
+    private readonly Queue<double> _marginSamples = new(50);
     private readonly int _maxBufferPackets;
 
     /// <summary>
@@ -67,6 +69,9 @@ public class RtpJitterBuffer
     // Most a single late-arrival event may grow the buffer, so one freak packet
     // can't balloon latency. Realistic latency steps fit well under this.
     private const double LATE_GROW_CAP_MS = 250;
+    // Steady-state sizing aims to leave the worst recent packet this much spare
+    // time before its playout slot.
+    private const double DESIRED_MARGIN_MS = 30;
 
     // Concealment is paced one frame (~20ms) per playout slot. These bound a run:
     //  - BLIND: frames to conceal when nothing past the gap has been received yet.
@@ -177,13 +182,17 @@ public class RtpJitterBuffer
             long pt = ts - _baseTimestamp;
             if (pt > _lastReceivedPt) _lastReceivedPt = pt;
 
-            // Latency-step detection. A constant added delay (a route change,
-            // congestion onset, or a test tool like clumsy) produces no
-            // inter-arrival variation, so MeasureJitter/AdaptBufferSize never
-            // see it. Measure this packet's playout margin directly: if it
-            // arrived after its scheduled slot, grow the buffer to re-absorb
-            // it — otherwise GetReadyPackets discards every late packet and
-            // playout collapses to permanent concealment.
+            // Playout-margin tracking. A packet's margin — the spare time
+            // between when it arrived and its scheduled playout slot — folds
+            // together both network jitter and the baseline delay. Inter-arrival
+            // variance (MeasureJitter) sees only the jitter, so a constant delay
+            // step is invisible to it; margin catches it. Two uses:
+            //  - Record the *intrinsic* margin (the buffer's own contribution
+            //    backed out) so AdaptBufferSize can size from spare time rather
+            //    than variance.
+            //  - If a packet already arrived past its slot (negative margin),
+            //    grow the buffer now — AdaptBufferSize converges far too slowly
+            //    to stop GetReadyPackets discarding packets in the meantime.
             if (_packetsReceived > 1)
             {
                 long activeBufferTicks = (long)(_activeBufferMs / 1000.0 * Stopwatch.Frequency);
@@ -193,12 +202,18 @@ public class RtpJitterBuffer
                 double marginMs = (double)(pt - clockSamples)
                     / OpenFreqRtcClient.SAMPLE_RATE * 1000.0;
 
+                // Intrinsic margin: margin with the current buffer removed, so
+                // samples stay comparable even as _activeBufferMs changes.
+                _marginSamples.Enqueue(marginMs - _activeBufferMs);
+                while (_marginSamples.Count > 50)
+                    _marginSamples.Dequeue();
+
                 if (marginMs < 0)
                 {
-                    // Cover the lateness plus a one-frame cushion, capped so one
-                    // freak packet can't balloon latency.
+                    // Cover the lateness plus the desired steady-state margin,
+                    // capped so one freak packet can't balloon latency.
                     double grow = Math.Min(
-                        -marginMs + OpenFreqRtcClient.FRAME_SIZE_MS, LATE_GROW_CAP_MS);
+                        -marginMs + DESIRED_MARGIN_MS, LATE_GROW_CAP_MS);
                     double grown = Math.Clamp(
                         _activeBufferMs + grow, MIN_BUFFER_MS, MAX_BUFFER_MS);
                     if (grown > _activeBufferMs)
@@ -455,21 +470,28 @@ public class RtpJitterBuffer
     }
         
     /// <summary>
-    /// Adapt target buffer size based on observed jitter.
-    /// Uses asymmetric convergence: fast increase to protect against bursts,
-    /// slow decrease to avoid oscillation.
+    /// Adapt target buffer size from observed playout margin.
+    /// Sizes the buffer so the worst recent packet would still have had
+    /// DESIRED_MARGIN_MS of spare time. Margin folds together jitter (its
+    /// variance) and a constant delay step (its level), so this reacts to
+    /// both — unlike a pure inter-arrival jitter metric, which is blind to a
+    /// constant delay. Asymmetric convergence: fast increase, slow decrease.
     /// </summary>
     private void AdaptBufferSize()
     {
-        if (_jitterSamples.Count < 10)
+        if (_marginSamples.Count < 10)
             return;
 
-        var sortedJitter = _jitterSamples.OrderBy(x => x).ToList();
-        int p95Index = (int)(sortedJitter.Count * 0.95);
-        double jitter95 = sortedJitter[p95Index];
+        // Protect the worst packet, not the average: take a low percentile of
+        // intrinsic margin (most negative = latest arrival), ignoring a couple
+        // of extreme outliers — mirrors the old jitter-p95 logic.
+        var sorted = _marginSamples.OrderBy(x => x).ToList();
+        int p5Index = (int)(sorted.Count * 0.05);
+        double worstMarginMs = sorted[p5Index];
 
-        // 2.5x p95 jitter is enough headroom for most conditions
-        double targetBuffer = Math.Max(MIN_BUFFER_MS, jitter95 * 2.5);
+        // The buffer that would lift that worst packet up to DESIRED_MARGIN_MS.
+        double targetBuffer = Math.Clamp(
+            DESIRED_MARGIN_MS - worstMarginMs, MIN_BUFFER_MS, MAX_BUFFER_MS);
 
         double delta = targetBuffer - _targetBufferMs;
         // Converge up quickly (protect against bursts), down slowly (avoid churn)
