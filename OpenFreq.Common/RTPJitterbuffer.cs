@@ -71,6 +71,9 @@ public class RtpJitterBuffer
     private double _measuredJitterMs;
     private const double MIN_BUFFER_MS = 20;
     private const double MAX_BUFFER_MS = 500;
+    // Most a single late-arrival event may grow the buffer, so one freak packet
+    // can't balloon latency. Realistic latency steps fit well under this.
+    private const double LATE_GROW_CAP_MS = 250;
 
     // Concealment is paced one frame (~20ms) per playout slot. These bound a run:
     //  - BLIND: frames to conceal when nothing past the gap has been received yet.
@@ -180,6 +183,42 @@ public class RtpJitterBuffer
         {
             long pt = ts - _baseTimestamp;
             if (pt > _lastReceivedPt) _lastReceivedPt = pt;
+
+            // Latency-step detection. A constant added delay (a route change,
+            // congestion onset, or a test tool like clumsy) produces no
+            // inter-arrival variation, so MeasureJitter/AdaptBufferSize never
+            // see it. Measure this packet's playout margin directly: if it
+            // arrived after its scheduled slot, grow the buffer to re-absorb
+            // it — otherwise GetReadyPackets discards every late packet and
+            // playout collapses to permanent concealment.
+            if (_packetsReceived > 1)
+            {
+                long activeBufferTicks = (long)(_activeBufferMs / 1000.0 * Stopwatch.Frequency);
+                long clockSamples = (long)(
+                    (double)(now - _baseTimeTicks - activeBufferTicks)
+                        / Stopwatch.Frequency * OpenFreqRtcClient.SAMPLE_RATE);
+                double marginMs = (double)(pt - clockSamples)
+                    / OpenFreqRtcClient.SAMPLE_RATE * 1000.0;
+
+                if (marginMs < 0)
+                {
+                    // Cover the lateness plus a one-frame cushion, capped so one
+                    // freak packet can't balloon latency.
+                    double grow = Math.Min(
+                        -marginMs + OpenFreqRtcClient.FRAME_SIZE_MS, LATE_GROW_CAP_MS);
+                    double grown = Math.Clamp(
+                        _activeBufferMs + grow, MIN_BUFFER_MS, MAX_BUFFER_MS);
+                    if (grown > _activeBufferMs)
+                    {
+                        _logger.LogInformation(
+                            "Late arrival ({LateMs:F0}ms past slot) — buffer {Old:F0}→{New:F0}ms",
+                            -marginMs, _activeBufferMs, grown);
+                        _activeBufferMs = grown;
+                        // Persist so the next talkspurt doesn't snap back and re-glitch.
+                        _targetBufferMs = Math.Max(_targetBufferMs, grown);
+                    }
+                }
+            }
         }
 
         var sp = new SequencedPacket
