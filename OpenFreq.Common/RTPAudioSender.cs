@@ -71,9 +71,7 @@ public class RtpAudioSender : IDisposable
         SendKeepalive();
         _heartbeatTimer = new Timer(_ => SendKeepalive(), null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
 
-        // 32 kbps so we use wideband SILK / SILK+CELT (and it sounds horrible otherwise)
-        _opusEncoder.Bitrate = 32000;
-        _opusEncoder.MaxBandwidth = OpusBandwidth.OPUS_BANDWIDTH_WIDEBAND;
+        _opusEncoder.Bitrate = 24000;
         _opusEncoder.Complexity = 8;
         _opusEncoder.SignalType = OpusSignal.OPUS_SIGNAL_VOICE;
         _opusEncoder.UseInbandFEC = true;
