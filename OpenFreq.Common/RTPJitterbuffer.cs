@@ -71,11 +71,22 @@ public class RtpJitterBuffer
     private double _measuredJitterMs;
     private const double MIN_BUFFER_MS = 20;
     private const double MAX_BUFFER_MS = 500;
+
+    // Concealment is paced one frame (~20ms) per playout slot. These bound a run:
+    //  - BLIND: frames to conceal when nothing past the gap has been received yet.
+    //    Covers a late successor / the leading edge of a burst. The cost is a short
+    //    PLC tail (~3 frames = 60ms) after a talkspurt genuinely ends.
+    //  - MAX: absolute cap once the gap is proven (a later packet was received).
+    //    Opus PLC degrades to noise well before this; past it we resync.
+    private const int MAX_BLIND_CONCEAL_FRAMES = 3;
+    private const int MAX_CONCEAL_FRAMES = 15;
     
     // _lastReleasedPt: relative timestamp (ts - _baseTimestamp) of the last slot we delivered (real packet or concealment)
     // _lastReceivedPt: relative timestamp of the latest packet we have ever received.
     private long? _lastReleasedPt;
     private long _lastReceivedPt = -1;
+    // Consecutive concealment frames emitted since the last real packet was released.
+    private int _concealmentRunLength;
         
     // Statistics
     private int _packetsReceived;
@@ -234,7 +245,7 @@ public class RtpJitterBuffer
             {
                 var front = _buffer.First();
                 long frontPt = front.Value.Timestamp - _baseTimestamp;
-                if (frontPt < _lastReleasedPt.Value)
+                if (frontPt <= _lastReleasedPt.Value)
                 {
                     _buffer.Remove(front.Key);
                     _packetsLate++;
@@ -271,32 +282,43 @@ public class RtpJitterBuffer
 
                 if (nextPacketMissing)
                 {
-                    // Distinguish mid-talkspurt loss from talkspurt end:
-                    // if the remote has never sent anything at/after nextExpectedPt,
-                    // the talkspurt is over — don't generate trailing PLC.
-                    if (_lastReceivedPt < nextExpectedPt)
+                    // We can't directly tell "next packet still in flight / burst in
+                    // progress" from "talkspurt ended", so conceal for a bounded run:
+                    //  - provenGap: a packet at/after this slot was already received,
+                    //    so the gap is real loss — conceal up to MAX_CONCEAL_FRAMES.
+                    //  - otherwise conceal "blind" up to MAX_BLIND_CONCEAL_FRAMES,
+                    //    enough to ride out a late successor or a short burst.
+                    // Past the cap, give up: drop the cursor and fall through so the
+                    // release loop skips ahead to whatever is buffered (or NoPackets).
+                    bool provenGap = _lastReceivedPt >= nextExpectedPt;
+                    int cap = provenGap ? MAX_CONCEAL_FRAMES : MAX_BLIND_CONCEAL_FRAMES;
+
+                    if (_concealmentRunLength >= cap)
                     {
                         _lastReleasedPt = null;
+                        _concealmentRunLength = 0;
                         _activeBufferMs = _targetBufferMs;
-                        return new NoPackets();
+                        // fall through to the buffer-empty check / release loop
                     }
-
-                    // If N+1 is already in the buffer, pass its payload so the decoder
-                    // can use LBRR FEC to recover N instead of falling back to PLC.
-                    byte[]? fecPayload = null;
-                    if (_buffer.Count > 0)
+                    else
                     {
-                        var candidate = _buffer.First().Value;
-                        long candidatePt = candidate.Timestamp - _baseTimestamp;
-                        if (candidatePt == nextExpectedPt + OpenFreqRtcClient.OPUS_SAMPLES_PER_FRAME)
-                            fecPayload = candidate.Payload;
-                    }
+                        // If N+1 is already in the buffer, pass its payload so the
+                        // decoder can use LBRR FEC to recover N instead of pure PLC.
+                        byte[]? fecPayload = null;
+                        if (_buffer.Count > 0)
+                        {
+                            var candidate = _buffer.First().Value;
+                            long candidatePt = candidate.Timestamp - _baseTimestamp;
+                            if (candidatePt == nextExpectedPt + OpenFreqRtcClient.OPUS_SAMPLES_PER_FRAME)
+                                fecPayload = candidate.Payload;
+                        }
 
-                    // Remote sent something at or after the missing slot → it was lost.
-                    // Advance cursor and tell the drain thread to generate FEC/PLC.
-                    _lastReleasedPt = nextExpectedPt;
-                    _packetsLost++;
-                    return new ConcealmentNeeded(fecPayload);
+                        // Advance cursor and tell the drain thread to generate FEC/PLC.
+                        _lastReleasedPt = nextExpectedPt;
+                        _concealmentRunLength++;
+                        _packetsLost++;
+                        return new ConcealmentNeeded(fecPayload);
+                    }
                 }
                 // Real packet IS at the expected slot and is due — fall through to release it.
             }
@@ -356,6 +378,7 @@ public class RtpJitterBuffer
             _lastReturnedPacket = p.SequenceNumber;
             _lastReleasedPt = p.Timestamp - _baseTimestamp; // advance playout cursor
         }
+        _concealmentRunLength = 0; // real audio resumed — reset the concealment budget
         return new PacketsReady(readies);
     }
         
