@@ -56,13 +56,6 @@ public class RtpJitterBuffer
     /// Timestamp (in extended samples) of the last packet
     /// </summary>
     private long _lastPacketTimestamp;
-    /// <summary>
-    /// Sequence number of the last packet returned form this jitter buffer.
-    /// </summary>
-    /// <remarks>
-    /// Used to detect missing packets - i.e. gaps in the buffer.
-    /// </remarks>
-    private long? _lastReturnedPacket;
 
     // Adaptive jitter buffer parameters
     private double _targetBufferMs = 60; // Start with 60ms
@@ -405,16 +398,9 @@ public class RtpJitterBuffer
             }
         }
 
-        if (readies.Count == 0)
-        {
-            _activeBufferMs = _targetBufferMs;
-            return new NoPackets();
-        }
-
         _packetsPlayed += readies.Count;
         foreach (var p in readies)
         {
-            _lastReturnedPacket = p.SequenceNumber;
             _lastReleasedPt = p.Timestamp - _baseTimestamp; // advance playout cursor
         }
         _concealmentRunLength = 0; // real audio resumed — reset the concealment budget
