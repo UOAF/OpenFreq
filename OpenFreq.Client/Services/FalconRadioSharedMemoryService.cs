@@ -45,8 +45,6 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
     private readonly Dictionary<RadioDeviceType, RadioDevice> _radioDevices = new();
     private ConnectionParameters? _connectionParameters;
 
-    // Previous state for change detection
-    private readonly Dictionary<RadioType, RadioChannel> _previousRadioChannels = new();
     private ConnectionParameters? _previousConnectionParameters;
     private bool _initialReadDone = false;
 
@@ -448,6 +446,16 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
             Win32RadioMemory.CloseHandle(_hRccMemory);
             _hRccMemory = IntPtr.Zero;
         }
+
+        // Reset read state so next RCC open is treated as a fresh session.
+        // Without this, if BMS restarts with the same AttemptingToConnect=true,
+        // DetectConnectionParameterChanges sees no change and fires no event.
+        lock (_dataLock)
+        {
+            _initialReadDone = false;
+            _connectionParameters = null;
+            _logbookName = null;
+        }
     }
 
     private bool TryReadRadioData()
@@ -483,8 +491,14 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
                 var previousLogbookName = _logbookName;
                 _logbookName = logbookName;
 
+                // "Wot Pilot?!" is the sentinel BMS writes in Telemetry::Init() before
+                // ClientReady(); the real callsign arrives later via UpdatePlayerMap().
+                // Don't fire the event for the placeholder — callers should use Nickname
+                // from ConnectionParameters for the display name at connection time.
+                const string BmsSentinel = "Wot Pilot?!";
                 if (_initialReadDone &&
                     !string.IsNullOrEmpty(logbookName) &&
+                    logbookName != BmsSentinel &&
                     logbookName != previousLogbookName)
                 {
                     Task.Run(() => LogbookNameChanged?.Invoke(this,
@@ -503,7 +517,6 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
                     }
 
                     _radioChannels[radioType] = newChannel;
-                    _previousRadioChannels[radioType] = newChannel.Clone();
                 }
 
                 // Update devices
@@ -596,8 +609,12 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
             oldParams.AttemptingToConnect != newParams.AttemptingToConnect ||
             oldParams.TerminateClient != newParams.TerminateClient)
         {
-            ConnectionParametersChanged?.Invoke(this, new ConnectionParametersChangedEventArgs(
-                oldParams, newParams));
+            // Fire async via Task.Run so the polling thread is not blocked while holding
+            // _dataLock. The handler calls ConnectWithTimeoutAsync(...).Wait() which takes
+            // up to 2.5 s — keeping that inside the lock would starve GetRadioChannel
+            // callers (e.g. ImportBmsRadioChannels on the authenticated callback).
+            var args = new ConnectionParametersChangedEventArgs(oldParams, newParams);
+            Task.Run(() => ConnectionParametersChanged?.Invoke(this, args));
         }
     }
 

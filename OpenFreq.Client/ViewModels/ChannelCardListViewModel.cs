@@ -405,6 +405,12 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                     }
                 }
             }
+
+            // Apply current BMS volume levels — SyncBmsChannelPowerStates (which calls
+            // SyncBmsChannelVolumeStates) only fires on ReadyToTransmit false→true transition.
+            // When ReadyToTransmit stays true across a reconnect that transition never fires,
+            // so we sync volumes explicitly here after the channel list is built.
+            SyncBmsChannelVolumeStates();
         });
     }
 

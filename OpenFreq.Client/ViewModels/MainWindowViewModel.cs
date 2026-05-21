@@ -380,7 +380,12 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         // BMS wants us to connect
         if (e.NewParameters.AttemptingToConnect)
         {
-            _falconRadioSharedMemoryService.RemoveClientStatus(ClientStatusFlags.ConnectionFail);
+            // Clear ALL error flags (ConnectionFail, BadPassword, HostUnknown, etc.).
+            // Clearing only ConnectionFail leaves e.g. BadPassword set from a previous attempt.
+            // BMS VoiceDoLogic checks ClientHasAnError() on every frame: any stale error flag
+            // causes SetBlockingError(true) → VoiceDoLogic returns immediately → SetChannelsFor3d()
+            // is never called → RCC is never updated → OpenFreq reads stale frequencies/power states.
+            _falconRadioSharedMemoryService.RemoveClientStatus(ClientStatusFlags.ErrorMask);
             _falconRadioSharedMemoryService.AddClientStatus(ClientStatusFlags.ClientActive);
             _falconRadioSharedMemoryService.AddClientStatus(ClientStatusFlags.TryingToConnect);
             Settings.OpenFreqPassword = e.NewParameters.Password;
@@ -398,9 +403,17 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
 
             if (_openFreqService.IsConnected)
             {
+                // Ensure all error flags are gone before setting Connected so BMS never
+                // sees ClientHasAnError()=true alongside Connected in the same frame.
+                _falconRadioSharedMemoryService.RemoveClientStatus(ClientStatusFlags.ErrorMask);
                 _falconRadioSharedMemoryService.AddClientStatus(ClientStatusFlags.Connected);
                 Settings.Is3dMode = _falconSharedMemoryService.IsFlying ?? false;
-                var bestName = _falconRadioSharedMemoryService.LogbookName;
+                // Prefer Nickname (set by BMS at StartExternalVoice time = LogBook.Callsign()).
+                // LogbookName is from the Telemetry struct which BMS initialises to "Wot Pilot?!"
+                // and only overwrites after ClientReady() — i.e. after this connection completes.
+                var bestName = !string.IsNullOrEmpty(e.NewParameters.Nickname)
+                    ? e.NewParameters.Nickname
+                    : _falconRadioSharedMemoryService.LogbookName;
                 if (!string.IsNullOrEmpty(bestName))
                     _openFreqService.UpdateDisplayNameAsync(bestName);
             }
@@ -430,7 +443,11 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
 
     private void OnLogbookNameChanged(object? sender, LogbookNameChangedEventArgs e)
     {
-        if (!string.IsNullOrEmpty(e.NewName))
+        // BMS initialises Telemetry::m_logbookName to "Wot Pilot?!" before the session
+        // is established; the real callsign is only written after ClientReady().
+        // Ignore the sentinel so we never push the placeholder as a display name.
+        const string BmsSentinel = "Wot Pilot?!";
+        if (!string.IsNullOrEmpty(e.NewName) && e.NewName != BmsSentinel)
             _openFreqService.UpdateDisplayNameAsync(e.NewName);
     }
 
@@ -595,7 +612,13 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         }
         else if (state == ConnectionState.Disconnected)
         {
-            ShowError("Lost connection to server");
+            // Only show the generic disconnect message when no more-specific error
+            // (e.g. bad password, auth failure) is already being displayed.
+            // Auth-failure errors are set via OnStatusMessageReceived before the
+            // WebSocket close event arrives (~100 ms earlier in practice), so
+            // HasError is already true when we get here and the overwrite is skipped.
+            if (!HasError)
+                ShowError("Lost connection to server");
             SettingsDrawerOpened = true;
         }
     }
