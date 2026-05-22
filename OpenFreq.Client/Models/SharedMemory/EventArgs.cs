@@ -85,6 +85,18 @@ public class ConnectionParametersChangedEventArgs : EventArgs
     }
 }
 
+public class LogbookNameChangedEventArgs : EventArgs
+{
+    public string? OldName { get; }
+    public string? NewName { get; }
+
+    public LogbookNameChangedEventArgs(string? oldName, string? newName)
+    {
+        OldName = oldName;
+        NewName = newName;
+    }
+}
+
 public class FlyingStateChangedEventArgs : EventArgs
 {
     public bool OldFlyingState { get; }
@@ -94,5 +106,17 @@ public class FlyingStateChangedEventArgs : EventArgs
     {
         OldFlyingState = oldFlyingState;
         NewFlyingState = newFlyingState;
+    }
+}
+
+public class AircraftInfoChangedEventArgs : EventArgs
+{
+    public string? AcName { get; }
+    public string? AcNCTR { get; }
+
+    public AircraftInfoChangedEventArgs(string? acName, string? acNctr)
+    {
+        AcName = acName;
+        AcNCTR = acNctr;
     }
 }

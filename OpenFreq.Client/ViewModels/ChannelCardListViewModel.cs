@@ -274,6 +274,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                 await DeleteLocation(FalconLocation);
                 FalconLocation = null;
             }
+
             return;
         }
 
@@ -283,7 +284,6 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         {
             SyncBmsChannelPowerStates();
         }
-
     }
 
     private void SyncBmsChannelPowerStates()
@@ -303,6 +303,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                     channel.ToggleJoinLeave();
             }
         }
+
         SyncBmsChannelVolumeStates();
     }
 
@@ -351,6 +352,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                     FalconLocation.Channels.Clear();
                 }
 
+                // Create the Channels
                 foreach (var type in Enum.GetValues<RadioType>())
                 {
                     var falconChannel = _falconRadioSharedMemoryService.GetRadioChannel(type);
@@ -405,13 +407,19 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                     }
                 }
             }
+
+            // Apply current BMS volume levels — SyncBmsChannelPowerStates (which calls
+            // SyncBmsChannelVolumeStates) only fires on ReadyToTransmit false→true transition.
+            // When ReadyToTransmit stays true across a reconnect that transition never fires,
+            // so we sync volumes explicitly here after the channel list is built.
+            SyncBmsChannelVolumeStates();
         });
     }
 
     private void OnBmsPttChanged(object? sender, RadioPttChangedEventArgs e)
     {
         // Do NOT capture keys twice - for non-flying, we want to use the callbacks from our HotKey service
-        if (!_hotkeyService.PttKeysPaused ||_falconSharedMemoryService.IsFlying == false)
+        if (!_hotkeyService.PttKeysPaused || _falconSharedMemoryService.IsFlying == false)
             return;
 
         if (FalconLocation == null)

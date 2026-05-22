@@ -39,7 +39,7 @@ public interface IOpenFreqService : IDisposable
 
     // Methods
     Task Initialize(OpenFreqClient.Models.OpenFreqSettings settings, int recordingDeviceIndex, int playbackDeviceIndex);
-    Task ConnectAsync();
+    Task ConnectAsync(TimeSpan? connectTimeout = null);
     Task DisconnectAsync();
     bool IsFrequencyJoined(int frequencyKhz, Guid slotId);
     Task JoinFrequencyAsync(int frequencyKhz, Guid slotId, RadioStationData radioStationData);

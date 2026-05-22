@@ -189,6 +189,22 @@ public class RtpAudioReceiver : IDisposable
                                 handledPackets = true;
                                 break;
 
+                            // The jitter buffer detected a missing slot at the correct clock position.
+                            // Inject an empty packet so the decoder fills the hole now, not one frame late.
+                            // The payload carries N+1's Opus bytes when available so the decoder can do FEC recovery instead of falling back to PLC.
+                            case ConcealmentNeeded cn:
+                                context.ToDecode.TryWrite(new SequencedPacket
+                                {
+                                    Ssrc = context.Ssrc,
+                                    SequenceNumber = 0, // source context uses its own LastSequenceReceived+1
+                                    Timestamp = 0,
+                                    Payload = cn.FecPayload ?? [],
+                                    Metadata = null,
+                                    IsConcealment = true,
+                                });
+                                handledPackets = true;
+                                break;
+
                             case WaitFor wf:
                                 if (ticksToSleep.HasValue)
                                 {

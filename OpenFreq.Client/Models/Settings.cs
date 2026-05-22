@@ -38,4 +38,5 @@ public class OpenFreqSettings
     public bool SidetoneEnabled { get; set; } = false;
     public double SidetoneVolume { get; set; } = 0.4;
     public bool? DarkMode { get; set; }
+    public bool MinimizeOnConnect { get; set; } = true;
 }

@@ -32,6 +32,16 @@ public interface IFalconSharedMemoryService : IDisposable, ILifecycleService
     string? TheaterTerrainDir { get; }
 
     /// <summary>
+    /// Current aircraft name, e.g. "F-16C Block 52+" (read once on connect, null if never connected)
+    /// </summary>
+    string? AcName { get; }
+
+    /// <summary>
+    /// Current aircraft NCTR string (read once on connect, null if never connected)
+    /// </summary>
+    string? AcNCTR { get; }
+
+    /// <summary>
     /// 3D Status (null if disconnected)
     /// </summary>
     bool? IsFlying { get; }
@@ -47,4 +57,9 @@ public interface IFalconSharedMemoryService : IDisposable, ILifecycleService
     event EventHandler<ServiceStateChangedEventArgs>? StateChanged;
 
     event EventHandler<FlyingStateChangedEventArgs>? FlyingStateChanged;
+
+    /// <summary>
+    /// Fired when AcName/AcNCTR become available (once per connect)
+    /// </summary>
+    event EventHandler<AircraftInfoChangedEventArgs>? AircraftInfoChanged;
 }

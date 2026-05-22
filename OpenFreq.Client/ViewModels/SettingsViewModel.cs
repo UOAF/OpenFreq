@@ -83,6 +83,7 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] public partial bool SidetoneEnabled { get; set; } = false;
     [ObservableProperty] public partial double SidetoneVolume { get; set; } = 0.4;
     [ObservableProperty] public partial bool IsDarkMode { get; set; }
+    [ObservableProperty] public partial bool MinimizeOnConnect { get; set; } = true;
 
     public bool IsWindowsPlatform { get; } = OperatingSystem.IsWindows();
 
@@ -321,6 +322,7 @@ public partial class SettingsViewModel : ViewModelBase
         BmsRadio2Pan = settings.BmsRadio2Pan;
         SidetoneEnabled = settings.SidetoneEnabled;
         SidetoneVolume = settings.SidetoneVolume;
+        MinimizeOnConnect = settings.MinimizeOnConnect;
         if (settings.DarkMode.HasValue)
         {
             IsDarkMode = settings.DarkMode.Value;
@@ -471,6 +473,7 @@ public partial class SettingsViewModel : ViewModelBase
             BmsSquelchVhfHotkey = BmsVhfSquelchHotkey,
             SidetoneEnabled = SidetoneEnabled,
             SidetoneVolume = SidetoneVolume,
+            MinimizeOnConnect = MinimizeOnConnect,
             DarkMode = IsDarkMode,
             Left = _left,
             Top = _top,

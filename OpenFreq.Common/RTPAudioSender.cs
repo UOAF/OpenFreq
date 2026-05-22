@@ -28,10 +28,11 @@ public class RtpAudioSender : IDisposable
     private readonly bool _opusEnabled;
 
 #pragma warning disable CS0618 // Do not use the factory - it does not work with Linux
+    // VOIP mode enables SILK codec and in-band FEC (LBRR).
     private readonly OpusEncoder _opusEncoder = new OpusEncoder(
             OpenFreqRtcClient.SAMPLE_RATE,
             1,
-            OpusApplication.OPUS_APPLICATION_RESTRICTED_LOWDELAY
+            OpusApplication.OPUS_APPLICATION_VOIP
         );
 #pragma warning restore CS0618 // Type or member is obsolete
 
