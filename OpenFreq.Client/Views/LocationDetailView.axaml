@@ -1,0 +1,287 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:views="clr-namespace:OpenFreqClient.Views"
+             xmlns:viewModels="clr-namespace:OpenFreqClient.ViewModels"
+             xmlns:avalonia="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             xmlns:local="clr-namespace:OpenFreqAudio;assembly=OpenFreqAudio"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             x:Class="OpenFreqClient.Views.LocationDetailView"
+             x:DataType="viewModels:LocationViewModel"
+             xmlns:converters="clr-namespace:Avalonia.Controls.Converters;assembly=Avalonia.Controls"
+             xmlns:models="clr-namespace:OpenFreq.Client.Models"
+             xmlns:converters1="clr-namespace:OpenFreqClient.Converters">
+
+    <UserControl.Resources>
+        <converters:EnumToBoolConverter x:Key="EnumToBoolConverter" />
+        <converters1:NullableDoubleConverter x:Key="NullableDoubleConverter" />
+    </UserControl.Resources>
+
+    <Grid RowDefinitions="Auto,*">
+
+        <!-- ========================================== -->
+        <!-- GROUP HEADER — green left accent, same height as left panel header -->
+        <!-- ========================================== -->
+        <Border Grid.Row="0"
+                BorderBrush="{DynamicResource MaterialDividerBrush}"
+                BorderThickness="0,0,0,1">
+        <Grid ColumnDefinitions="4,*,Auto"
+              MinHeight="44">
+
+            <!-- Left accent — group color, overridden by TX/RX state -->
+            <Grid Grid.Column="0">
+                <Rectangle Fill="{Binding AccentBrush}" />
+                <Rectangle Fill="{DynamicResource ChannelStatusReceivingBrush}"
+                           IsVisible="{Binding AnyChannelReceiving}" />
+                <Rectangle Fill="{DynamicResource ChannelStatusTransmittingBrush}"
+                           IsVisible="{Binding AnyChannelTransmitting}" />
+            </Grid>
+
+            <!-- Group info -->
+            <StackPanel Grid.Column="1"
+                        Spacing="2"
+                        Margin="16,0"
+                        VerticalAlignment="Center">
+                <TextBlock Text="{Binding Name}"
+                           Classes="Subtitle1"
+                           FontWeight="SemiBold"/>
+                <TextBlock Text="{Binding RadioStationData.Preset.Name}"
+                           Classes="Caption"
+                           Opacity="0.75"
+                           IsVisible="{Binding RadioStationData.Preset, Converter={x:Static ObjectConverters.IsNotNull}}" />
+            </StackPanel>
+
+            <!-- Edit-mode controls only (Trash + Done) — GCI, visible only while editing -->
+            <StackPanel Grid.Column="2"
+                        Orientation="Horizontal"
+                        IsVisible="{Binding Settings.ModeIsGci}">
+                <Button IsVisible="{Binding EditMode}"
+                        Classes="Flat"
+                        Command="{Binding DeleteLocationCommand}"
+                        Width="40" Height="44"
+                        ToolTip.Tip="Delete Location"
+                        Padding="8">
+                    <avalonia:MaterialIcon Kind="Trash" Width="22" Height="22"
+                                           Foreground="{DynamicResource MaterialValidationErrorBrush}" />
+                </Button>
+                <Button IsVisible="{Binding EditMode}"
+                        Theme="{StaticResource MaterialFlatButton}"
+                        Classes="primary"
+                        Command="{Binding ToggleEditingCommand}"
+                        Width="40" Height="44"
+                        ToolTip.Tip="Done"
+                        Padding="8">
+                    <avalonia:MaterialIcon Kind="CheckBold" Width="20" Height="20" />
+                </Button>
+            </StackPanel>
+        </Grid>
+        </Border>
+
+        <!-- ========================================== -->
+        <!-- CONTENT AREA -->
+        <!-- ========================================== -->
+        <Panel Grid.Row="1">
+
+            <!-- EDIT MODE: Group Configuration Form -->
+            <ScrollViewer IsVisible="{Binding EditMode}"
+                          VerticalScrollBarVisibility="Auto">
+                <Border Background="{DynamicResource MaterialPaperBrush}"
+                        BorderBrush="{DynamicResource MaterialDividerBrush}"
+                        BorderThickness="0,1,0,0"
+                        Padding="20,16">
+                    <StackPanel Spacing="20">
+
+                        <!-- Group Name -->
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="LOCATION NAME" Classes="Caption" Opacity="0.55" FontWeight="SemiBold" LetterSpacing="1" />
+                            <TextBox x:Name="NameInput"
+                                     Text="{Binding Name}" PlaceholderText="Location name" Classes="Outline" >
+                                <TextBox.KeyBindings>
+                                    <KeyBinding Command="{Binding ToggleEditingCommand}" Gesture="Enter" />
+                                </TextBox.KeyBindings>
+                            </TextBox>
+                        </StackPanel>
+
+                        <Border Height="1" Background="{DynamicResource MaterialDividerBrush}" />
+
+                        <!-- Position Source -->
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="POSITION SOURCE" Classes="Caption" Opacity="0.55" FontWeight="SemiBold" LetterSpacing="1" />
+
+                            <!-- Fixed Position -->
+                            <Border Background="{DynamicResource MaterialCardBackgroundBrush}"
+                                    CornerRadius="6" Padding="12,10">
+                                <StackPanel Spacing="10">
+                                    <RadioButton
+                                        IsChecked="{Binding RadioStationData.Type,
+                                                 Converter={StaticResource EnumToBoolConverter},
+                                                 ConverterParameter={x:Static models:RadioStationData+RadioStationType.STATIONARY}}"
+                                        GroupName="PositionSource"
+                                        Content="Fixed Position" />
+                                    <Grid ColumnDefinitions="*, *, *, Auto" ColumnSpacing="10"
+                                          IsEnabled="{Binding RadioStationData.Type,
+                                          Converter={StaticResource EnumToBoolConverter},
+                                          ConverterParameter={x:Static models:RadioStationData+RadioStationType.STATIONARY}}">
+                                        <StackPanel Grid.Column="0" Spacing="4">
+                                            <TextBlock Text="Latitude" Classes="Caption" Opacity="0.7" />
+                                            <TextBox Text="{Binding Latitude, StringFormat={}{0:F5}}" PlaceholderText="0.00000" Classes="Outline">
+                                                <TextBox.KeyBindings>
+                                                    <KeyBinding Command="{Binding ToggleEditingCommand}" Gesture="Enter" />
+                                                </TextBox.KeyBindings>
+                                            </TextBox>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Spacing="4">
+                                            <TextBlock Text="Longitude" Classes="Caption" Opacity="0.7" />
+                                            <TextBox Text="{Binding Longitude, StringFormat={}{0:F5}}" PlaceholderText="0.00000" Classes="Outline">
+                                                <TextBox.KeyBindings>
+                                                    <KeyBinding Command="{Binding ToggleEditingCommand}" Gesture="Enter" />
+                                                </TextBox.KeyBindings>
+                                            </TextBox>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2" Spacing="4">
+                                            <TextBlock Text="Altitude (ft AGL)" Classes="Caption" Opacity="0.7" />
+                                            <TextBox Text="{Binding AltitudeFeet, Converter={StaticResource NullableDoubleConverter}}" PlaceholderText="0" Classes="Outline">
+                                                <TextBox.KeyBindings>
+                                                    <KeyBinding Command="{Binding ToggleEditingCommand}" Gesture="Enter" />
+                                                </TextBox.KeyBindings>
+                                            </TextBox>
+                                        </StackPanel>
+                                        <Button Grid.Column="3"
+                                                Theme="{StaticResource MaterialFlatButton}" Classes="primary"
+                                                Command="{Binding OpenMapPickerCommand}"
+                                                ToolTip.Tip="Pick on map"
+                                                Width="40" Height="40" VerticalAlignment="Bottom">
+                                            <avalonia:MaterialIcon Kind="MapMarker" Width="20" Height="20" />
+                                        </Button>
+                                    </Grid>
+                                    <TextBlock Text="{Binding CoordinateError}"
+                                               Foreground="{DynamicResource MaterialValidationErrorBrush}"
+                                               FontSize="11" Margin="2,0"
+                                               IsVisible="{Binding HasCoordinateError}" />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Track Aircraft -->
+                            <Border Background="{DynamicResource MaterialCardBackgroundBrush}"
+                                    CornerRadius="6" Padding="12,10"
+                                    IsEnabled="{Binding IsAcmiConnected}">
+                                <StackPanel Spacing="10">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <RadioButton VerticalAlignment="Center"
+                                                     IsChecked="{Binding RadioStationData.Type,
+                                                     Converter={StaticResource EnumToBoolConverter},
+                                                     ConverterParameter={x:Static models:RadioStationData+RadioStationType.ACMI}}"
+                                                     GroupName="PositionSource"
+                                                     Content="Track Aircraft" />
+                                        <StackPanel Orientation="Horizontal" Spacing="6"
+                                                    IsVisible="{Binding !IsAcmiConnected}"
+                                                    VerticalAlignment="Center">
+                                            <avalonia:MaterialIcon Kind="Info" Width="16" Height="16" Opacity="0.55" />
+                                            <TextBlock Text="Requires a Tacview connection" Classes="Caption" Opacity="0.6" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                    <Grid ColumnDefinitions="*, Auto" ColumnSpacing="8"
+                                          IsVisible="{Binding IsAcmiConnected}"
+                                          IsEnabled="{Binding RadioStationData.Type,
+                                          Converter={StaticResource EnumToBoolConverter},
+                                          ConverterParameter={x:Static models:RadioStationData+RadioStationType.ACMI}}">
+                                        <ComboBox Grid.Column="0"
+                                                  ItemsSource="{Binding TacviewFlightCallsigns}"
+                                                  SelectedItem="{Binding SelectedTacviewCallsign}"
+                                                  PlaceholderText="Select callsign..."
+                                                  Classes="Outline"
+                                                  HorizontalAlignment="Stretch" />
+                                        <Button Grid.Column="1"
+                                                Theme="{StaticResource MaterialFlatButton}" Classes="primary"
+                                                Command="{Binding TrackSelectedAircraftCommand}"
+                                                ToolTip.Tip="Track on map"
+                                                Width="40" Height="40">
+                                            <avalonia:MaterialIcon Kind="Map" Width="20" Height="20" />
+                                        </Button>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+
+                        <Border Height="1" Background="{DynamicResource MaterialDividerBrush}" />
+
+                        <!-- Station Preset -->
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="STATION PRESET" Classes="Caption" Opacity="0.55" FontWeight="SemiBold" LetterSpacing="1" />
+                            <ComboBox ItemsSource="{x:Static local:RadioStationPresets.AllPresets}"
+                                      SelectedItem="{Binding RadioStationData.Preset}"
+                                      PlaceholderText="Select preset..."
+                                      Classes="Outline"
+                                      HorizontalAlignment="Stretch">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="0,4">
+                                            <TextBlock Text="{Binding Name}" Classes="Body2" />
+                                            <TextBlock Text="{Binding Description}" Classes="Caption" Opacity="0.7" TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </StackPanel>
+
+                        <!-- Preset Details -->
+                        <Expander Header="Preset Parameters"
+                                  IsVisible="{Binding RadioStationData.Preset, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                  IsExpanded="False">
+                            <Grid ColumnDefinitions="*,*"
+                                  RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto"
+                                  ColumnSpacing="12" RowSpacing="8" Margin="8">
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="VHF TX Power" Classes="Caption" />
+                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding RadioStationData.Preset.TxPower_VHF_W, StringFormat='{}{0:F1} W'}" Classes="Body2" />
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="UHF TX Power" Classes="Caption" />
+                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding RadioStationData.Preset.TxPower_UHF_W, StringFormat='{}{0:F1} W'}" Classes="Body2" />
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Antenna Height" Classes="Caption" />
+                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding RadioStationData.Preset.AntennaElevation_m, StringFormat='{}{0:F1} m'}" Classes="Body2" />
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="VHF RX Sensitivity" Classes="Caption" />
+                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding RadioStationData.Preset.RxSensitivity_VHF_dBm, StringFormat='{}{0:F1} dBm'}" Classes="Body2" />
+                                <TextBlock Grid.Row="4" Grid.Column="0" Text="UHF RX Sensitivity" Classes="Caption" />
+                                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding RadioStationData.Preset.RxSensitivity_UHF_dBm, StringFormat='{}{0:F1} dBm'}" Classes="Body2" />
+                                <TextBlock Grid.Row="5" Grid.Column="0" Text="Min / Max Frequency Drift" Classes="Caption" />
+                                <StackPanel Grid.Row="5" Grid.Column="1" Orientation="Horizontal">
+                                    <TextBlock Text="{Binding RadioStationData.Preset.MinPpm, StringFormat='{}{0:F1} PPM / '}" Classes="Body2" />
+                                    <TextBlock Text="{Binding RadioStationData.Preset.MaxPpm, StringFormat='{}{0:F1} PPM'}" Classes="Body2" />
+                                </StackPanel>
+                            </Grid>
+                        </Expander>
+
+                    </StackPanel>
+                </Border>
+            </ScrollViewer>
+
+            <!-- VIEW MODE: Channel List -->
+            <ScrollViewer IsVisible="{Binding !EditMode}"
+                          VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <ItemsControl ItemsSource="{Binding Channels}" Padding="8,12,8,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <views:ChannelCardView Margin="4" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- Add Channel Button — follows last item -->
+                    <Button Command="{Binding AddChannelCommand}"
+                            IsVisible="{Binding Settings.ModeIsGci}"
+                            Classes="Flat"
+                            HorizontalAlignment="Stretch"
+                            Margin="12,4,12,12"
+                            Padding="12,10">
+                        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                            <avalonia:MaterialIcon Kind="Plus" Width="20" Height="20" />
+                            <TextBlock Text="Add Channel" Classes="Body2" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </ScrollViewer>
+
+        </Panel>
+    </Grid>
+
+</UserControl>

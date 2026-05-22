@@ -23,6 +23,7 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
     // Events to notify when devices change
     public event EventHandler<DeviceChangedEventArgs>? PlaybackDevicesChanged;
     public event EventHandler<DeviceChangedEventArgs>? RecordingDevicesChanged;
+    public event EventHandler<string>? AudioDeviceErrorOccurred;
 
     // BASS device indices parallel to the enabled-device name lists
     private List<int> _playbackBassIndices = new();
@@ -33,6 +34,10 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
     private Task? _monitoringTask;
     private List<string> _lastPlaybackDevices = new();
     private List<string> _lastRecordingDevices = new();
+
+    // Guards _playbackBassIndices and _recordingBassIndices against concurrent read/write
+    // between the monitoring thread (writer) and UI thread (reader via GetPlaybackBassIndex).
+    private readonly object _deviceLock = new();
 
     public void Init()
     {
@@ -84,7 +89,9 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
         var currentPlaybackDevices = GetPlaybackDevices();
         if (!currentPlaybackDevices.SequenceEqual(_lastPlaybackDevices))
         {
-            logger.LogInformation("Playback devices changed");
+            logger.LogInformation("Playback device list changed: [{Old}] → [{New}]",
+                string.Join(", ", _lastPlaybackDevices),
+                string.Join(", ", currentPlaybackDevices));
             _lastPlaybackDevices = currentPlaybackDevices;
             HandlePlaybackDeviceChange();
         }
@@ -93,7 +100,9 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
         var currentRecordingDevices = GetRecordingDevices();
         if (!currentRecordingDevices.SequenceEqual(_lastRecordingDevices))
         {
-            logger.LogInformation("Recording devices changed");
+            logger.LogInformation("Recording device list changed: [{Old}] → [{New}]",
+                string.Join(", ", _lastRecordingDevices),
+                string.Join(", ", currentRecordingDevices));
             _lastRecordingDevices = currentRecordingDevices;
             HandleRecordingDeviceChange();
         }
@@ -114,25 +123,45 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
         // If device was removed or not found, fall back to default
         if (newIndex == -1)
         {
-            logger.LogWarning("Playback device '{DeviceName}' not found, falling back to default device {DefaultDevice}",
+            logger.LogWarning(
+                "Playback device '{DeviceName}' not found after device change, falling back to default (list index {DefaultDevice})",
                 _selectedPlaybackDeviceName, DefaultPlaybackDevice);
-            newIndex = DefaultPlaybackDevice; // list index
+            newIndex = DefaultPlaybackDevice;
 
             if (newIndex != -1)
             {
                 var deviceInfo = Bass.GetDeviceInfo(GetPlaybackBassIndex(newIndex));
                 _selectedPlaybackDeviceName = deviceInfo.Name;
+                logger.LogInformation("Playback fallback device: '{FallbackName}' (list index {Index})",
+                    _selectedPlaybackDeviceName, newIndex);
+            }
+            else
+            {
+                var msg = "No valid audio output device available — all playback devices were removed. Please connect an audio device.";
+                logger.LogError("{Message}", msg);
+                AudioDeviceErrorOccurred?.Invoke(this, msg);
             }
         }
 
-        _selectedPlaybackDeviceIndex = newIndex; // list index
+        // DeviceWasRemoved: true when the physical device changed, even if list index stayed same.
+        // Consumers MUST force a BASS device switch in this case regardless of index equality.
+        bool deviceWasRemoved = oldIndex != -1 && !string.Equals(
+            _selectedPlaybackDeviceName,
+            oldIndex >= 0 && oldIndex < devices.Count ? devices[oldIndex] : null,
+            StringComparison.Ordinal);
+
+        _selectedPlaybackDeviceIndex = newIndex;
+
+        logger.LogInformation(
+            "Playback device resolved: list index {Old} → {New}, DeviceWasRemoved={Removed}",
+            oldIndex, newIndex, deviceWasRemoved);
 
         PlaybackDevicesChanged?.Invoke(this, new DeviceChangedEventArgs
         {
             Devices = devices,
             OldDeviceIndex = oldIndex,
             NewDeviceIndex = newIndex,
-            DeviceWasRemoved = oldIndex != -1 && newIndex != oldIndex,
+            DeviceWasRemoved = deviceWasRemoved,
             DefaultDeviceIndex = DefaultPlaybackDevice
         });
     }
@@ -152,25 +181,43 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
         // If device was removed or not found, fall back to default
         if (newIndex == -1)
         {
-            logger.LogWarning("Recording device '{DeviceName}' not found, falling back to default device {DefaultDevice}",
+            logger.LogWarning(
+                "Recording device '{DeviceName}' not found after device change, falling back to default (list index {DefaultDevice})",
                 _selectedRecordingDeviceName, DefaultRecordingDevice);
-            newIndex = DefaultRecordingDevice; // list index
+            newIndex = DefaultRecordingDevice;
 
             if (newIndex != -1)
             {
                 var deviceInfo = Bass.RecordGetDeviceInfo(GetRecordingBassIndex(newIndex));
                 _selectedRecordingDeviceName = deviceInfo.Name;
+                logger.LogInformation("Recording fallback device: '{FallbackName}' (list index {Index})",
+                    _selectedRecordingDeviceName, newIndex);
+            }
+            else
+            {
+                var msg = "No valid audio input device available — all recording devices were removed. Please connect a microphone.";
+                logger.LogError("{Message}", msg);
+                AudioDeviceErrorOccurred?.Invoke(this, msg);
             }
         }
 
-        _selectedRecordingDeviceIndex = newIndex; // list index
+        bool deviceWasRemoved = oldIndex != -1 && !string.Equals(
+            _selectedRecordingDeviceName,
+            oldIndex >= 0 && oldIndex < devices.Count ? devices[oldIndex] : null,
+            StringComparison.Ordinal);
+
+        _selectedRecordingDeviceIndex = newIndex;
+
+        logger.LogInformation(
+            "Recording device resolved: list index {Old} → {New}, DeviceWasRemoved={Removed}",
+            oldIndex, newIndex, deviceWasRemoved);
 
         RecordingDevicesChanged?.Invoke(this, new DeviceChangedEventArgs
         {
             Devices = devices,
             OldDeviceIndex = oldIndex,
             NewDeviceIndex = newIndex,
-            DeviceWasRemoved = oldIndex != -1 && newIndex != oldIndex,
+            DeviceWasRemoved = deviceWasRemoved,
             DefaultDeviceIndex = DefaultRecordingDevice
         });
     }
@@ -237,18 +284,27 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
 
     public List<string> GetPlaybackDevices()
     {
-        List<string> deviceList = [];
-        _playbackBassIndices = [];
-        DefaultPlaybackDevice = -1;
+        // Build into locals first, then swap atomically under lock.
+        // This prevents GetPlaybackBassIndex (called from UI thread) from reading a
+        // partially-populated list while the monitoring thread is rebuilding it.
+        var deviceList = new List<string>();
+        var bassIndices = new List<int>();
+        int defaultIndex = -1;
 
         for (var i = 0; i < Bass.DeviceCount; i++)
         {
             var deviceInfo = Bass.GetDeviceInfo(i);
             if (!deviceInfo.IsEnabled) continue;
             if (deviceInfo.IsDefault)
-                DefaultPlaybackDevice = deviceList.Count; // list index, not BASS index
+                defaultIndex = deviceList.Count; // list index, not BASS index
             deviceList.Add(deviceInfo.Name);
-            _playbackBassIndices.Add(i);
+            bassIndices.Add(i);
+        }
+
+        lock (_deviceLock)
+        {
+            _playbackBassIndices = bassIndices;
+            DefaultPlaybackDevice = defaultIndex;
         }
 
         return deviceList;
@@ -256,28 +312,48 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
 
     public List<string> GetRecordingDevices()
     {
-        List<string> deviceList = [];
-        _recordingBassIndices = [];
-        DefaultRecordingDevice = -1;
+        var deviceList = new List<string>();
+        var bassIndices = new List<int>();
+        int defaultIndex = -1;
 
         for (var i = 0; i < Bass.RecordingDeviceCount; i++)
         {
             var deviceInfo = Bass.RecordGetDeviceInfo(i);
             if (!deviceInfo.IsEnabled) continue;
             if (deviceInfo.IsDefault)
-                DefaultRecordingDevice = deviceList.Count; // list index, not BASS index
+                defaultIndex = deviceList.Count; // list index, not BASS index
             deviceList.Add(deviceInfo.Name);
-            _recordingBassIndices.Add(i);
+            bassIndices.Add(i);
+        }
+
+        lock (_deviceLock)
+        {
+            _recordingBassIndices = bassIndices;
+            DefaultRecordingDevice = defaultIndex;
         }
 
         return deviceList;
     }
 
     public int GetPlaybackBassIndex(int listIndex)
-        => listIndex >= 0 && listIndex < _playbackBassIndices.Count ? _playbackBassIndices[listIndex] : -1;
+    {
+        lock (_deviceLock)
+        {
+            return listIndex >= 0 && listIndex < _playbackBassIndices.Count
+                ? _playbackBassIndices[listIndex]
+                : -1;
+        }
+    }
 
     public int GetRecordingBassIndex(int listIndex)
-        => listIndex >= 0 && listIndex < _recordingBassIndices.Count ? _recordingBassIndices[listIndex] : -1;
+    {
+        lock (_deviceLock)
+        {
+            return listIndex >= 0 && listIndex < _recordingBassIndices.Count
+                ? _recordingBassIndices[listIndex]
+                : -1;
+        }
+    }
 
     public async ValueTask DisposeAsync()
     {

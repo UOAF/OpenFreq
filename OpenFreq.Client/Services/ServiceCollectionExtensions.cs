@@ -23,10 +23,9 @@ public static class ServiceCollectionExtensions
             builder.AddSerilog(dispose: true);
         });
         
-        // Register services as singletons (one instance for the application lifetime)
+        services.AddSingleton<IAudioService, AudioService>();
         services.AddSingleton<IOpenFreqService, OpenFreqService>();
         services.AddSingleton<IHotkeyService, HotkeyService>();
-        services.AddSingleton<IAudioService, AudioService>();
         services.AddSingleton<IConfigurationService, ConfigurationService>();
         services.AddSingleton<IAcmiClientService, AcmiClientService>();
         services.AddSingleton<IFalconSharedMemoryService, FalconSharedMemoryService>();

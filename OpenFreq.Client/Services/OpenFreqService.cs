@@ -61,7 +61,27 @@ public class OpenFreqService : IOpenFreqService
     private readonly IAcmiClientService _acmiClientService;
     private readonly SignalStrengthTracker _signalStrengthTracker;
 
-    public int RecordingDeviceIndex { get; set; }
+    private int _recordingDeviceIndex;
+
+    public int RecordingDeviceIndex
+    {
+        get => _recordingDeviceIndex;
+        set
+        {
+            _recordingDeviceIndex = value;
+            // If a recording session is already active, migrate it to the new device immediately.
+            // Without this, the live recording stream keeps using the old (potentially dead) device
+            // until the user stops and restarts transmission.
+            if (_recordHandle != 0)
+            {
+                _logger.LogInformation(
+                    "Recording device changed to BASS index {Index} while recording active — restarting capture",
+                    value);
+                RestartRecordingOnNewDevice(value);
+            }
+        }
+    }
+
     private int _playbackDeviceIndex;
 
     private readonly Dictionary<string, Dictionary<int, string>>
@@ -172,6 +192,7 @@ public class OpenFreqService : IOpenFreqService
     public IOpenFreqService.Mode OwnPositionMode { get; private set; }
     public event EventHandler<ConnectionState>? ConnectionStateChanged;
     public event EventHandler<string>? StatusMessageReceived;
+    public event EventHandler<string>? AudioPlaybackErrorOccurred;
     public event EventHandler<FrequencyConnectionStatusEventArgs>? FrequencyConnectionStatusChanged;
     public event EventHandler<FrequencyTransmissionStatusEventArgs>? FrequencyTransmissionStatusChanged;
     public event EventHandler<FrequencyJoinedEventArgs>? FrequencyJoined;
@@ -183,8 +204,6 @@ public class OpenFreqService : IOpenFreqService
     public bool IsConnected => _client?.IsConnected ?? false;
     public bool IsAuthenticated => _client?.IsAuthenticated ?? false;
     public string? PeerId => _client?.MyPeerId;
-    private int _radioPlaybackInstanceId = 0;
-
 
     /// <summary>
     /// Initialize the service with server settings and audio devices
@@ -229,24 +248,32 @@ public class OpenFreqService : IOpenFreqService
         _client.ErrorOccurred += OnClientErrorOccurred;
 
         RecordingDeviceIndex = recordingDeviceIndex;
+        var previousPlaybackDeviceIndex = _playbackDeviceIndex;
         _playbackDeviceIndex = playbackDeviceIndex;
 
-        if (_playbackService != null)
+        if (_playbackService == null)
         {
-            _logger.LogWarning("Disposing old RadioPlayback instance: {InstanceId}", _radioPlaybackInstanceId);
-            await _playbackService.StopAll();
-            if (_playbackService is IDisposable disposable)
-            {
-                disposable.Dispose();
-            }
-
-            _playbackService = null;
+            // First initialization: create RadioPlayback and init BASS device.
+            _playbackService = new RadioPlayback(_loggerFactory, playbackDeviceIndex);
+            _playbackService.UserFacingError += OnPlaybackUserFacingError;
+            _playbackService.Initialize();
+            _logger.LogInformation("Playback Service initialized");
+        }
+        else if (previousPlaybackDeviceIndex != playbackDeviceIndex)
+        {
+            // Device changed: switch without tearing down BASS entirely.
+            _logger.LogWarning(
+                "Playback device changed {Old}→{New} — calling ChangeOutputDevice",
+                previousPlaybackDeviceIndex, playbackDeviceIndex);
+            _playbackService.UserFacingError += OnPlaybackUserFacingError;
+            _playbackService.ChangeOutputDevice(playbackDeviceIndex);
+        }
+        else
+        {
+            // Same device, same instance — streams already stopped in Shutdown(). Just re-subscribe.
+            _playbackService.UserFacingError += OnPlaybackUserFacingError;
         }
 
-        _radioPlaybackInstanceId++;
-        _playbackService = new RadioPlayback(_loggerFactory, playbackDeviceIndex);
-        _logger.LogWarning("Created NEW RadioPlayback instance: {InstanceId}", _radioPlaybackInstanceId);
-        _playbackService.Initialize();
         _playbackService.Apply3dEffects = Apply3dAudioEffects;
         _playbackService.SidetoneEnabled = SidetoneEnabled;
         _playbackService.SidetoneVolume = (float)SidetoneVolume;
@@ -301,8 +328,13 @@ public class OpenFreqService : IOpenFreqService
         {
             if (_playbackService != null)
             {
-                await _playbackService.StopAll();
-                _playbackService = null;
+                _playbackService.UserFacingError -= OnPlaybackUserFacingError;
+                // Stop individual streams without freeing the BASS device — RadioPlayback is
+                // kept alive so the next Initialize() can reuse it without Bass.Free()+Bass.Init().
+                // Full StopAll() (Bass.Free) only happens on device change or app Dispose().
+                var activeStreams = _playbackService.GetActiveStreams();
+                foreach (var streamId in activeStreams)
+                    await _playbackService.StopStream(streamId);
             }
 
             if (_client != null)
@@ -375,6 +407,17 @@ public class OpenFreqService : IOpenFreqService
         _activeTransmissionsAndMutedFrequencies.Clear();
         _activeTransmissionSlots.Clear();
         _tunedSlots.Clear();
+
+        // Stop orphaned BASS streams before clearing the tracking dict.
+        // PeerLeft events may not fire on abrupt disconnects; stopping here ensures
+        // RadioPlayback stays clean so it can be reused on the next connect.
+        if (_playbackService != null)
+        {
+            foreach (var freqs in _peerStreams.Values)
+            foreach (var streamId in freqs.Values)
+                await _playbackService.StopStream(streamId);
+        }
+
         _peerStreams.Clear();
         OnStatusMessage("Disconnected from OpenFreq server");
         Status = IOpenFreqService.OpenFreqStatus.Disconnected;
@@ -491,9 +534,17 @@ public class OpenFreqService : IOpenFreqService
         if (_recordHandle == 0)
         {
             //_playbackService.SetSquelchLevel(frequency, 0.01f);
-            Bass.RecordInit(RecordingDeviceIndex);
-            Bass.CurrentRecordingDevice = RecordingDeviceIndex;
+            // RecordInit: Errors.Already is fine — AudioService.Init may have already done it.
+            if (!Bass.RecordInit(RecordingDeviceIndex) && Bass.LastError != Errors.Already)
+            {
+                var initMsg = $"Failed to initialize recording device (BASS index {RecordingDeviceIndex}): {Bass.LastError}";
+                _logger.LogError("{Message}", initMsg);
+                AudioPlaybackErrorOccurred?.Invoke(this, initMsg);
+                _activeTransmissionsAndMutedFrequencies.Clear();
+                return;
+            }
 
+            Bass.CurrentRecordingDevice = RecordingDeviceIndex;
             _logger.LogDebug("RecordingDeviceIndex set to {RecordingDeviceIndex}", RecordingDeviceIndex);
 
             _recordHandle = Bass.RecordStart(
@@ -505,13 +556,18 @@ public class OpenFreqService : IOpenFreqService
 
             if (_recordHandle == 0)
             {
+                var startMsg = $"Failed to start recording on device (BASS index {RecordingDeviceIndex}): {Bass.LastError}";
+                _logger.LogError("{Message}", startMsg);
+                AudioPlaybackErrorOccurred?.Invoke(this, startMsg);
                 _activeTransmissionsAndMutedFrequencies.Clear();
-                OnStatusMessage($"Failed to start recording: {Bass.LastError}");
                 return;
             }
+
             _client.MarkTransmitStartTime();
             if (_playbackService != null) _playbackService.SidetoneEnabled = SidetoneEnabled;
-            Bass.ChannelPlay(_recordHandle);
+
+            if (!Bass.ChannelPlay(_recordHandle))
+                _logger.LogWarning("ChannelPlay on record handle returned false: {Error}", Bass.LastError);
         }
 
         await _client.StartTransmissionAsync(frequencyKhz, Apply3dAudioEffects);
@@ -536,8 +592,12 @@ public class OpenFreqService : IOpenFreqService
         // If NO more transmissions, stop recording and sidetone
         if (_activeTransmissionsAndMutedFrequencies.IsEmpty && _recordHandle != 0)
         {
-            Bass.ChannelStop(_recordHandle);
-            Bass.StreamFree(_recordHandle);
+            if (!Bass.ChannelStop(_recordHandle))
+                _logger.LogWarning("ChannelStop on record handle {Handle} returned false: {Error}",
+                    _recordHandle, Bass.LastError);
+            if (!Bass.StreamFree(_recordHandle))
+                _logger.LogWarning("StreamFree on record handle {Handle} returned false: {Error}",
+                    _recordHandle, Bass.LastError);
             _recordHandle = 0;
             if (_playbackService != null)
             {
@@ -832,6 +892,66 @@ public class OpenFreqService : IOpenFreqService
                     aircraft.Transform.Yaw);
             default:
                 return null;
+        }
+    }
+
+    private void OnPlaybackUserFacingError(string message)
+    {
+        _logger.LogError("RadioPlayback user-facing error: {Message}", message);
+        AudioPlaybackErrorOccurred?.Invoke(this, message);
+    }
+
+    /// <summary>
+    /// Stops the active recording stream and restarts it on <paramref name="deviceIndex"/>.
+    /// Called from the <see cref="RecordingDeviceIndex"/> setter when a recording is live.
+    /// Safe to call with _recordHandle == 0 (no-op).
+    /// </summary>
+    private void RestartRecordingOnNewDevice(int deviceIndex)
+    {
+        if (_recordHandle == 0) return;
+
+        // Stop current capture
+        if (!Bass.ChannelStop(_recordHandle))
+            _logger.LogWarning("ChannelStop on record handle {Handle} returned false: {Error}",
+                _recordHandle, Bass.LastError);
+        if (!Bass.StreamFree(_recordHandle))
+            _logger.LogWarning("StreamFree on record handle {Handle} returned false: {Error}",
+                _recordHandle, Bass.LastError);
+        _recordHandle = 0;
+
+        // Init new device — Errors.Already is fine (AudioService.Init may have done it)
+        if (!Bass.RecordInit(deviceIndex) && Bass.LastError != Errors.Already)
+        {
+            var msg = $"Failed to initialize recording device (BASS index {deviceIndex}): {Bass.LastError}";
+            _logger.LogError("{Message}", msg);
+            AudioPlaybackErrorOccurred?.Invoke(this, msg);
+            return;
+        }
+
+        Bass.CurrentRecordingDevice = deviceIndex;
+
+        _recordHandle = Bass.RecordStart(
+            OpenFreqRtcClient.SAMPLE_RATE, 1,
+            BassFlags.RecordPause, Period: 2,
+            RecordProcedure);
+
+        if (_recordHandle == 0)
+        {
+            var msg = $"Failed to restart recording on device (BASS index {deviceIndex}): {Bass.LastError}";
+            _logger.LogError("{Message}", msg);
+            AudioPlaybackErrorOccurred?.Invoke(this, msg);
+            return;
+        }
+
+        if (!Bass.ChannelPlay(_recordHandle))
+        {
+            var msg = $"Failed to resume recording channel on device (BASS index {deviceIndex}): {Bass.LastError}";
+            _logger.LogError("{Message}", msg);
+            AudioPlaybackErrorOccurred?.Invoke(this, msg);
+        }
+        else
+        {
+            _logger.LogInformation("Recording restarted on BASS device {Index}", deviceIndex);
         }
     }
 
@@ -1162,10 +1282,14 @@ public class OpenFreqService : IOpenFreqService
         _cleanupCts?.Dispose();
 
         // Stop all transmissions and free recording handle
-        Bass.ChannelStop(_recordHandle);
-        Bass.StreamFree(_recordHandle);
-
-        _recordHandle = 0;
+        if (_recordHandle != 0)
+        {
+            if (!Bass.ChannelStop(_recordHandle))
+                _logger.LogWarning("ChannelStop on record handle during Dispose returned false: {Error}", Bass.LastError);
+            if (!Bass.StreamFree(_recordHandle))
+                _logger.LogWarning("StreamFree on record handle during Dispose returned false: {Error}", Bass.LastError);
+            _recordHandle = 0;
+        }
         _activeTransmissionsAndMutedFrequencies.Clear();
 
         _playbackService?.StopAll();
