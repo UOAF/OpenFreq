@@ -162,6 +162,7 @@ public class OpenFreqService : IOpenFreqService
     public IOpenFreqService.Mode OwnPositionMode { get; private set; }
     public event EventHandler<ConnectionState>? ConnectionStateChanged;
     public event EventHandler<string>? StatusMessageReceived;
+    public event EventHandler<string>? AudioPlaybackErrorOccurred;
     public event EventHandler<FrequencyConnectionStatusEventArgs>? FrequencyConnectionStatusChanged;
     public event EventHandler<FrequencyTransmissionStatusEventArgs>? FrequencyTransmissionStatusChanged;
     public event EventHandler<FrequencyJoinedEventArgs>? FrequencyJoined;
@@ -224,6 +225,7 @@ public class OpenFreqService : IOpenFreqService
         if (_playbackService != null)
         {
             _logger.LogWarning("Disposing old RadioPlayback instance: {InstanceId}", _radioPlaybackInstanceId);
+            _playbackService.UserFacingError -= OnPlaybackUserFacingError;
             await _playbackService.StopAll();
             if (_playbackService is IDisposable disposable)
             {
@@ -235,6 +237,7 @@ public class OpenFreqService : IOpenFreqService
 
         _radioPlaybackInstanceId++;
         _playbackService = new RadioPlayback(_loggerFactory, playbackDeviceIndex);
+        _playbackService.UserFacingError += OnPlaybackUserFacingError;
         _logger.LogWarning("Created NEW RadioPlayback instance: {InstanceId}", _radioPlaybackInstanceId);
         _playbackService.Initialize();
         _playbackService.Apply3dEffects = Apply3dAudioEffects;
@@ -291,6 +294,7 @@ public class OpenFreqService : IOpenFreqService
         {
             if (_playbackService != null)
             {
+                _playbackService.UserFacingError -= OnPlaybackUserFacingError;
                 await _playbackService.StopAll();
                 _playbackService = null;
             }
@@ -823,6 +827,12 @@ public class OpenFreqService : IOpenFreqService
             default:
                 return null;
         }
+    }
+
+    private void OnPlaybackUserFacingError(string message)
+    {
+        _logger.LogError("RadioPlayback user-facing error: {Message}", message);
+        AudioPlaybackErrorOccurred?.Invoke(this, message);
     }
 
     // Client event handlers

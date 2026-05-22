@@ -28,6 +28,11 @@ public interface IOpenFreqService : IDisposable
     // Events
     event EventHandler<ConnectionState>? ConnectionStateChanged;
     event EventHandler<string>? StatusMessageReceived;
+    /// <summary>
+    /// Fired when the audio playback subsystem (RadioPlayback/BASS) encounters a user-facing error
+    /// such as device switch failure or playback loss. Message is human-readable, no stack trace.
+    /// </summary>
+    event EventHandler<string>? AudioPlaybackErrorOccurred;
     event EventHandler<FrequencyConnectionStatusEventArgs>? FrequencyConnectionStatusChanged;
     event EventHandler<FrequencyTransmissionStatusEventArgs>? FrequencyTransmissionStatusChanged;
     

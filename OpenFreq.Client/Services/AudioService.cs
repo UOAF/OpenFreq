@@ -23,6 +23,7 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
     // Events to notify when devices change
     public event EventHandler<DeviceChangedEventArgs>? PlaybackDevicesChanged;
     public event EventHandler<DeviceChangedEventArgs>? RecordingDevicesChanged;
+    public event EventHandler<string>? AudioDeviceErrorOccurred;
 
     // BASS device indices parallel to the enabled-device name lists
     private List<int> _playbackBassIndices = new();
@@ -136,7 +137,9 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
             }
             else
             {
-                logger.LogError("No valid playback device available after device removal");
+                var msg = "No valid audio output device available — all playback devices were removed. Please connect an audio device.";
+                logger.LogError("{Message}", msg);
+                AudioDeviceErrorOccurred?.Invoke(this, msg);
             }
         }
 
@@ -192,7 +195,9 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
             }
             else
             {
-                logger.LogError("No valid recording device available after device removal");
+                var msg = "No valid audio input device available — all recording devices were removed. Please connect a microphone.";
+                logger.LogError("{Message}", msg);
+                AudioDeviceErrorOccurred?.Invoke(this, msg);
             }
         }
 

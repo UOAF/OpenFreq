@@ -11,6 +11,11 @@ public interface IAudioService: IAsyncDisposable
     public event EventHandler<DeviceChangedEventArgs>? PlaybackDevicesChanged;
     public event EventHandler<DeviceChangedEventArgs>? RecordingDevicesChanged;
 
+    /// <summary>
+    /// Fired when device monitoring encounters a user-facing error (device init failure, no valid device, ...)
+    /// </summary>
+    public event EventHandler<string>? AudioDeviceErrorOccurred;
+
     public void Init();
 
     /// <summary>List index (0-based position among enabled devices) of the system default playback device.</summary>
