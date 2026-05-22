@@ -106,8 +106,6 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
 
     // Store original values when entering edit mode
     private int _originalFrequencyKhz;
-    private HotkeyBinding? _originalBinding;
-    private readonly IOpenFreqService _openFreqService;
 
 
     [RelayCommand]
@@ -135,7 +133,6 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         LocationViewModel parentLocationViewModel, SettingsViewModel settings, bool isEditable = true,
         RadioType? bmsRadioType = null)
     {
-        _openFreqService = openFreqService;
         Name = name;
         FrequencyKhz = frequencyKhz;
         IsEditing = isInEditMode;
@@ -164,7 +161,6 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         {
             // Entering edit mode - store current values
             _originalFrequencyKhz = FrequencyKhz;
-            _originalBinding = PttHotKey;
         }
         else
         {
