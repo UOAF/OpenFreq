@@ -32,6 +32,8 @@ public class RtpJitterBuffer
     /// </summary>
     private readonly SortedDictionary<long, SequencedPacket> _buffer = new();
     private readonly Queue<double> _jitterSamples = new(50);
+    // Per-packet playout margin (intrinsic — buffer backed out). Drives AdaptBufferSize.
+    private readonly Queue<double> _marginSamples = new(50);
     private readonly int _maxBufferPackets;
 
     /// <summary>
@@ -56,13 +58,6 @@ public class RtpJitterBuffer
     /// Timestamp (in extended samples) of the last packet
     /// </summary>
     private long _lastPacketTimestamp;
-    /// <summary>
-    /// Sequence number of the last packet returned form this jitter buffer.
-    /// </summary>
-    /// <remarks>
-    /// Used to detect missing packets - i.e. gaps in the buffer.
-    /// </remarks>
-    private long? _lastReturnedPacket;
 
     // Adaptive jitter buffer parameters
     private double _targetBufferMs = 60; // Start with 60ms
@@ -71,11 +66,28 @@ public class RtpJitterBuffer
     private double _measuredJitterMs;
     private const double MIN_BUFFER_MS = 20;
     private const double MAX_BUFFER_MS = 500;
+    // Most a single late-arrival event may grow the buffer, so one freak packet
+    // can't balloon latency. Realistic latency steps fit well under this.
+    private const double LATE_GROW_CAP_MS = 250;
+    // Steady-state sizing aims to leave the worst recent packet this much spare
+    // time before its playout slot.
+    private const double DESIRED_MARGIN_MS = 30;
+
+    // Concealment is paced one frame (~20ms) per playout slot. These bound a run:
+    //  - BLIND: frames to conceal when nothing past the gap has been received yet.
+    //    Covers a late successor / the leading edge of a burst. The cost is a short
+    //    PLC tail (~3 frames = 60ms) after a talkspurt genuinely ends.
+    //  - MAX: absolute cap once the gap is proven (a later packet was received).
+    //    Opus PLC degrades to noise well before this; past it we resync.
+    private const int MAX_BLIND_CONCEAL_FRAMES = 3;
+    private const int MAX_CONCEAL_FRAMES = 15;
     
     // _lastReleasedPt: relative timestamp (ts - _baseTimestamp) of the last slot we delivered (real packet or concealment)
     // _lastReceivedPt: relative timestamp of the latest packet we have ever received.
     private long? _lastReleasedPt;
     private long _lastReceivedPt = -1;
+    // Consecutive concealment frames emitted since the last real packet was released.
+    private int _concealmentRunLength;
         
     // Statistics
     private int _packetsReceived;
@@ -169,6 +181,52 @@ public class RtpJitterBuffer
         {
             long pt = ts - _baseTimestamp;
             if (pt > _lastReceivedPt) _lastReceivedPt = pt;
+
+            // Playout-margin tracking. A packet's margin — the spare time
+            // between when it arrived and its scheduled playout slot — folds
+            // together both network jitter and the baseline delay. Inter-arrival
+            // variance (MeasureJitter) sees only the jitter, so a constant delay
+            // step is invisible to it; margin catches it. Two uses:
+            //  - Record the *intrinsic* margin (the buffer's own contribution
+            //    backed out) so AdaptBufferSize can size from spare time rather
+            //    than variance.
+            //  - If a packet already arrived past its slot (negative margin),
+            //    grow the buffer now — AdaptBufferSize converges far too slowly
+            //    to stop GetReadyPackets discarding packets in the meantime.
+            if (_packetsReceived > 1)
+            {
+                long activeBufferTicks = (long)(_activeBufferMs / 1000.0 * Stopwatch.Frequency);
+                long clockSamples = (long)(
+                    (double)(now - _baseTimeTicks - activeBufferTicks)
+                        / Stopwatch.Frequency * OpenFreqRtcClient.SAMPLE_RATE);
+                double marginMs = (double)(pt - clockSamples)
+                    / OpenFreqRtcClient.SAMPLE_RATE * 1000.0;
+
+                // Intrinsic margin: margin with the current buffer removed, so
+                // samples stay comparable even as _activeBufferMs changes.
+                _marginSamples.Enqueue(marginMs - _activeBufferMs);
+                while (_marginSamples.Count > 50)
+                    _marginSamples.Dequeue();
+
+                if (marginMs < 0)
+                {
+                    // Cover the lateness plus the desired steady-state margin,
+                    // capped so one freak packet can't balloon latency.
+                    double grow = Math.Min(
+                        -marginMs + DESIRED_MARGIN_MS, LATE_GROW_CAP_MS);
+                    double grown = Math.Clamp(
+                        _activeBufferMs + grow, MIN_BUFFER_MS, MAX_BUFFER_MS);
+                    if (grown > _activeBufferMs)
+                    {
+                        _logger.LogInformation(
+                            "Late arrival ({LateMs:F0}ms past slot) — buffer {Old:F0}→{New:F0}ms",
+                            -marginMs, _activeBufferMs, grown);
+                        _activeBufferMs = grown;
+                        // Persist so the next talkspurt doesn't snap back and re-glitch.
+                        _targetBufferMs = Math.Max(_targetBufferMs, grown);
+                    }
+                }
+            }
         }
 
         var sp = new SequencedPacket
@@ -234,7 +292,7 @@ public class RtpJitterBuffer
             {
                 var front = _buffer.First();
                 long frontPt = front.Value.Timestamp - _baseTimestamp;
-                if (frontPt < _lastReleasedPt.Value)
+                if (frontPt <= _lastReleasedPt.Value)
                 {
                     _buffer.Remove(front.Key);
                     _packetsLate++;
@@ -271,32 +329,43 @@ public class RtpJitterBuffer
 
                 if (nextPacketMissing)
                 {
-                    // Distinguish mid-talkspurt loss from talkspurt end:
-                    // if the remote has never sent anything at/after nextExpectedPt,
-                    // the talkspurt is over — don't generate trailing PLC.
-                    if (_lastReceivedPt < nextExpectedPt)
+                    // We can't directly tell "next packet still in flight / burst in
+                    // progress" from "talkspurt ended", so conceal for a bounded run:
+                    //  - provenGap: a packet at/after this slot was already received,
+                    //    so the gap is real loss — conceal up to MAX_CONCEAL_FRAMES.
+                    //  - otherwise conceal "blind" up to MAX_BLIND_CONCEAL_FRAMES,
+                    //    enough to ride out a late successor or a short burst.
+                    // Past the cap, give up: drop the cursor and fall through so the
+                    // release loop skips ahead to whatever is buffered (or NoPackets).
+                    bool provenGap = _lastReceivedPt >= nextExpectedPt;
+                    int cap = provenGap ? MAX_CONCEAL_FRAMES : MAX_BLIND_CONCEAL_FRAMES;
+
+                    if (_concealmentRunLength >= cap)
                     {
                         _lastReleasedPt = null;
+                        _concealmentRunLength = 0;
                         _activeBufferMs = _targetBufferMs;
-                        return new NoPackets();
+                        // fall through to the buffer-empty check / release loop
                     }
-
-                    // If N+1 is already in the buffer, pass its payload so the decoder
-                    // can use LBRR FEC to recover N instead of falling back to PLC.
-                    byte[]? fecPayload = null;
-                    if (_buffer.Count > 0)
+                    else
                     {
-                        var candidate = _buffer.First().Value;
-                        long candidatePt = candidate.Timestamp - _baseTimestamp;
-                        if (candidatePt == nextExpectedPt + OpenFreqRtcClient.OPUS_SAMPLES_PER_FRAME)
-                            fecPayload = candidate.Payload;
-                    }
+                        // If N+1 is already in the buffer, pass its payload so the
+                        // decoder can use LBRR FEC to recover N instead of pure PLC.
+                        byte[]? fecPayload = null;
+                        if (_buffer.Count > 0)
+                        {
+                            var candidate = _buffer.First().Value;
+                            long candidatePt = candidate.Timestamp - _baseTimestamp;
+                            if (candidatePt == nextExpectedPt + OpenFreqRtcClient.OPUS_SAMPLES_PER_FRAME)
+                                fecPayload = candidate.Payload;
+                        }
 
-                    // Remote sent something at or after the missing slot → it was lost.
-                    // Advance cursor and tell the drain thread to generate FEC/PLC.
-                    _lastReleasedPt = nextExpectedPt;
-                    _packetsLost++;
-                    return new ConcealmentNeeded(fecPayload);
+                        // Advance cursor and tell the drain thread to generate FEC/PLC.
+                        _lastReleasedPt = nextExpectedPt;
+                        _concealmentRunLength++;
+                        _packetsLost++;
+                        return new ConcealmentNeeded(fecPayload);
+                    }
                 }
                 // Real packet IS at the expected slot and is due — fall through to release it.
             }
@@ -344,18 +413,12 @@ public class RtpJitterBuffer
             }
         }
 
-        if (readies.Count == 0)
-        {
-            _activeBufferMs = _targetBufferMs;
-            return new NoPackets();
-        }
-
         _packetsPlayed += readies.Count;
         foreach (var p in readies)
         {
-            _lastReturnedPacket = p.SequenceNumber;
             _lastReleasedPt = p.Timestamp - _baseTimestamp; // advance playout cursor
         }
+        _concealmentRunLength = 0; // real audio resumed — reset the concealment budget
         return new PacketsReady(readies);
     }
         
@@ -407,21 +470,28 @@ public class RtpJitterBuffer
     }
         
     /// <summary>
-    /// Adapt target buffer size based on observed jitter.
-    /// Uses asymmetric convergence: fast increase to protect against bursts,
-    /// slow decrease to avoid oscillation.
+    /// Adapt target buffer size from observed playout margin.
+    /// Sizes the buffer so the worst recent packet would still have had
+    /// DESIRED_MARGIN_MS of spare time. Margin folds together jitter (its
+    /// variance) and a constant delay step (its level), so this reacts to
+    /// both — unlike a pure inter-arrival jitter metric, which is blind to a
+    /// constant delay. Asymmetric convergence: fast increase, slow decrease.
     /// </summary>
     private void AdaptBufferSize()
     {
-        if (_jitterSamples.Count < 10)
+        if (_marginSamples.Count < 10)
             return;
 
-        var sortedJitter = _jitterSamples.OrderBy(x => x).ToList();
-        int p95Index = (int)(sortedJitter.Count * 0.95);
-        double jitter95 = sortedJitter[p95Index];
+        // Protect the worst packet, not the average: take a low percentile of
+        // intrinsic margin (most negative = latest arrival), ignoring a couple
+        // of extreme outliers — mirrors the old jitter-p95 logic.
+        var sorted = _marginSamples.OrderBy(x => x).ToList();
+        int p5Index = (int)(sorted.Count * 0.05);
+        double worstMarginMs = sorted[p5Index];
 
-        // 2.5x p95 jitter is enough headroom for most conditions
-        double targetBuffer = Math.Max(MIN_BUFFER_MS, jitter95 * 2.5);
+        // The buffer that would lift that worst packet up to DESIRED_MARGIN_MS.
+        double targetBuffer = Math.Clamp(
+            DESIRED_MARGIN_MS - worstMarginMs, MIN_BUFFER_MS, MAX_BUFFER_MS);
 
         double delta = targetBuffer - _targetBufferMs;
         // Converge up quickly (protect against bursts), down slowly (avoid churn)
