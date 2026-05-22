@@ -44,11 +44,9 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
 
     public SettingsViewModel Settings => _settings;
 
-    [ObservableProperty]
-    public partial ChannelCardGroupViewModel? SelectedGroup { get; set; }
+    [ObservableProperty] public partial ChannelCardGroupViewModel? SelectedGroup { get; set; }
 
-    [ObservableProperty]
-    public partial bool IsGroupPanelExpanded { get; set; } = true;
+    [ObservableProperty] public partial bool IsGroupPanelExpanded { get; set; } = true;
 
     [RelayCommand]
     private void ToggleGroupPanel() => IsGroupPanelExpanded = !IsGroupPanelExpanded;
@@ -274,6 +272,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                 await DeleteChannelGroup(FalconChannelGroup);
                 FalconChannelGroup = null;
             }
+
             return;
         }
 
@@ -283,7 +282,6 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         {
             SyncBmsChannelPowerStates();
         }
-
     }
 
     private void SyncBmsChannelPowerStates()
@@ -303,6 +301,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                     channel.ToggleJoinLeave();
             }
         }
+
         SyncBmsChannelVolumeStates();
     }
 
@@ -340,9 +339,11 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         {
             lock (_channelImportLock)
             {
+                // Create the ChannelGroup
                 if (FalconChannelGroup == null)
                 {
-                    FalconChannelGroup = CreateChannelGroup(BmsGroupName, RadioStationPresets.FighterF16,
+                    // don't care about the correct preset - we can't read it in 2d anyway, and it will be overwritten once we join 3d
+                    FalconChannelGroup = CreateChannelGroup(BmsGroupName, RadioStationPresets.FighterGeneric,
                         RadioStationData.RadioStationType.BMS);
                 }
                 else
@@ -351,6 +352,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                     FalconChannelGroup.Channels.Clear();
                 }
 
+                // Create the Channels
                 foreach (var type in Enum.GetValues<RadioType>())
                 {
                     var falconChannel = _falconRadioSharedMemoryService.GetRadioChannel(type);
@@ -417,9 +419,9 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
     private void OnBmsPttChanged(object? sender, RadioPttChangedEventArgs e)
     {
         // Do NOT capture keys twice - for non-flying, we want to use the callbacks from our HotKey service
-        if (!_hotkeyService.PttKeysPaused ||_falconSharedMemoryService.IsFlying == false)
+        if (!_hotkeyService.PttKeysPaused || _falconSharedMemoryService.IsFlying == false)
             return;
-        
+
         if (FalconChannelGroup == null)
         {
             _logger.LogWarning("Ignoring PTT: no Falcon channel group");

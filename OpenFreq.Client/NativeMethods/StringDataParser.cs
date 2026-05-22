@@ -10,8 +10,10 @@ namespace OpenFreq.Client.NativeMethods;
 /// </summary>
 public static class StringDataParser
 {
-    // StringIdentifier enum value for ThrTerraindir
+    // StringIdentifier enum values (BMS 4.38 FlightData.h)
     private const uint ThrTerraindir = 15;
+    private const uint AcName = 29;
+    private const uint AcNCTR = 30;
 
     /// <summary>
     /// Parses the StringData shared memory and extracts the theater terrain directory
@@ -71,6 +73,64 @@ public static class StringDataParser
         catch (Exception)
         {
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Parses AcName and AcNCTR from the StringData shared memory in a single pass.
+    /// </summary>
+    /// <param name="baseAddress">Base address of the mapped string data memory</param>
+    /// <returns>Tuple of (AcName, AcNCTR), either may be null if not present</returns>
+    public static (string? acName, string? acNctr) ParseAircraftInfo(IntPtr baseAddress)
+    {
+        if (baseAddress == IntPtr.Zero)
+            return (null, null);
+
+        try
+        {
+            int offset = 0;
+
+            // Read VersionNum (uint32)
+            offset += 4;
+
+            // Read NoOfStrings (uint32)
+            uint noOfStrings = (uint)Marshal.ReadInt32(baseAddress, offset);
+            offset += 4;
+
+            // Read dataSize (uint32)
+            offset += 4;
+
+            string? acName = null;
+            string? acNctr = null;
+
+            for (int i = 0; i < noOfStrings; i++)
+            {
+                uint strId = (uint)Marshal.ReadInt32(baseAddress, offset);
+                offset += 4;
+
+                uint strLength = (uint)Marshal.ReadInt32(baseAddress, offset);
+                offset += 4;
+
+                if (strId == AcName || strId == AcNCTR)
+                {
+                    byte[] stringBytes = new byte[strLength];
+                    Marshal.Copy(baseAddress + offset, stringBytes, 0, (int)strLength);
+                    var value = Encoding.UTF8.GetString(stringBytes).TrimEnd('\0');
+
+                    if (strId == AcName) acName = value;
+                    else acNctr = value;
+
+                    if (acName != null && acNctr != null) break;
+                }
+
+                offset += (int)strLength + 1;
+            }
+
+            return (acName, acNctr);
+        }
+        catch
+        {
+            return (null, null);
         }
     }
 

@@ -22,6 +22,7 @@ using Material.Styles.Controls;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Common;
 using OpenFreq.Services.Acmi;
+using OpenFreqAudio;
 using OpenFreqClient.Models;
 using OpenFreqClient.Services;
 using OpenFreqClient.Services.Interfaces;
@@ -158,6 +159,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         _falconRadioSharedMemoryService.LogbookNameChanged += OnLogbookNameChanged;
         _falconSharedMemoryService.FlyingStateChanged += OnFlyingStateChanged;
         _falconSharedMemoryService.StateChanged += OnFalconSharedMemoryStateChanged;
+        _falconSharedMemoryService.AircraftInfoChanged += OnAircraftInfoChanged;
 
         // IVC Monitor
         _ivcMonitorService.IvcStatusChanged += OnIvcStatusChanged;
@@ -186,6 +188,19 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         _ = LoadConfigurationAsync();
 
         _openFreqService.SetOwnPositionMode(Settings.ConnectionMode);
+    }
+
+    private void OnAircraftInfoChanged(object? sender, AircraftInfoChangedEventArgs e)
+    {
+        _logger.LogDebug("BMS Aircraft info changed: {nctr} to preset {name}", e.AcNCTR, e.AcName);
+        // If we are in 3d, the SHMEM AcName and AcNCTR fields are now populated.
+        
+        var preset = RadioStationPresets.GetPresetByBmsAircraftNctr(_falconSharedMemoryService.AcNCTR);
+        foreach (var channelGroup in ChannelList.ChannelGroups)
+        {
+            channelGroup.RadioStationData.Preset = preset;
+            _logger.LogDebug("BMS Aircraft info changed: switching ChannelGroup {channelGroup} to preset {preset}", channelGroup.RadioStationData, channelGroup.RadioStationData.Preset.Name);
+        }
     }
 
     private void OnAllPeersChanged(object? sender, AllPeersStatusEventArgs e)
@@ -920,7 +935,8 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
             FalconRadioSharedMemoryServiceOnConnectionParametersChanged;
         _falconRadioSharedMemoryService.LogbookNameChanged -= OnLogbookNameChanged;
         _falconSharedMemoryService.FlyingStateChanged -= OnFlyingStateChanged;
-
+        _falconSharedMemoryService.AircraftInfoChanged -= OnAircraftInfoChanged;
+        
         await DisconnectAsync();
         ChannelList.Dispose();
         _openFreqService.Dispose();

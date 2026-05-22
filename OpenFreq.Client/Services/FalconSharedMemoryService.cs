@@ -55,6 +55,8 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
     private FlightPosition? _position;
     private FlightVelocity? _velocity;
     private string? _theaterTerrainDir;
+    private string? _acName;
+    private string? _acNctr;
     private readonly object _dataLock = new();
     private bool _disposed;
     private bool _wasFlying;
@@ -63,6 +65,7 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
 
     public event EventHandler<ServiceStateChangedEventArgs>? StateChanged;
     public event EventHandler<FlyingStateChangedEventArgs>? FlyingStateChanged;
+    public event EventHandler<AircraftInfoChangedEventArgs>? AircraftInfoChanged;
 
     public ServiceState State
     {
@@ -110,6 +113,24 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
         {
             lock (_dataLock)
                 return _theaterTerrainDir;
+        }
+    }
+
+    public string? AcName
+    {
+        get
+        {
+            lock (_dataLock)
+                return _acName;
+        }
+    }
+
+    public string? AcNCTR
+    {
+        get
+        {
+            lock (_dataLock)
+                return _acNctr;
         }
     }
 
@@ -396,6 +417,29 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
 
             _wasFlying = isFlying;
 
+            // Poll AcName/AcNCTR — can change while BMS is running
+            bool aircraftInfoChanged = false;
+            string? newAcName = null;
+            string? newAcNctr = null;
+            if (_lpStringBaseAddress != IntPtr.Zero)
+            {
+                var (acName, acNctr) = StringDataParser.ParseAircraftInfo(_lpStringBaseAddress);
+                lock (_dataLock)
+                {
+                    if (acName != _acName || acNctr != _acNctr)
+                    {
+                        _acName = acName;
+                        _acNctr = acNctr;
+                        aircraftInfoChanged = true;
+                        newAcName = acName;
+                        newAcNctr = acNctr;
+                    }
+                }
+            }
+
+            if (aircraftInfoChanged)
+                AircraftInfoChanged?.Invoke(this, new AircraftInfoChangedEventArgs(newAcName, newAcNctr));
+
             // Update position & velocity
             lock (_dataLock)
             {
@@ -455,11 +499,14 @@ public class FalconSharedMemoryService : IFalconSharedMemoryService
     public FlightPosition? Position { get; }
     public FlightVelocity? Velocity { get; }
     public string? TheaterTerrainDir { get; }
+    public string? AcName { get; }
+    public string? AcNCTR { get; }
     public bool? IsFlying { get; }
     public double PollingFrequencyHz { get; set; }
 #pragma warning disable CS0067
     public event EventHandler<ServiceStateChangedEventArgs>? StateChanged;
     public event EventHandler<FlyingStateChangedEventArgs>? FlyingStateChanged;
+    public event EventHandler<AircraftInfoChangedEventArgs>? AircraftInfoChanged;
 #pragma warning restore CS0067
 
     public void Start()

@@ -108,3 +108,15 @@ public class FlyingStateChangedEventArgs : EventArgs
         NewFlyingState = newFlyingState;
     }
 }
+
+public class AircraftInfoChangedEventArgs : EventArgs
+{
+    public string? AcName { get; }
+    public string? AcNCTR { get; }
+
+    public AircraftInfoChangedEventArgs(string? acName, string? acNctr)
+    {
+        AcName = acName;
+        AcNCTR = acNctr;
+    }
+}
