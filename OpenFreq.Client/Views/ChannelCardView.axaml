@@ -236,7 +236,11 @@
                                LetterSpacing="1" />
                     <TextBox Text="{Binding Name}"
                              PlaceholderText="Channel name"
-                             Classes="Outline" />
+                             Classes="Outline">
+                        <TextBox.KeyBindings>
+                            <KeyBinding Command="{Binding ToggleEditingCommand}" Gesture="Enter" />
+                        </TextBox.KeyBindings>
+                    </TextBox>
                 </StackPanel>
 
                 <!-- Frequency + Pan — same row, labels top-aligned -->
