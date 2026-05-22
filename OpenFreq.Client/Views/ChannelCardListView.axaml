@@ -28,7 +28,7 @@
         </StackPanel>
     </UserControl.Resources>
 
-    <SplitView IsPaneOpen="{Binding IsGroupPanelExpanded, Mode=TwoWay}"
+    <SplitView IsPaneOpen="{Binding IsLocationPanelExpanded, Mode=TwoWay}"
                OpenPaneLength="260"
                CompactPaneLength="44"
                DisplayMode="CompactInline"
@@ -49,16 +49,16 @@
                     <Panel>
                         <!-- Expanded: label + collapse button -->
                         <Grid ColumnDefinitions="*,Auto" Margin="16,0,4,0"
-                              IsVisible="{Binding IsGroupPanelExpanded}">
+                              IsVisible="{Binding IsLocationPanelExpanded}">
                             <TextBlock Grid.Column="0"
-                                       Text="CHANNEL GROUPS"
+                                       Text="LOCATIONS"
                                        Classes="Caption"
                                        FontWeight="SemiBold"
                                        LetterSpacing="1"
                                        Opacity="0.55"
                                        VerticalAlignment="Center" />
                             <Button Grid.Column="1"
-                                    Command="{Binding ToggleGroupPanelCommand}"
+                                    Command="{Binding ToggleLocationPanelCommand}"
                                     Classes="Flat"
                                     Width="36" Height="36"
                                     Padding="8"
@@ -67,14 +67,14 @@
                             </Button>
                         </Grid>
                         <!-- Collapsed: expand button only, centred in 44px strip -->
-                        <Button IsVisible="{Binding !IsGroupPanelExpanded}"
-                                Command="{Binding ToggleGroupPanelCommand}"
+                        <Button IsVisible="{Binding !IsLocationPanelExpanded}"
+                                Command="{Binding ToggleLocationPanelCommand}"
                                 Classes="Flat"
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
                                 Width="36" Height="36"
                                 Padding="8"
-                                ToolTip.Tip="Show channel groups">
+                                ToolTip.Tip="Show locations">
                             <avalonia:MaterialIcon Kind="ChevronRight" Width="18" Height="18" />
                         </Button>
                     </Panel>
@@ -83,9 +83,9 @@
                 <Panel>
 
                 <!-- Collapsed: compact icon per group, centred in 44px strip -->
-                <ListBox IsVisible="{Binding !IsGroupPanelExpanded}"
-                         ItemsSource="{Binding ChannelGroups}"
-                         SelectedItem="{Binding SelectedGroup, Mode=TwoWay}"
+                <ListBox IsVisible="{Binding !IsLocationPanelExpanded}"
+                         ItemsSource="{Binding Locations}"
+                         SelectedItem="{Binding SelectedLocation, Mode=TwoWay}"
                          Background="Transparent"
                          Padding="4,6,4,0"
                          VerticalAlignment="Top">
@@ -98,7 +98,7 @@
                         </Style>
                     </ListBox.Styles>
                     <ListBox.ItemTemplate>
-                        <DataTemplate DataType="viewModels:ChannelCardGroupViewModel">
+                        <DataTemplate DataType="viewModels:LocationViewModel">
                             <Panel Width="32" Height="32"
                                    ClipToBounds="False"
                                    ToolTip.Tip="{Binding Name}">
@@ -129,11 +129,11 @@
                 </ListBox>
 
                 <!-- Expanded: full content -->
-                <Grid IsVisible="{Binding IsGroupPanelExpanded}" RowDefinitions="*,Auto">
+                <Grid IsVisible="{Binding IsLocationPanelExpanded}" RowDefinitions="*,Auto">
 
                 <!-- Group ListBox -->
-                <ListBox Grid.Row="0" ItemsSource="{Binding ChannelGroups}"
-                         SelectedItem="{Binding SelectedGroup, Mode=TwoWay}"
+                <ListBox Grid.Row="0" ItemsSource="{Binding Locations}"
+                         SelectedItem="{Binding SelectedLocation, Mode=TwoWay}"
                          Background="Transparent"
                          Padding="6,6,6,0">
                     <ListBox.Styles>
@@ -143,7 +143,7 @@
                         </Style>
                     </ListBox.Styles>
                     <ListBox.ItemTemplate>
-                        <DataTemplate DataType="viewModels:ChannelCardGroupViewModel">
+                        <DataTemplate DataType="viewModels:LocationViewModel">
                             <!-- ClipToBounds lets the green rectangle respect CornerRadius -->
                             <Border CornerRadius="8"
                                     BorderThickness="1"
@@ -181,7 +181,7 @@
                                                 Command="{Binding EnterEditModeCommand}"
                                                 Width="28" Height="28"
                                                 Padding="4"
-                                                ToolTip.Tip="Edit group"
+                                                ToolTip.Tip="Edit location"
                                                 IsVisible="{Binding Settings.ModeIsGci}">
                                             <avalonia:MaterialIcon Kind="PencilOutline" Width="15" Height="15" />
                                         </Button>
@@ -241,7 +241,7 @@
 
                 <!-- Add Group Button (bottom, GCI only) -->
                 <Button Grid.Row="1"
-                        Command="{Binding AddChannelGroupCommand}"
+                        Command="{Binding AddLocationCommand}"
                         IsVisible="{Binding Settings.ModeIsGci}"
                         Classes="Flat"
                         HorizontalAlignment="Stretch"
@@ -249,7 +249,7 @@
                         Padding="12,10">
                     <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
                         <avalonia:MaterialIcon Kind="Plus" Width="20" Height="20" />
-                        <TextBlock Text="Add Group"
+                        <TextBlock Text="Add Location"
                                    Classes="Body2"
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center" />
@@ -273,12 +273,12 @@
                         Opacity="0.4">
                 <StackPanel.IsVisible>
                     <MultiBinding Converter="{x:Static BoolConverters.And}">
-                        <Binding Path="SelectedGroup" Converter="{x:Static ObjectConverters.IsNull}" />
+                        <Binding Path="SelectedLocation" Converter="{x:Static ObjectConverters.IsNull}" />
                         <Binding Path="Settings.ModeIsGci" />
                     </MultiBinding>
                 </StackPanel.IsVisible>
                 <avalonia:MaterialIcon Kind="RadioTower" Width="48" Height="48" HorizontalAlignment="Center" />
-                <TextBlock Text="Select a channel group" HorizontalAlignment="Center" />
+                <TextBlock Text="Select a location" HorizontalAlignment="Center" />
             </StackPanel>
 
             <!-- Empty state - BMS mode -->
@@ -288,7 +288,7 @@
                         Opacity="0.4">
                 <StackPanel.IsVisible>
                     <MultiBinding Converter="{x:Static BoolConverters.And}">
-                        <Binding Path="SelectedGroup" Converter="{x:Static ObjectConverters.IsNull}" />
+                        <Binding Path="SelectedLocation" Converter="{x:Static ObjectConverters.IsNull}" />
                         <Binding Path="Settings.ModeIsGci" Converter="{x:Static BoolConverters.Not}" />
                     </MultiBinding>
                 </StackPanel.IsVisible>
@@ -298,11 +298,11 @@
             </StackPanel>
 
             <!-- Group Detail -->
-            <ContentControl Content="{Binding SelectedGroup}"
+            <ContentControl Content="{Binding SelectedLocation}"
                             HorizontalContentAlignment="Stretch"
                             VerticalContentAlignment="Stretch">
                 <ContentControl.ContentTemplate>
-                    <DataTemplate DataType="viewModels:ChannelCardGroupViewModel">
+                    <DataTemplate DataType="viewModels:LocationViewModel">
                         <Grid RowDefinitions="Auto,*">
 
                             <!-- ========================================== -->
@@ -343,9 +343,9 @@
                                             IsVisible="{Binding Settings.ModeIsGci}">
                                     <Button IsVisible="{Binding EditMode}"
                                             Classes="Flat"
-                                            Command="{Binding DeleteChannelGroupCommand}"
+                                            Command="{Binding DeleteLocationCommand}"
                                             Width="40" Height="44"
-                                            ToolTip.Tip="Delete Group"
+                                            ToolTip.Tip="Delete Location"
                                             Padding="8">
                                         <avalonia:MaterialIcon Kind="Trash" Width="22" Height="22"
                                                                Foreground="{DynamicResource MaterialValidationErrorBrush}" />
@@ -379,8 +379,8 @@
 
                                             <!-- Group Name -->
                                             <StackPanel Spacing="4">
-                                                <TextBlock Text="GROUP NAME" Classes="Caption" Opacity="0.55" FontWeight="SemiBold" LetterSpacing="1" />
-                                                <TextBox Text="{Binding Name}" PlaceholderText="Group name" Classes="Outline" />
+                                                <TextBlock Text="LOCATION NAME" Classes="Caption" Opacity="0.55" FontWeight="SemiBold" LetterSpacing="1" />
+                                                <TextBox Text="{Binding Name}" PlaceholderText="Location name" Classes="Outline" />
                                             </StackPanel>
 
                                             <Border Height="1" Background="{DynamicResource MaterialDividerBrush}" />

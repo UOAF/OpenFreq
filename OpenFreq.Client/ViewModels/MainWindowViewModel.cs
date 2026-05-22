@@ -61,7 +61,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
     private readonly Dictionary<(string peerId, int freqKhz), bool> _peerModes = new();
     private SortedDictionary<int, List<PeerData>> _latestAllPeers = new();
 
-    private ChannelCardGroupViewModel? _subscribedGroup;
+    private LocationViewModel? _subscribedLocation;
     private readonly Dictionary<ChannelCardViewModel, PropertyChangedEventHandler> _channelHandlers = new();
 
     [ObservableProperty] public partial bool OpenFreqConnected { get; set; }
@@ -171,7 +171,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         };
         Settings.PropertyChanged += OnSettingsPropertyChanged;
         ChannelList.PropertyChanged += OnChannelListPropertyChanged;
-        UpdateGroupSubscription();
+        UpdateLocationSubscription();
 
         // Load config
         _ = LoadConfigurationAsync();
@@ -225,13 +225,13 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
 
     private void JoinFrequencyFromPeerList(int frequencyKhz)
     {
-        var group = ChannelList.SelectedGroup;
-        if (group == null || group.IsBmsGroup) return;
+        var location = ChannelList.SelectedLocation;
+        if (location == null || location.IsBmsLocation) return;
 
-        var existing = group.Channels.FirstOrDefault(c => c.FrequencyKhz == frequencyKhz);
+        var existing = location.Channels.FirstOrDefault(c => c.FrequencyKhz == frequencyKhz);
         if (existing == null)
         {
-            var channel = group.CreateChannel(frequencyKhz, $"{frequencyKhz / 1000d:F3} MHz", false);
+            var channel = location.CreateChannel(frequencyKhz, $"{frequencyKhz / 1000d:F3} MHz", false);
             channel.Join();
         }
         else if (existing.ConnectionStatus != Channel.ChannelConnectionStatus.Connected)
@@ -242,8 +242,8 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
 
     private bool IsFrequencyAlreadyConnected(int frequencyKhz)
     {
-        var group = ChannelList.SelectedGroup;
-        return group?.Channels.Any(c => c.FrequencyKhz == frequencyKhz &&
+        var location = ChannelList.SelectedLocation;
+        return location?.Channels.Any(c => c.FrequencyKhz == frequencyKhz &&
                                         c.ConnectionStatus == Channel.ChannelConnectionStatus.Connected) == true;
     }
 
@@ -258,32 +258,32 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
 
     private void OnChannelListPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName != nameof(ChannelCardListViewModel.SelectedGroup)) return;
-        UpdateGroupSubscription();
+        if (e.PropertyName != nameof(ChannelCardListViewModel.SelectedLocation)) return;
+        UpdateLocationSubscription();
         Dispatcher.UIThread.Post(UpdateCanJoin);
     }
 
-    private void UpdateGroupSubscription()
+    private void UpdateLocationSubscription()
     {
-        if (_subscribedGroup != null)
+        if (_subscribedLocation != null)
         {
-            _subscribedGroup.Channels.CollectionChanged -= OnSelectedGroupChannelsChanged;
+            _subscribedLocation.Channels.CollectionChanged -= OnSelectedLocationChannelsChanged;
             foreach (var (ch, handler) in _channelHandlers)
                 ch.PropertyChanged -= handler;
             _channelHandlers.Clear();
         }
 
-        _subscribedGroup = ChannelList.SelectedGroup;
+        _subscribedLocation = ChannelList.SelectedLocation;
 
-        if (_subscribedGroup != null)
+        if (_subscribedLocation != null)
         {
-            _subscribedGroup.Channels.CollectionChanged += OnSelectedGroupChannelsChanged;
-            foreach (var ch in _subscribedGroup.Channels)
+            _subscribedLocation.Channels.CollectionChanged += OnSelectedLocationChannelsChanged;
+            foreach (var ch in _subscribedLocation.Channels)
                 SubscribeToChannelStatus(ch);
         }
     }
 
-    private void OnSelectedGroupChannelsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    private void OnSelectedLocationChannelsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (e.NewItems != null)
             foreach (ChannelCardViewModel ch in e.NewItems)
@@ -572,7 +572,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         {
             var capturedKey = await _hotkeyService.CaptureNextHotkeyAsync();
             Settings.BmsUhfSquelchHotkey = capturedKey;
-            ChannelList.FalconChannelGroup?.UpdateUhfHotkey(capturedKey);
+            ChannelList.FalconLocation?.UpdateUhfHotkey(capturedKey);
         }
         catch (OperationCanceledException)
         {
@@ -592,7 +592,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         {
             var capturedKey = await _hotkeyService.CaptureNextHotkeyAsync();
             Settings.BmsVhfSquelchHotkey = capturedKey;
-            ChannelList.FalconChannelGroup?.UpdateVhfHotkey(capturedKey);
+            ChannelList.FalconLocation?.UpdateVhfHotkey(capturedKey);
         }
         catch (OperationCanceledException)
         {
@@ -720,18 +720,18 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
             // Load audio settings
             Settings.LoadFromSettings(config.Settings);
 
-            // Load channel groups
-            foreach (var channelGroupData in config.ChannelGroups)
+            // Load locations
+            foreach (var locationData in config.Locations)
             {
-                var channelGroup = ChannelList.CreateChannelGroup(channelGroupData);
-                channelGroup.Latitude = channelGroupData.Latitude;
-                channelGroup.Longitude = channelGroupData.Longitude;
-                channelGroup.AltitudeFeet = channelGroupData.AltitudeFt;
+                var location = ChannelList.CreateLocation(locationData);
+                location.Latitude = locationData.Latitude;
+                location.Longitude = locationData.Longitude;
+                location.AltitudeFeet = locationData.AltitudeFt;
                 // Load channels
-                foreach (var channelData in channelGroupData.Channels)
+                foreach (var channelData in locationData.Channels)
                 {
                     var channel =
-                        channelGroup.CreateChannel(channelData.FrequencyKhz, channelData.Name ?? "");
+                        location.CreateChannel(channelData.FrequencyKhz, channelData.Name ?? "");
                     channel.IsEditing = false;
 
                     // Set PTT hotkey
@@ -743,7 +743,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
                 }
             }
 
-            ChannelList.EnsureDefaultGciGroup();
+            ChannelList.EnsureDefaultGciLocation();
         }
         catch (Exception ex)
         {
@@ -758,11 +758,11 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
             var config = new AppConfiguration
             {
                 Settings = Settings.GetSettings(),
-                ChannelGroups = ChannelList.ChannelGroups
-                    .Where(cg => !cg.Equals(ChannelList.FalconChannelGroup))
+                Locations = ChannelList.Locations
+                    .Where(cg => !cg.Equals(ChannelList.FalconLocation))
                     .Select(cg =>
                     {
-                        return new ChannelGroupData
+                        return new LocationData
                         {
                             Name = cg.Name,
                             Latitude = cg.Latitude,
@@ -809,9 +809,9 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         _openFreqService.FrequencyTransmissionStatusChanged -= OnFrequencyTransmissionStatusChanged;
         Settings.PropertyChanged -= OnSettingsPropertyChanged;
         ChannelList.PropertyChanged -= OnChannelListPropertyChanged;
-        if (_subscribedGroup != null)
+        if (_subscribedLocation != null)
         {
-            _subscribedGroup.Channels.CollectionChanged -= OnSelectedGroupChannelsChanged;
+            _subscribedLocation.Channels.CollectionChanged -= OnSelectedLocationChannelsChanged;
             foreach (var (ch, handler) in _channelHandlers)
                 ch.PropertyChanged -= handler;
             _channelHandlers.Clear();

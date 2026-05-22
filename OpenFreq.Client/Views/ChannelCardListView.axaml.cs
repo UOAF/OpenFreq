@@ -38,15 +38,15 @@ public partial class ChannelCardListView : UserControl
     {
         if (DataContext is not ChannelCardListViewModel vm) return;
 
-        if (e.NewSize.Width < CollapseBelow && vm.IsGroupPanelExpanded)
+        if (e.NewSize.Width < CollapseBelow && vm.IsLocationPanelExpanded)
         {
             _autoCollapsed = true;
-            vm.IsGroupPanelExpanded = false;
+            vm.IsLocationPanelExpanded = false;
         }
         else if (e.NewSize.Width >= ExpandAbove && _autoCollapsed)
         {
             _autoCollapsed = false;
-            vm.IsGroupPanelExpanded = true;
+            vm.IsLocationPanelExpanded = true;
         }
         else if (e.NewSize.Width >= ExpandAbove)
         {

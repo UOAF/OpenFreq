@@ -37,31 +37,31 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
     private readonly IFalconSharedMemoryService _falconSharedMemoryService;
     private readonly SettingsViewModel _settings;
 
-    private const string BmsGroupName = "BMS Channels";
-    public ChannelCardGroupViewModel? FalconChannelGroup { get; private set; }
+    private const string BmsLocationName = "BMS Channels";
+    public LocationViewModel? FalconLocation { get; private set; }
 
     private readonly Lock _channelImportLock = new();
 
     public SettingsViewModel Settings => _settings;
 
     [ObservableProperty]
-    public partial ChannelCardGroupViewModel? SelectedGroup { get; set; }
+    public partial LocationViewModel? SelectedLocation { get; set; }
 
     [ObservableProperty]
-    public partial bool IsGroupPanelExpanded { get; set; } = true;
+    public partial bool IsLocationPanelExpanded { get; set; } = true;
 
     [RelayCommand]
-    private void ToggleGroupPanel() => IsGroupPanelExpanded = !IsGroupPanelExpanded;
+    private void ToggleLocationPanel() => IsLocationPanelExpanded = !IsLocationPanelExpanded;
 
-    // This actually holds all of our ChannelGroups
+    // This actually holds all of our Locations
     [ObservableProperty]
-    public partial ObservableCollection<ChannelCardGroupViewModel> AllChannelGroups { get; private set; } = [];
+    public partial ObservableCollection<LocationViewModel> AllLocations { get; private set; } = [];
 
-    // Collection used to display filtered channel groups (BMS or GCI mode)
-    public IEnumerable<ChannelCardGroupViewModel> ChannelGroups =>
+    // Collection used to display filtered locations (BMS or GCI mode)
+    public IEnumerable<LocationViewModel> Locations =>
         _settings.ConnectionMode == IOpenFreqService.Mode.BMS
-            ? AllChannelGroups.Where(g => g.RadioStationData.Type == RadioStationData.RadioStationType.BMS)
-            : AllChannelGroups.Where(g => g.RadioStationData.Type != RadioStationData.RadioStationType.BMS);
+            ? AllLocations.Where(g => g.RadioStationData.Type == RadioStationData.RadioStationType.BMS)
+            : AllLocations.Where(g => g.RadioStationData.Type != RadioStationData.RadioStationType.BMS);
 
 
     public ChannelCardListViewModel(IOpenFreqService openFreqService, IHotkeyService hotkeyService,
@@ -89,11 +89,11 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         _falconSharedMemoryService.StateChanged += OnFalconSharedMemoryStateChanged;
 
         _openFreqService.ConnectionStateChanged += OnOpenFreqConnectionStateChanged;
-        AllChannelGroups?.CollectionChanged += (s, e) =>
+        AllLocations?.CollectionChanged += (s, e) =>
         {
-            OnPropertyChanged(nameof(ChannelGroups));
-            if (SelectedGroup == null)
-                SelectedGroup = ChannelGroups.FirstOrDefault();
+            OnPropertyChanged(nameof(Locations));
+            if (SelectedLocation == null)
+                SelectedLocation = Locations.FirstOrDefault();
         };
 
         // Subscribe to transmission messages
@@ -101,68 +101,68 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
             async (r, m) => await HandleStartTransmissionAsync(m));
         WeakReferenceMessenger.Default.Register<StopTransmissionMessage>(this,
             async (r, m) => await HandleStopTransmissionAsync(m));
-        WeakReferenceMessenger.Default.Register<ChannelCardGroupViewModel.ChannelCardGroupDeleteRequestedMessage>(this,
-            async (r, m) => await DeleteChannelGroup(m.ChannelCardGroupId));
+        WeakReferenceMessenger.Default.Register<LocationViewModel.LocationDeleteRequestedMessage>(this,
+            async (r, m) => await DeleteLocation(m.LocationId));
         WeakReferenceMessenger.Default.Register<ChannelPanUpdateMessage>(this,
             (r, m) => _openFreqService.SetPan(m.FrequencyKhz, m.ChannelId, m.Pan));
-        WeakReferenceMessenger.Default.Register<ChannelCardGroupViewModel.GroupSelectionRequestedMessage>(this,
-            (r, m) => SelectedGroup = ChannelGroups.FirstOrDefault(g => g.Id == m.GroupId));
+        WeakReferenceMessenger.Default.Register<LocationViewModel.LocationSelectionRequestedMessage>(this,
+            (r, m) => SelectedLocation = Locations.FirstOrDefault(g => g.Id == m.LocationId));
     }
 
     private async void OnFalconSharedMemoryStateChanged(object? sender, ServiceStateChangedEventArgs e)
     {
         // Clean up in case the SHMEM has disconnected (BMS likely crashed)
         if (_settings.ConnectionMode != IOpenFreqService.Mode.BMS || e.NewState == ServiceState.Connected ||
-            FalconChannelGroup == null) return;
-        await DeleteChannelGroup(FalconChannelGroup);
-        FalconChannelGroup = null;
+            FalconLocation == null) return;
+        await DeleteLocation(FalconLocation);
+        FalconLocation = null;
     }
 
     private void OnSettingsChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(SettingsViewModel.ConnectionMode))
         {
-            OnPropertyChanged(nameof(ChannelGroups));
-            if (SelectedGroup == null || !ChannelGroups.Contains(SelectedGroup))
-                SelectedGroup = ChannelGroups.FirstOrDefault();
+            OnPropertyChanged(nameof(Locations));
+            if (SelectedLocation == null || !Locations.Contains(SelectedLocation))
+                SelectedLocation = Locations.FirstOrDefault();
         }
-        else if (e.PropertyName == nameof(SettingsViewModel.BmsRadio1Pan) && FalconChannelGroup != null)
+        else if (e.PropertyName == nameof(SettingsViewModel.BmsRadio1Pan) && FalconLocation != null)
         {
-            foreach (var ch in FalconChannelGroup.Channels
+            foreach (var ch in FalconLocation.Channels
                          .Where(c => c.BmsRadioType is RadioType.Radio1 or RadioType.Guard))
                 ch.Pan = _settings.BmsRadio1Pan;
         }
-        else if (e.PropertyName == nameof(SettingsViewModel.BmsRadio2Pan) && FalconChannelGroup != null)
+        else if (e.PropertyName == nameof(SettingsViewModel.BmsRadio2Pan) && FalconLocation != null)
         {
-            foreach (var ch in FalconChannelGroup.Channels
+            foreach (var ch in FalconLocation.Channels
                          .Where(c => c.BmsRadioType == RadioType.Radio2))
                 ch.Pan = _settings.BmsRadio2Pan;
         }
     }
 
     [RelayCommand]
-    private void AddChannelGroup()
+    private void AddLocation()
     {
         var (lat, lon) = TheaterCoordinateConverter.GetCenterLatLon(_settings.SelectedTheater);
-        var group = CreateChannelGroup(
-            new ChannelGroupData
+        var location = CreateLocation(
+            new LocationData
             {
-                Name = $"Channel Group #{AllChannelGroups.Count + 1}",
+                Name = $"Location #{AllLocations.Count + 1}",
                 Latitude = lat,
                 Longitude = lon,
                 AltitudeFt = 30000
             },
             editMode: true);
-        SelectedGroup = group;
+        SelectedLocation = location;
     }
 
-    public void EnsureDefaultGciGroup()
+    public void EnsureDefaultGciLocation()
     {
-        if (!_settings.ModeIsGci || ChannelGroups.Any()) return;
+        if (!_settings.ModeIsGci || Locations.Any()) return;
 
         var (lat, lon) = TheaterCoordinateConverter.GetCenterLatLon(_settings.SelectedTheater);
-        var group = CreateChannelGroup(
-            new ChannelGroupData
+        var location = CreateLocation(
+            new LocationData
             {
                 Name = "Default",
                 Latitude = lat,
@@ -170,13 +170,13 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                 AltitudeFt = 30000
             });
 
-        var lobby1 = group.CreateChannel(1234, "BMS Lobby 1", false);
+        var lobby1 = location.CreateChannel(1234, "BMS Lobby 1", false);
         lobby1.PttHotKey = new KeyboardBinding(KeyCode.VcF1);
 
-        var lobby2 = group.CreateChannel(339750, "BMS Lobby 2", false);
+        var lobby2 = location.CreateChannel(339750, "BMS Lobby 2", false);
         lobby2.PttHotKey = new KeyboardBinding(KeyCode.VcF2);
 
-        SelectedGroup = group;
+        SelectedLocation = location;
     }
 
 
@@ -200,11 +200,11 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         }
         else if (e == ConnectionState.Authenticated && _settings.ModeIsGci)
         {
-            foreach (var channelGroup in AllChannelGroups)
+            foreach (var location in AllLocations)
             {
-                if (channelGroup.RadioStationData.Type != RadioStationData.RadioStationType.BMS)
+                if (location.RadioStationData.Type != RadioStationData.RadioStationType.BMS)
                 {
-                    channelGroup.JoinAllChannelsAsync().Wait(100);
+                    location.JoinAllChannelsAsync().Wait(100);
                 }
             }
         }
@@ -229,13 +229,13 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
 
     private void OnRadioVolumeChanged(object? sender, RadioVolumeChangedEventArgs e)
     {
-        if (_settings.ModeIsGci || FalconChannelGroup == null) return;
+        if (_settings.ModeIsGci || FalconLocation == null) return;
 
         _logger.LogDebug($"VOLUME {e.OldVolume} -> {e.NewVolume}");
 
         var gain = ComputeGainFromBmsVolume(e.NewVolume);
 
-        var channels = FalconChannelGroup?.Channels.Where(c => c.BmsRadioType == e.RadioType).ToList();
+        var channels = FalconLocation?.Channels.Where(c => c.BmsRadioType == e.RadioType).ToList();
         if (channels == null) return;
         foreach (var channel in channels)
         {
@@ -245,9 +245,9 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
 
     private void OnRadioPowerChanged(object? sender, RadioPowerChangedEventArgs e)
     {
-        if (_settings.ModeIsGci || FalconChannelGroup == null) return;
+        if (_settings.ModeIsGci || FalconLocation == null) return;
 
-        var channels = FalconChannelGroup.Channels.Where(c => c.BmsRadioType == e.RadioType).ToList();
+        var channels = FalconLocation.Channels.Where(c => c.BmsRadioType == e.RadioType).ToList();
         foreach (var channel in channels)
         {
             // Skip 9999 - it's BMS's parking frequency and should never be joined
@@ -266,13 +266,13 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
     private async void OnConnectionParametersChanged(object? sender,
         ConnectionParametersChangedEventArgs e)
     {
-        // Delete the BMS channel group on both TerminateClient and plain MP disconnect (ReadyToTransmit → false).
+        // Delete the BMS location on both TerminateClient and plain MP disconnect (ReadyToTransmit → false).
         if (e.NewParameters.TerminateClient || (e.OldParameters.ReadyToTransmit && !e.NewParameters.ReadyToTransmit))
         {
-            if (FalconChannelGroup != null)
+            if (FalconLocation != null)
             {
-                await DeleteChannelGroup(FalconChannelGroup);
-                FalconChannelGroup = null;
+                await DeleteLocation(FalconLocation);
+                FalconLocation = null;
             }
             return;
         }
@@ -288,14 +288,14 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
 
     private void SyncBmsChannelPowerStates()
     {
-        if (FalconChannelGroup == null) return;
+        if (FalconLocation == null) return;
         foreach (var type in Enum.GetValues<RadioType>())
         {
             var radioChannel = _falconRadioSharedMemoryService.GetRadioChannel(type);
             if (radioChannel == null) continue;
             var isPowerOn = radioChannel.IsOn &&
                             radioChannel.Frequency != IFalconRadioSharedMemoryService.BmsRadioOffFrequency;
-            foreach (var channel in FalconChannelGroup.Channels.Where(c => c.BmsRadioType == type).ToList())
+            foreach (var channel in FalconLocation.Channels.Where(c => c.BmsRadioType == type).ToList())
             {
                 if (channel.FrequencyKhz == IFalconRadioSharedMemoryService.BmsRadioOffFrequency) continue;
                 var isConnected = channel.ConnectionStatus == Channel.ChannelConnectionStatus.Connected;
@@ -308,13 +308,13 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
 
     private void SyncBmsChannelVolumeStates()
     {
-        if (FalconChannelGroup == null) return;
+        if (FalconLocation == null) return;
         foreach (var type in Enum.GetValues<RadioType>())
         {
             var radioChannel = _falconRadioSharedMemoryService.GetRadioChannel(type);
             if (radioChannel == null || radioChannel.RxVolume <= 0) continue;
             var gain = ComputeGainFromBmsVolume(radioChannel.RxVolume);
-            foreach (var channel in FalconChannelGroup.Channels.Where(c => c.BmsRadioType == type).ToList())
+            foreach (var channel in FalconLocation.Channels.Where(c => c.BmsRadioType == type).ToList())
             {
                 _openFreqService.SetVolume(channel.FrequencyKhz, channel.Id, gain);
             }
@@ -340,22 +340,22 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         {
             lock (_channelImportLock)
             {
-                if (FalconChannelGroup == null)
+                if (FalconLocation == null)
                 {
-                    FalconChannelGroup = CreateChannelGroup(BmsGroupName, RadioStationPresets.FighterF16,
+                    FalconLocation = CreateLocation(BmsLocationName, RadioStationPresets.FighterF16,
                         RadioStationData.RadioStationType.BMS);
                 }
                 else
                 {
-                    FalconChannelGroup.LeaveAllChannelsAsync().Wait(300);
-                    FalconChannelGroup.Channels.Clear();
+                    FalconLocation.LeaveAllChannelsAsync().Wait(300);
+                    FalconLocation.Channels.Clear();
                 }
 
                 foreach (var type in Enum.GetValues<RadioType>())
                 {
                     var falconChannel = _falconRadioSharedMemoryService.GetRadioChannel(type);
                     if (falconChannel != null &&
-                        FalconChannelGroup.Channels.All(c => c.FrequencyKhz != falconChannel.Frequency))
+                        FalconLocation.Channels.All(c => c.FrequencyKhz != falconChannel.Frequency))
                     {
                         var channelName = type switch
                         {
@@ -364,7 +364,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                             RadioType.Guard => "Guard",
                             _ => type.ToString()
                         };
-                        var channel = FalconChannelGroup.CreateChannel(falconChannel.Frequency,
+                        var channel = FalconLocation.CreateChannel(falconChannel.Frequency,
                             channelName,
                             false, type);
                         channel.IsEditable = false;
@@ -413,20 +413,20 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         // Do NOT capture keys twice - for non-flying, we want to use the callbacks from our HotKey service
         if (!_hotkeyService.PttKeysPaused ||_falconSharedMemoryService.IsFlying == false)
             return;
-        
-        if (FalconChannelGroup == null)
+
+        if (FalconLocation == null)
         {
-            _logger.LogWarning("Ignoring PTT: no Falcon channel group");
+            _logger.LogWarning("Ignoring PTT: no Falcon location");
             return;
         }
 
-        var channel = FalconChannelGroup.Channels.FirstOrDefault(c => c.BmsRadioType == e.RadioType);
+        var channel = FalconLocation.Channels.FirstOrDefault(c => c.BmsRadioType == e.RadioType);
         if (channel == null || channel.ConnectionStatus == Channel.ChannelConnectionStatus.Disconnected) return;
         switch (e)
         {
-            // mute all incoming transmissions from this group which have the same channel type
+            // mute all incoming transmissions from this location which have the same channel type
             case { OldPtt: false, NewPtt: true }:
-                var mutedFrequencies = FalconChannelGroup.GetAllFrequenciesOfChannelGroup(channel.Type);
+                var mutedFrequencies = FalconLocation.GetAllFrequenciesOfLocation(channel.Type);
                 mutedFrequencies.Remove(channel.FrequencyKhz);
                 _openFreqService.StartTransmissionAsync(channel.FrequencyKhz, channel.Id, mutedFrequencies).Wait();
                 break;
@@ -439,9 +439,9 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
     private void OnBmsFrequencyChanged(object? sender, RadioFrequencyChangedEventArgs e)
     {
         if (_settings.ModeIsGci) return;
-        if (FalconChannelGroup == null)
+        if (FalconLocation == null)
         {
-            _logger.LogWarning("Unclean state: _falconChannelGroup is null, reimporting");
+            _logger.LogWarning("Unclean state: FalconLocation is null, reimporting");
             ImportBmsRadioChannels().Wait(100);
             return;
         }
@@ -456,12 +456,12 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
             var channelIsPowerOn = _falconRadioSharedMemoryService.GetRadioChannel(e.RadioType)?.IsOn ?? false;
 
             // Try to change an existing frequency - this should be the case in 99% of the time
-            if (FalconChannelGroup.ChangeChannelFrequency(e.OldFrequencyKhz, e.NewFrequencyKhz, channelIsPowerOn))
+            if (FalconLocation.ChangeChannelFrequency(e.OldFrequencyKhz, e.NewFrequencyKhz, channelIsPowerOn))
             {
                 // Explicitly join the channel that was just updated if it's powered on
                 // 9999 is BMS's "radio off" parking frequency - never join it
                 var updatedChannel =
-                    FalconChannelGroup.Channels.FirstOrDefault(c => c.BmsRadioType == e.RadioType);
+                    FalconLocation.Channels.FirstOrDefault(c => c.BmsRadioType == e.RadioType);
                 if (updatedChannel != null && channelIsPowerOn &&
                     e.NewFrequencyKhz != IFalconRadioSharedMemoryService.BmsRadioOffFrequency)
                 {
@@ -477,7 +477,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                     if (falconChannel is not { IsOn: true }) continue;
                     if (falconChannel.Frequency == 9999) continue; // Skip parking frequency
 
-                    foreach (var channel in FalconChannelGroup.Channels)
+                    foreach (var channel in FalconLocation.Channels)
                     {
                         if (channel.FrequencyKhz == falconChannel.Frequency &&
                             channel.FrequencyKhz != e.NewFrequencyKhz)
@@ -500,9 +500,9 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
 
             var newChannel = Dispatcher.UIThread.InvokeAsync(() =>
             {
-                var channel = FalconChannelGroup.CreateChannel(
+                var channel = FalconLocation.CreateChannel(
                     e.NewFrequencyKhz,
-                    BmsGroupName,
+                    BmsLocationName,
                     false);
 
                 // Only join if the radio is powered on AND it's not the 9999 parking frequency
@@ -521,7 +521,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
             // Only call JoinFrequencyAsync if the radio is powered on and not 9999
             if (channelIsPowerOn && e.NewFrequencyKhz != IFalconRadioSharedMemoryService.BmsRadioOffFrequency)
             {
-                JoinFrequencyAsync(newChannel.FrequencyKhz, newChannel.Id, FalconChannelGroup.RadioStationData)
+                JoinFrequencyAsync(newChannel.FrequencyKhz, newChannel.Id, FalconLocation.RadioStationData)
                     .Wait(TimeSpan.FromMilliseconds(500));
             }
 
@@ -599,58 +599,58 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
 
     public async Task LeaveAllChannelsAsync()
     {
-        foreach (var channelGroup in ChannelGroups)
+        foreach (var location in Locations)
         {
-            await channelGroup.LeaveAllChannelsAsync();
+            await location.LeaveAllChannelsAsync();
         }
     }
 
-    public ChannelCardGroupViewModel CreateChannelGroup(string name, RadioStationPreset preset,
+    public LocationViewModel CreateLocation(string name, RadioStationPreset preset,
         RadioStationData.RadioStationType radioStationType,
         bool editMode = false)
     {
-        var channelGroup = new ChannelCardGroupViewModel(_openFreqService, _hotkeyService, _acmiClientService,
+        var location = new LocationViewModel(_openFreqService, _hotkeyService, _acmiClientService,
             _settings, name,
             preset, radioStationType, editMode: editMode);
-        AllChannelGroups.Add(channelGroup);
-        return channelGroup;
+        AllLocations.Add(location);
+        return location;
     }
 
-    public ChannelCardGroupViewModel CreateChannelGroup(ChannelGroupData channelGroupData, bool editMode = false)
+    public LocationViewModel CreateLocation(LocationData locationData, bool editMode = false)
     {
-        var channelGroup = new ChannelCardGroupViewModel(_openFreqService, _hotkeyService, _acmiClientService,
-            _settings, channelGroupData.Name, channelGroupData.RadioStationData.Preset,
-            channelGroupData.RadioStationData.Type, channelGroupData.Latitude, channelGroupData.Longitude,
-            channelGroupData.AltitudeFt, editMode);
-        AllChannelGroups.Add(channelGroup);
-        return channelGroup;
+        var location = new LocationViewModel(_openFreqService, _hotkeyService, _acmiClientService,
+            _settings, locationData.Name, locationData.RadioStationData.Preset,
+            locationData.RadioStationData.Type, locationData.Latitude, locationData.Longitude,
+            locationData.AltitudeFt, editMode);
+        AllLocations.Add(location);
+        return location;
     }
 
 
-    public async Task DeleteChannelGroup(ChannelCardGroupViewModel channelGroup)
+    public async Task DeleteLocation(LocationViewModel location)
     {
-        if (SelectedGroup == channelGroup)
-            SelectedGroup = null;
-        await channelGroup.LeaveAllChannelsAsync();
+        if (SelectedLocation == location)
+            SelectedLocation = null;
+        await location.LeaveAllChannelsAsync();
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            AllChannelGroups.Remove(channelGroup);
-            channelGroup.Dispose();
+            AllLocations.Remove(location);
+            location.Dispose();
         });
     }
 
-    public async Task DeleteChannelGroup(Guid channelGroupId)
+    public async Task DeleteLocation(Guid locationId)
     {
-        if (ChannelGroups.FirstOrDefault(cg => cg.Id == channelGroupId) is not { } channelCardGroupViewModel)
+        if (Locations.FirstOrDefault(cg => cg.Id == locationId) is not { } location)
             return;
 
         if (await ConfirmationDialogService.ShowAsync(
                 title: "Confirm deletion",
-                message: $"Are you sure you want to delete the Channel Group \"{channelCardGroupViewModel.Name}\"?",
+                message: $"Are you sure you want to delete the Location \"{location.Name}\"?",
                 cancelText: "Cancel",
                 confirmText: "Delete"))
         {
-            await DeleteChannelGroup(channelCardGroupViewModel);
+            await DeleteLocation(location);
         }
     }
 

@@ -8,10 +8,10 @@ namespace OpenFreqClient.Models;
 public class AppConfiguration
 {
     public OpenFreqSettings Settings { get; set; } = new();
-    public List<ChannelGroupData> ChannelGroups { get; set; } = [];
+    public List<LocationData> Locations { get; set; } = [];
 }
 
-public class ChannelGroupData
+public class LocationData
 {
     public string Name { get; set; } = string.Empty;
     public double Latitude { get; set; }

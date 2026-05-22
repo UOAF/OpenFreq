@@ -26,7 +26,7 @@ using SharpHook.Data;
 
 namespace OpenFreqClient.ViewModels;
 
-public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
+public partial class LocationViewModel : ViewModelBase, IDisposable
 {
     public Guid Id { get; } = Guid.NewGuid();
     public SettingsViewModel Settings { get; }
@@ -72,12 +72,12 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
     private MapPickerWindow? _trackingWindow;
     private CancellationTokenSource? _trackingCts;
     [ObservableProperty] public partial bool IsTracking { get; set; }
-    public bool IsBmsGroup => RadioStationData.Type == RadioStationData.RadioStationType.BMS;
+    public bool IsBmsLocation => RadioStationData.Type == RadioStationData.RadioStationType.BMS;
 
     [ObservableProperty] public partial bool AnyChannelTransmitting { get; set; }
     [ObservableProperty] public partial bool AnyChannelReceiving { get; set; }
 
-    public ChannelCardGroupViewModel(IOpenFreqService openFreqService, IHotkeyService hotkeyService,
+    public LocationViewModel(IOpenFreqService openFreqService, IHotkeyService hotkeyService,
         IAcmiClientService acmiClientService, SettingsViewModel settingsViewModel, string name,
         RadioStationPreset preset, RadioStationData.RadioStationType radioStationType, double latitude = 0,
         double longitude = 0, double altitudeFeet = 0, bool editMode = true)
@@ -164,13 +164,13 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         channel.FrequencyKhz = frequencyKhz;
         channel.IsEditing = isInEditMode;
         channel.BmsRadioType = bmsRadioType;
-        
+
         // 9999 is BMS's "radio off" parking frequency - always ensure it's disconnected
         if (frequencyKhz == IFalconRadioSharedMemoryService.BmsRadioOffFrequency)
         {
             channel.ConnectionStatus = Channel.ChannelConnectionStatus.Disconnected;
         }
-        
+
         if (Dispatcher.UIThread.CheckAccess())
         {
             // Already on UI thread - add directly
@@ -249,8 +249,8 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         AnyChannelTransmitting = Channels.Any(c => c.TransmissionStatus == Channel.ChannelTransmissionStatus.Transmitting);
         AnyChannelReceiving = Channels.Any(c => c.TransmissionStatus == Channel.ChannelTransmissionStatus.Receiving);
     }
-    
-    
+
+
 
     private void OnSquelchEnabledDisabled(object recipient, SquelchEnabledDisabledMessage message)
     {
@@ -289,8 +289,8 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
                     if (channel != null && channel.ConnectionStatus != Channel.ChannelConnectionStatus.Disconnected &&
                         !channel.IsEditing)
                     {
-                        // mute all channels of the same channel type in this group when transmitting
-                        var mutedFrequencies = GetAllFrequenciesOfChannelGroup(channel.Type);
+                        // mute all channels of the same channel type in this location when transmitting
+                        var mutedFrequencies = GetAllFrequenciesOfLocation(channel.Type);
                         mutedFrequencies.Remove(channel.FrequencyKhz);
                         await _openFreqService.StartTransmissionAsync(channel.FrequencyKhz, channel.Id, mutedFrequencies);
                     }
@@ -340,19 +340,19 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         }
 
         oldChannel.FrequencyKhz = newFreqKhz;
-        
+
         // 9999 is BMS's "radio off" parking frequency - always ensure it's disconnected
         if (newFreqKhz == IFalconRadioSharedMemoryService.BmsRadioOffFrequency)
         {
             oldChannel.ConnectionStatus = Channel.ChannelConnectionStatus.Disconnected;
         }
-        
+
         OnChannelUpdated(this,
             new ChannelUpdatedMessage(oldChannel.Id, oldFreqKhz, newFreqKhz, oldChannel.ConnectionStatus,
                 oldChannel.Pan, true));
-        
+
         // Note: Join will be handled by OnBmsFrequencyChanged which explicitly joins for non-9999 frequencies
-        
+
         return true;
     }
 
@@ -425,12 +425,12 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         EditMode = !EditMode;
     }
 
-    public record GroupSelectionRequestedMessage(Guid GroupId);
+    public record LocationSelectionRequestedMessage(Guid LocationId);
 
     [RelayCommand]
     public void EnterEditMode()
     {
-        WeakReferenceMessenger.Default.Send(new GroupSelectionRequestedMessage(Id));
+        WeakReferenceMessenger.Default.Send(new LocationSelectionRequestedMessage(Id));
         EditMode = true;
     }
 
@@ -645,19 +645,19 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         _trackingWindow = null;
     }
 
-    public class ChannelCardGroupDeleteRequestedMessage(Guid channelCardGroupId)
+    public class LocationDeleteRequestedMessage(Guid locationId)
     {
-        public Guid ChannelCardGroupId { get; } = channelCardGroupId;
+        public Guid LocationId { get; } = locationId;
     }
 
     [RelayCommand]
-    public void DeleteChannelGroup()
+    public void DeleteLocation()
     {
         WeakReferenceMessenger.Default.Send(
-            new ChannelCardGroupDeleteRequestedMessage(Id));
+            new LocationDeleteRequestedMessage(Id));
     }
 
-    public List<int> GetAllFrequenciesOfChannelGroup(Channel.ChannelType? filterChannelType = null)
+    public List<int> GetAllFrequenciesOfLocation(Channel.ChannelType? filterChannelType = null)
     {
         var query = Channels.AsEnumerable();
 
@@ -669,7 +669,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
             .ToList();
     }
 
-    protected bool Equals(ChannelCardGroupViewModel other)
+    protected bool Equals(LocationViewModel other)
     {
         return Id.Equals(other.Id);
     }
@@ -679,7 +679,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
         if (obj is null) return false;
         if (ReferenceEquals(this, obj)) return true;
         if (obj.GetType() != GetType()) return false;
-        return Equals((ChannelCardGroupViewModel)obj);
+        return Equals((LocationViewModel)obj);
     }
 
     public override int GetHashCode()
@@ -697,7 +697,7 @@ public partial class ChannelCardGroupViewModel : ViewModelBase, IDisposable
             }
         }
     }
-    
+
     public void UpdateUhfHotkey(HotkeyBinding? capturedKey)
     {
         foreach (var channel in Channels)

@@ -713,7 +713,7 @@
                                                                         Classes="Flat"
                                                                         Padding="6,2"
                                                                         VerticalAlignment="Center"
-                                                                        ToolTip.Tip="Join in active channel group"
+                                                                        ToolTip.Tip="Join in active location"
                                                                         IsVisible="{Binding CanJoin}"
                                                                         Command="{Binding JoinCommand}">
                                                                     <TextBlock Text="+" FontSize="16" FontWeight="Medium" />
@@ -797,7 +797,7 @@
                                                                         Classes="Flat"
                                                                         Padding="6,2"
                                                                         VerticalAlignment="Center"
-                                                                        ToolTip.Tip="Join in active channel group"
+                                                                        ToolTip.Tip="Join in active location"
                                                                         IsVisible="{Binding CanJoin}"
                                                                         Command="{Binding JoinCommand}">
                                                                     <TextBlock Text="+" FontSize="16" FontWeight="Medium" />

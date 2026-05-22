@@ -17,7 +17,7 @@ namespace OpenFreqClient.ViewModels;
 public partial class ChannelCardViewModel : ViewModelBase, IDisposable
 {
     private readonly IHotkeyService _hotkeyService;
-    private readonly ChannelCardGroupViewModel _parentChannelCardGroupViewModel;
+    private readonly LocationViewModel _parentLocationViewModel;
     public SettingsViewModel Settings { get; }
 
     public Guid Id { get; } = Guid.NewGuid();
@@ -132,7 +132,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     public ChannelCardViewModel(IOpenFreqService openFreqService, IHotkeyService hotkeyService, string name,
         int frequencyKhz, bool isInEditMode,
         RadioStationData radioStationData,
-        ChannelCardGroupViewModel parentChannelCardGroupViewModel, SettingsViewModel settings, bool isEditable = true,
+        LocationViewModel parentLocationViewModel, SettingsViewModel settings, bool isEditable = true,
         RadioType? bmsRadioType = null)
     {
         _openFreqService = openFreqService;
@@ -141,7 +141,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         IsEditing = isInEditMode;
         _hotkeyService = hotkeyService;
         RadioStationData = radioStationData;
-        _parentChannelCardGroupViewModel = parentChannelCardGroupViewModel;
+        _parentLocationViewModel = parentLocationViewModel;
         Settings = settings;
         IsEditable = isEditable;
         BmsRadioType = bmsRadioType;
@@ -175,7 +175,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
                 FrequencyKhz,
                 ConnectionStatus,
                 Pan,
-                _parentChannelCardGroupViewModel.IsBmsGroup
+                _parentLocationViewModel.IsBmsLocation
             );
 
             WeakReferenceMessenger.Default.Send(message);
@@ -268,7 +268,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         if (Settings is { ModeIsGci: false, Is3dMode: true })
             return;
 
-        var mutedFrequencies = _parentChannelCardGroupViewModel.GetAllFrequenciesOfChannelGroup(Type);
+        var mutedFrequencies = _parentLocationViewModel.GetAllFrequenciesOfLocation(Type);
         mutedFrequencies.Remove(FrequencyKhz);
         WeakReferenceMessenger.Default.Send(new StartTransmissionMessage(Id, FrequencyKhz, RadioStationData,
             mutedFrequencies));
