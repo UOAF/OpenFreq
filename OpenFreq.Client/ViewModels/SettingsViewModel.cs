@@ -10,7 +10,6 @@ using Avalonia.Platform;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
-using FalconBmsDataService.Models;
 using FalconBmsDataService.Services;
 using FalconRadioService.Services;
 using Microsoft.Extensions.Logging;
@@ -233,23 +232,39 @@ public partial class SettingsViewModel : ViewModelBase
     {
         Dispatcher.UIThread.Post(() =>
         {
-            Console.WriteLine(
-                $"[ViewModel] Recording devices changed. Old={e.OldDeviceIndex}, New={e.NewDeviceIndex}, Removed={e.DeviceWasRemoved}");
+            _logger.LogInformation(
+                "Recording devices changed: Old={Old}, New={New}, DeviceWasRemoved={Removed}",
+                e.OldDeviceIndex, e.NewDeviceIndex, e.DeviceWasRemoved);
 
-            // Update the device list
             RecordingDeviceNames.Clear();
             foreach (var device in e.Devices)
-            {
                 RecordingDeviceNames.Add(device);
-            }
 
-            // Update selection
+            // Update UI selection (may be same value — observable equality guard won't re-fire)
             RecordingDeviceIndex = e.NewDeviceIndex;
 
-            // If device was removed and we're transmitting, switch the active device
-            if (e.DeviceWasRemoved && e.NewDeviceIndex != e.OldDeviceIndex)
+            // Always propagate the resolved BASS index directly to the service, bypassing the
+            // [ObservableProperty] equality check. Without this, if the physical device changed
+            // but the list index stayed the same, OnRecordingDeviceIndexChanged won't fire and
+            // the service keeps a stale BASS device index.
+            if (e.NewDeviceIndex >= 0)
             {
-                Console.WriteLine($"[ViewModel] Recording device was removed, switching to device {e.NewDeviceIndex}");
+                var bassIndex = _audioService.GetRecordingBassIndex(e.NewDeviceIndex);
+                if (bassIndex >= 0)
+                {
+                    _logger.LogInformation(
+                        "Forcing recording BASS device switch to index {BassIndex} (DeviceWasRemoved={Removed})",
+                        bassIndex, e.DeviceWasRemoved);
+                    _openFreqService.RecordingDeviceIndex = bassIndex;
+                }
+                else
+                {
+                    _logger.LogWarning("No valid BASS recording device for list index {ListIndex}", e.NewDeviceIndex);
+                }
+            }
+            else
+            {
+                _logger.LogError("Recording device change yielded no valid device (NewIndex={New})", e.NewDeviceIndex);
             }
         });
     }
@@ -258,23 +273,39 @@ public partial class SettingsViewModel : ViewModelBase
     {
         Dispatcher.UIThread.Post(() =>
         {
-            Console.WriteLine(
-                $"[ViewModel] Playback devices changed. Old={e.OldDeviceIndex}, New={e.NewDeviceIndex}, Removed={e.DeviceWasRemoved}");
+            _logger.LogInformation(
+                "Playback devices changed: Old={Old}, New={New}, DeviceWasRemoved={Removed}",
+                e.OldDeviceIndex, e.NewDeviceIndex, e.DeviceWasRemoved);
 
-            // Update the device list
             PlaybackDeviceNames.Clear();
             foreach (var device in e.Devices)
-            {
                 PlaybackDeviceNames.Add(device);
-            }
 
-            // Update selection
+            // Update UI selection (may be same value — observable equality guard won't re-fire)
             PlaybackDeviceIndex = e.NewDeviceIndex;
 
-            // If device was removed and we're connected, switch the active device
-            if (e.DeviceWasRemoved && e.NewDeviceIndex != e.OldDeviceIndex)
+            // Always propagate the resolved BASS index directly to the service, bypassing the
+            // [ObservableProperty] equality check. Critical case: selected device is removed and
+            // the fallback lands at the same list index — the observable setter is a no-op,
+            // ChangeOutputDevice is never called, RadioPlayback silently plays to a dead device.
+            if (e.NewDeviceIndex >= 0)
             {
-                Console.WriteLine($"[ViewModel] Playback device was removed, switching to device {e.NewDeviceIndex}");
+                var bassIndex = _audioService.GetPlaybackBassIndex(e.NewDeviceIndex);
+                if (bassIndex >= 0)
+                {
+                    _logger.LogInformation(
+                        "Forcing playback BASS device switch to index {BassIndex} (DeviceWasRemoved={Removed})",
+                        bassIndex, e.DeviceWasRemoved);
+                    _openFreqService.PlaybackDeviceIndex = bassIndex;
+                }
+                else
+                {
+                    _logger.LogWarning("No valid BASS playback device for list index {ListIndex}", e.NewDeviceIndex);
+                }
+            }
+            else
+            {
+                _logger.LogError("Playback device change yielded no valid device (NewIndex={New})", e.NewDeviceIndex);
             }
         });
     }
