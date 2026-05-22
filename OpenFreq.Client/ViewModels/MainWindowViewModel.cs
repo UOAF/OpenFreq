@@ -618,11 +618,21 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
             _ => "Unknown"
         };
 
-        switch (state)
+        if (state == ConnectionState.Authenticated)
         {
             PeerId = _openFreqService.PeerId ?? "";
             ClearError();
             SettingsDrawerOpened = false;
+            
+            if (Settings is { ModeIsGci: false, MinimizeOnConnect: true })
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    var window = ((IClassicDesktopStyleApplicationLifetime)Application.Current!.ApplicationLifetime!)
+                        .MainWindow!;
+                    window.WindowState = WindowState.Minimized;
+                });
+            }
         }
         else if (state == ConnectionState.Disconnected)
         {
@@ -634,6 +644,15 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
             if (!HasError)
                 ShowError("Lost connection to server");
             SettingsDrawerOpened = true;
+            
+                Dispatcher.UIThread.Post(() =>
+                {
+                    var window = ((IClassicDesktopStyleApplicationLifetime)Application.Current!.ApplicationLifetime!)
+                        .MainWindow!;
+                    if (window.WindowState == WindowState.Minimized)
+                        window.WindowState = WindowState.Normal;
+                });
+            
         }
     }
 
