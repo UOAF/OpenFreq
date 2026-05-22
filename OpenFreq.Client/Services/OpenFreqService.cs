@@ -194,8 +194,6 @@ public class OpenFreqService : IOpenFreqService
     public bool IsConnected => _client?.IsConnected ?? false;
     public bool IsAuthenticated => _client?.IsAuthenticated ?? false;
     public string? PeerId => _client?.MyPeerId;
-    private int _radioPlaybackInstanceId = 0;
-
 
     /// <summary>
     /// Initialize the service with server settings and audio devices
@@ -240,26 +238,32 @@ public class OpenFreqService : IOpenFreqService
         _client.ErrorOccurred += OnClientErrorOccurred;
 
         RecordingDeviceIndex = recordingDeviceIndex;
+        var previousPlaybackDeviceIndex = _playbackDeviceIndex;
         _playbackDeviceIndex = playbackDeviceIndex;
 
-        if (_playbackService != null)
+        if (_playbackService == null)
         {
-            _logger.LogWarning("Disposing old RadioPlayback instance: {InstanceId}", _radioPlaybackInstanceId);
-            _playbackService.UserFacingError -= OnPlaybackUserFacingError;
-            await _playbackService.StopAll();
-            if (_playbackService is IDisposable disposable)
-            {
-                disposable.Dispose();
-            }
-
-            _playbackService = null;
+            // First initialization: create RadioPlayback and init BASS device.
+            _playbackService = new RadioPlayback(_loggerFactory, playbackDeviceIndex);
+            _playbackService.UserFacingError += OnPlaybackUserFacingError;
+            _playbackService.Initialize();
+            _logger.LogInformation("Playback Service initialized");
+        }
+        else if (previousPlaybackDeviceIndex != playbackDeviceIndex)
+        {
+            // Device changed: switch without tearing down BASS entirely.
+            _logger.LogWarning(
+                "Playback device changed {Old}→{New} — calling ChangeOutputDevice",
+                previousPlaybackDeviceIndex, playbackDeviceIndex);
+            _playbackService.UserFacingError += OnPlaybackUserFacingError;
+            _playbackService.ChangeOutputDevice(playbackDeviceIndex);
+        }
+        else
+        {
+            // Same device, same instance — streams already stopped in Shutdown(). Just re-subscribe.
+            _playbackService.UserFacingError += OnPlaybackUserFacingError;
         }
 
-        _radioPlaybackInstanceId++;
-        _playbackService = new RadioPlayback(_loggerFactory, playbackDeviceIndex);
-        _playbackService.UserFacingError += OnPlaybackUserFacingError;
-        _logger.LogWarning("Created NEW RadioPlayback instance: {InstanceId}", _radioPlaybackInstanceId);
-        _playbackService.Initialize();
         _playbackService.Apply3dEffects = Apply3dAudioEffects;
         _playbackService.SidetoneEnabled = SidetoneEnabled;
         _playbackService.SidetoneVolume = (float)SidetoneVolume;
@@ -315,8 +319,12 @@ public class OpenFreqService : IOpenFreqService
             if (_playbackService != null)
             {
                 _playbackService.UserFacingError -= OnPlaybackUserFacingError;
-                await _playbackService.StopAll();
-                _playbackService = null;
+                // Stop individual streams without freeing the BASS device — RadioPlayback is
+                // kept alive so the next Initialize() can reuse it without Bass.Free()+Bass.Init().
+                // Full StopAll() (Bass.Free) only happens on device change or app Dispose().
+                var activeStreams = _playbackService.GetActiveStreams();
+                foreach (var streamId in activeStreams)
+                    await _playbackService.StopStream(streamId);
             }
 
             if (_client != null)
@@ -389,6 +397,17 @@ public class OpenFreqService : IOpenFreqService
         _activeTransmissionsAndMutedFrequencies.Clear();
         _activeTransmissionSlots.Clear();
         _tunedSlots.Clear();
+
+        // Stop orphaned BASS streams before clearing the tracking dict.
+        // PeerLeft events may not fire on abrupt disconnects; stopping here ensures
+        // RadioPlayback stays clean so it can be reused on the next connect.
+        if (_playbackService != null)
+        {
+            foreach (var freqs in _peerStreams.Values)
+            foreach (var streamId in freqs.Values)
+                await _playbackService.StopStream(streamId);
+        }
+
         _peerStreams.Clear();
         OnStatusMessage("Disconnected from OpenFreq server");
         Status = IOpenFreqService.OpenFreqStatus.Disconnected;
