@@ -22,6 +22,7 @@ public interface IOpenFreqService : IDisposable
     bool Apply3dAudioEffects { get; set; }
     bool SidetoneEnabled { get; set; }
     double SidetoneVolume { get; set; }
+    double MasterVolume { get; set; }
     
     Mode OwnPositionMode { get; }
 

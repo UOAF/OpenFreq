@@ -151,6 +151,16 @@ public class OpenFreqService : IOpenFreqService
         }
     } = 0.4;
 
+    public double MasterVolume
+    {
+        get => field;
+        set
+        {
+            field = value;
+            if (_playbackService != null) _playbackService.MasterVolume = (float)value;
+        }
+    } = 1.0;
+
     private bool _isInitialized;
 
     private readonly IFalconSharedMemoryService _falconSharedMemoryService;

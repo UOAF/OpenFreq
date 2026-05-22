@@ -183,6 +183,16 @@
                                                   HorizontalAlignment="Stretch"
                                                   Margin="0,0,0,12" />
 
+                                        <TextBlock Classes="InputLabel" Margin="0,4,0,4">
+                                            <Run Text="Master Volume: " />
+                                            <Run Text="{Binding Settings.MasterVolume, StringFormat={}{0:P0}}" />
+                                        </TextBlock>
+                                        <Slider Minimum="0" Maximum="2"
+                                                Value="{Binding Settings.MasterVolume}"
+                                                TickFrequency="0.05"
+                                                IsSnapToTickEnabled="True"
+                                                Margin="0,0,0,12" />
+
                                         <CheckBox Content="Sidetone"
                                                   IsChecked="{Binding Settings.SidetoneEnabled}"
                                                   Margin="0,0,0,4" />
@@ -462,6 +472,16 @@
                                                   SelectedIndex="{Binding Settings.PlaybackDeviceIndex}"
                                                   HorizontalAlignment="Stretch"
                                                   Margin="0,0,0,12" />
+
+                                        <TextBlock Classes="InputLabel" Margin="0,4,0,4">
+                                            <Run Text="Master Volume: " />
+                                            <Run Text="{Binding Settings.MasterVolume, StringFormat={}{0:P0}}" />
+                                        </TextBlock>
+                                        <Slider Minimum="0" Maximum="2"
+                                                Value="{Binding Settings.MasterVolume}"
+                                                TickFrequency="0.05"
+                                                IsSnapToTickEnabled="True"
+                                                Margin="0,0,0,12" />
 
                                         <CheckBox Content="Sidetone"
                                                   IsChecked="{Binding Settings.SidetoneEnabled}"

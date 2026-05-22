@@ -80,6 +80,7 @@ public partial class SettingsViewModel : ViewModelBase
 
     [ObservableProperty] public partial string OutputDeviceName { get; set; } = string.Empty;
 
+    [ObservableProperty] public partial double MasterVolume { get; set; } = 1.0;
     [ObservableProperty] public partial bool SidetoneEnabled { get; set; } = false;
     [ObservableProperty] public partial double SidetoneVolume { get; set; } = 0.4;
     [ObservableProperty] public partial bool IsDarkMode { get; set; }
@@ -279,6 +280,8 @@ public partial class SettingsViewModel : ViewModelBase
         });
     }
 
+    partial void OnMasterVolumeChanged(double value) => _openFreqService.MasterVolume = value;
+
     partial void OnSidetoneEnabledChanged(bool value) => _openFreqService.SidetoneEnabled = value;
 
     partial void OnSidetoneVolumeChanged(double value) => _openFreqService.SidetoneVolume = value;
@@ -320,6 +323,7 @@ public partial class SettingsViewModel : ViewModelBase
         SelectedTheater = settings.SelectedTheater;
         BmsRadio1Pan = settings.BmsRadio1Pan;
         BmsRadio2Pan = settings.BmsRadio2Pan;
+        MasterVolume = settings.MasterVolume;
         SidetoneEnabled = settings.SidetoneEnabled;
         SidetoneVolume = settings.SidetoneVolume;
         MinimizeOnConnect = settings.MinimizeOnConnect;
@@ -471,6 +475,7 @@ public partial class SettingsViewModel : ViewModelBase
             BmsRadio2Pan = BmsRadio2Pan,
             BmsSquelchUhfHotkey = BmsUhfSquelchHotkey,
             BmsSquelchVhfHotkey = BmsVhfSquelchHotkey,
+            MasterVolume = MasterVolume,
             SidetoneEnabled = SidetoneEnabled,
             SidetoneVolume = SidetoneVolume,
             MinimizeOnConnect = MinimizeOnConnect,
