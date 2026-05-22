@@ -82,6 +82,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
     [ObservableProperty] public partial double MasterVolume { get; set; } = 1.0;
     [ObservableProperty] public partial bool SidetoneEnabled { get; set; } = false;
     [ObservableProperty] public partial double SidetoneVolume { get; set; } = 0.4;
+    [ObservableProperty] public partial double AmbientNoiseVolume { get; set; } = 1.0;
     [ObservableProperty] public partial bool IsDarkMode { get; set; }
     [ObservableProperty] public partial bool MinimizeOnConnect { get; set; } = true;
 
@@ -317,6 +318,8 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
 
     partial void OnSidetoneVolumeChanged(double value) => _openFreqService.SidetoneVolume = value;
 
+    partial void OnAmbientNoiseVolumeChanged(double value) => _openFreqService.AmbientNoiseVolume = value;
+
     partial void OnIsDarkModeChanged(bool value)
     {
         Application.Current!.RequestedThemeVariant = value ? ThemeVariant.Dark : ThemeVariant.Light;
@@ -358,6 +361,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
         SidetoneEnabled = settings.SidetoneEnabled;
         SidetoneVolume = settings.SidetoneVolume;
         MinimizeOnConnect = settings.MinimizeOnConnect;
+        AmbientNoiseVolume = settings.AmbientNoiseVolume;
         if (settings.DarkMode.HasValue)
         {
             IsDarkMode = settings.DarkMode.Value;
@@ -510,6 +514,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
             SidetoneEnabled = SidetoneEnabled,
             SidetoneVolume = SidetoneVolume,
             MinimizeOnConnect = MinimizeOnConnect,
+            AmbientNoiseVolume = AmbientNoiseVolume,
             DarkMode = IsDarkMode,
             Left = _left,
             Top = _top,

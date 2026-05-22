@@ -23,6 +23,7 @@ public interface IOpenFreqService : IDisposable
     bool SidetoneEnabled { get; set; }
     double SidetoneVolume { get; set; }
     double MasterVolume { get; set; }
+    double AmbientNoiseVolume { get; set; }
     
     Mode OwnPositionMode { get; }
 

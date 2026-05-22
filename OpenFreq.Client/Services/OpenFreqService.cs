@@ -181,6 +181,16 @@ public class OpenFreqService : IOpenFreqService
         }
     } = 1.0;
 
+    public double AmbientNoiseVolume
+    {
+        get => field;
+        set
+        {
+            field = value;
+            if (_playbackService != null) _playbackService.AmbientNoiseVolume = (float)value;
+        }
+    } = 1.0;
+
     private bool _isInitialized;
 
     private readonly IFalconSharedMemoryService _falconSharedMemoryService;
@@ -277,6 +287,7 @@ public class OpenFreqService : IOpenFreqService
         _playbackService.Apply3dEffects = Apply3dAudioEffects;
         _playbackService.SidetoneEnabled = SidetoneEnabled;
         _playbackService.SidetoneVolume = (float)SidetoneVolume;
+        _playbackService.AmbientNoiseVolume = (float)AmbientNoiseVolume;
         _isInitialized = true;
 
         _falconSharedMemoryService.FlyingStateChanged += OnFlyingStateChanged;
