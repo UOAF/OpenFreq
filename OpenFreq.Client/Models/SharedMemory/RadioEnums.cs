@@ -22,7 +22,7 @@ public enum ClientStatusFlags
     Connected       = 0x02,
     TryingToConnect = 0x04,
     ExitReceived    = 0x08,
-    ConnectionFail  = unchecked((int)0x80000000),
+    ConnectionFail  = 0x08000000,
     HostUnknown     = 0x10000000,
     BadPassword     = 0x20000000,
     NoMicrophone    = 0x40000000,

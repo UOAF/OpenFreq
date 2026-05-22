@@ -187,9 +187,16 @@ public class OpenFreqService : IOpenFreqService
             await Shutdown();
         }
 
+        // In BMS mode: use Nickname from connection params (= LogBook.Callsign(), set by BMS
+        // before AttemptToConnect fires). LogbookName is from the Telemetry struct which is
+        // initialised to "Wot Pilot?!" and only written after ClientReady() — too late.
+        // NEVER fall back to settings.DisplayName in BMS mode — that is the manually-entered
+        // GCI name. If Nickname is unavailable (ConnectionParameters reset between RCC close
+        // and next poll), connect with an empty placeholder; UpdateDisplayNameAsync() will
+        // push the real callsign immediately after authentication.
         var myDisplayName =
             settings.OwnPositionMode == IOpenFreqService.Mode.BMS
-                ? (_falconRadioSharedMemoryService.LogbookName ?? settings.DisplayName)
+                ? (_falconRadioSharedMemoryService.ConnectionParameters?.Nickname ?? string.Empty)
                 : settings.DisplayName;
 
         // Create client with server settings
@@ -310,6 +317,12 @@ public class OpenFreqService : IOpenFreqService
                 _client = null;
             }
 
+            // Unsubscribe falcon shared memory events — subscribed on every Initialize,
+            // so must be unsubscribed here to prevent accumulation across reconnects.
+            _falconSharedMemoryService.FlyingStateChanged -= OnFlyingStateChanged;
+            _falconSharedMemoryService.StateChanged -= OnFalconStateChanged;
+
+            _peerStreams.Clear();
             _isInitialized = false;
             _logger.LogDebug("Shutdown complete");
         }
@@ -323,7 +336,7 @@ public class OpenFreqService : IOpenFreqService
     /// <summary>
     /// Connect to the OpenFreq server
     /// </summary>
-    public async Task ConnectAsync()
+    public async Task ConnectAsync(TimeSpan? connectTimeout = null)
     {
         if (!_isInitialized || _client == null)
         {
@@ -332,7 +345,7 @@ public class OpenFreqService : IOpenFreqService
 
         OnStatusMessage($"Connecting to OpenFreq server {_client.ServerIp}...");
         Status = IOpenFreqService.OpenFreqStatus.Connecting;
-        await _client.ConnectAsync();
+        await _client.ConnectAsync(connectTimeout);
     }
 
     /// <summary>
@@ -352,6 +365,7 @@ public class OpenFreqService : IOpenFreqService
         _activeTransmissionsAndMutedFrequencies.Clear();
         _activeTransmissionSlots.Clear();
         _tunedSlots.Clear();
+        _peerStreams.Clear();
         OnStatusMessage("Disconnected from OpenFreq server");
         Status = IOpenFreqService.OpenFreqStatus.Disconnected;
     }

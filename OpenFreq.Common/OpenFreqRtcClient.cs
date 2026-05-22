@@ -41,6 +41,7 @@ public class OpenFreqRtcClient : IDisposable
     private readonly string _password;
     private ClientWebSocket? _webSocket;
     private CancellationTokenSource _cts = new();
+    private volatile bool _authFailed;
 
     // Transmission state
     private readonly Dictionary<int, bool> _frequencyTransmissionState = new();
@@ -72,12 +73,17 @@ public class OpenFreqRtcClient : IDisposable
     /// <summary>
     /// Connect to the OpenFreq server and authenticate
     /// </summary>
-    public async Task ConnectAsync()
+    public async Task ConnectAsync(TimeSpan? connectTimeout = null)
     {
         try
         {
             _cts.Dispose();
             _cts = new CancellationTokenSource();
+            _authFailed = false;
+
+            var timeout = connectTimeout ?? TimeSpan.FromSeconds(10);
+            using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
+            connectCts.CancelAfter(timeout);
 
             // Connect WebSocket
             var ipPort = Util.ResolveAddress(ServerIp, DEFAULT_PORT);
@@ -93,7 +99,7 @@ public class OpenFreqRtcClient : IDisposable
             }
 
             _webSocket = new ClientWebSocket();
-            await _webSocket.ConnectAsync(new Uri($"ws://{ipPort.ipAddress}:{ipPort.port}"), _cts.Token);
+            await _webSocket.ConnectAsync(new Uri($"ws://{ipPort.ipAddress}:{ipPort.port}"), connectCts.Token);
 
             // Start message receiver
             _ = Task.Run(ReceiveMessagesAsync, _cts.Token);
@@ -103,15 +109,16 @@ public class OpenFreqRtcClient : IDisposable
 
             // Wait for authentication response with timeout
             var startTime = DateTime.UtcNow;
-            while (!IsAuthenticated && (DateTime.UtcNow - startTime).TotalSeconds < 5)
+            while (!IsAuthenticated && !_authFailed && (DateTime.UtcNow - startTime) < timeout)
             {
-                await Task.Delay(100, _cts.Token);
+                await Task.Delay(100, connectCts.Token);
             }
 
+            if (_authFailed)
+                throw new System.Security.Authentication.AuthenticationException("Bad password");
+
             if (!IsAuthenticated)
-            {
                 throw new TimeoutException("Authentication timeout");
-            }
 
             if (string.IsNullOrEmpty(MyPeerId))
             {
@@ -407,6 +414,8 @@ public class OpenFreqRtcClient : IDisposable
                     var error = SignalingMessageFactory.DeserializePayload<ErrorMessage>(message.Payload);
                     if (error != null)
                     {
+                        if (!IsAuthenticated)
+                            _authFailed = true;
                         OnError(error.Error);
                     }
 

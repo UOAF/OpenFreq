@@ -4,6 +4,8 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
+using System.Net.Sockets;
+using System.Security.Authentication;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
@@ -153,6 +155,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         // Falcon Radio Shared Memory
         _falconRadioSharedMemoryService.ConnectionParametersChanged +=
             FalconRadioSharedMemoryServiceOnConnectionParametersChanged;
+        _falconRadioSharedMemoryService.LogbookNameChanged += OnLogbookNameChanged;
         _falconSharedMemoryService.FlyingStateChanged += OnFlyingStateChanged;
         _falconSharedMemoryService.StateChanged += OnFalconSharedMemoryStateChanged;
 
@@ -385,19 +388,47 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         // BMS wants us to connect
         if (e.NewParameters.AttemptingToConnect)
         {
+            // Clear ALL error flags (ConnectionFail, BadPassword, HostUnknown, etc.).
+            // Clearing only ConnectionFail leaves e.g. BadPassword set from a previous attempt.
+            // BMS VoiceDoLogic checks ClientHasAnError() on every frame: any stale error flag
+            // causes SetBlockingError(true) → VoiceDoLogic returns immediately → SetChannelsFor3d()
+            // is never called → RCC is never updated → OpenFreq reads stale frequencies/power states.
+            _falconRadioSharedMemoryService.RemoveClientStatus(ClientStatusFlags.ErrorMask);
+            _falconRadioSharedMemoryService.AddClientStatus(ClientStatusFlags.ClientActive);
             _falconRadioSharedMemoryService.AddClientStatus(ClientStatusFlags.TryingToConnect);
             Settings.OpenFreqPassword = e.NewParameters.Password;
             Settings.OpenFreqServerAddress = e.NewParameters.Address + ":" + e.NewParameters.Port;
-            _ = ConnectAsync().Wait(TimeSpan.FromSeconds(3));
+            var failFlag = ClientStatusFlags.ConnectionFail;
+            try { ConnectWithTimeoutAsync(TimeSpan.FromSeconds(2)).Wait(TimeSpan.FromSeconds(2.5)); }
+            catch (AggregateException ae)
+            {
+                var flat = ae.Flatten();
+                if (flat.InnerExceptions.Any(ex => ex is AuthenticationException))
+                    failFlag = ClientStatusFlags.BadPassword;
+                else if (flat.InnerExceptions.Any(IsHostUnknownException))
+                    failFlag = ClientStatusFlags.HostUnknown;
+            }
 
             if (_openFreqService.IsConnected)
             {
+                // Ensure all error flags are gone before setting Connected so BMS never
+                // sees ClientHasAnError()=true alongside Connected in the same frame.
+                _falconRadioSharedMemoryService.RemoveClientStatus(ClientStatusFlags.ErrorMask);
                 _falconRadioSharedMemoryService.AddClientStatus(ClientStatusFlags.Connected);
                 Settings.Is3dMode = _falconSharedMemoryService.IsFlying ?? false;
+                // Prefer Nickname (set by BMS at StartExternalVoice time = LogBook.Callsign()).
+                // LogbookName is from the Telemetry struct which BMS initialises to "Wot Pilot?!"
+                // and only overwrites after ClientReady() — i.e. after this connection completes.
+                var bestName = !string.IsNullOrEmpty(e.NewParameters.Nickname)
+                    ? e.NewParameters.Nickname
+                    : _falconRadioSharedMemoryService.LogbookName;
+                if (!string.IsNullOrEmpty(bestName))
+                    _openFreqService.UpdateDisplayNameAsync(bestName);
             }
             else
             {
-                _falconRadioSharedMemoryService.AddClientStatus(ClientStatusFlags.ConnectionFail);
+                _falconRadioSharedMemoryService.AddClientStatus(failFlag);
+                _falconRadioSharedMemoryService.RemoveClientStatus(ClientStatusFlags.ClientActive);
             }
 
             _falconRadioSharedMemoryService.RemoveClientStatus(ClientStatusFlags.TryingToConnect);
@@ -411,13 +442,27 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         }
 
         // Update display name when ReadyToTransmit becomes true or nickname changes mid-session.
-        // Always fire on ReadyToTransmit transition because mPlayerMap[0] (LogbookName) is only
-        // populated once in-game, and the cached OldNickname may equal NewNickname on reconnect.
+        // Use LogbookName as fallback if Nickname is empty (same priority order as AttemptingToConnect).
+        // Never fall through to Settings.DisplayName — in BMS mode that is the GCI name.
         if (e.NewParameters.ReadyToTransmit &&
             (!e.OldParameters.ReadyToTransmit || e.OldParameters.Nickname != e.NewParameters.Nickname))
         {
-            _openFreqService.UpdateDisplayNameAsync(e.NewParameters.Nickname);
+            var name = !string.IsNullOrEmpty(e.NewParameters.Nickname)
+                ? e.NewParameters.Nickname
+                : _falconRadioSharedMemoryService.LogbookName;
+            if (!string.IsNullOrEmpty(name))
+                _openFreqService.UpdateDisplayNameAsync(name);
         }
+    }
+
+    private void OnLogbookNameChanged(object? sender, LogbookNameChangedEventArgs e)
+    {
+        // BMS initialises Telemetry::m_logbookName to "Wot Pilot?!" before the session
+        // is established; the real callsign is only written after ClientReady().
+        // Ignore the sentinel so we never push the placeholder as a display name.
+        const string BmsSentinel = "Wot Pilot?!";
+        if (!string.IsNullOrEmpty(e.NewName) && e.NewName != BmsSentinel)
+            _openFreqService.UpdateDisplayNameAsync(e.NewName);
     }
 
 
@@ -478,6 +523,26 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         {
             ShowError($"Connection failed: {ex.Message}");
         }
+    }
+
+    private static bool IsHostUnknownException(Exception ex) => ex switch
+    {
+        SocketException se => se.SocketErrorCode is SocketError.HostNotFound
+            or SocketError.HostUnreachable
+            or SocketError.NetworkUnreachable,
+        _ => ex.InnerException != null && IsHostUnknownException(ex.InnerException)
+    };
+
+    private async Task ConnectWithTimeoutAsync(TimeSpan connectTimeout)
+    {
+        if (_openFreqService.IsConnected) return;
+        if (string.IsNullOrWhiteSpace(Settings.OpenFreqServerAddress)) return;
+
+        await _openFreqService.Initialize(Settings.GetSettings(),
+            _audioService.GetRecordingBassIndex(Settings.RecordingDeviceIndex),
+            _audioService.GetPlaybackBassIndex(Settings.PlaybackDeviceIndex));
+
+        await _openFreqService.ConnectAsync(connectTimeout);
     }
 
     [RelayCommand]
@@ -555,43 +620,20 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
 
         switch (state)
         {
-            case ConnectionState.Authenticated:
-            {
-                PeerId = _openFreqService.PeerId ?? "";
-                ClearError();
-                SettingsDrawerOpened = false;
-
-                if (!Settings.ModeIsGci && Settings.MinimizeOnConnect)
-                {
-                    Dispatcher.UIThread.Post(() =>
-                    {
-                        var window = ((IClassicDesktopStyleApplicationLifetime)Application.Current!.ApplicationLifetime!)
-                            .MainWindow!;
-                        window.WindowState = WindowState.Minimized;
-                    });
-                }
-
-                break;
-            }
-            case ConnectionState.Disconnected:
+            PeerId = _openFreqService.PeerId ?? "";
+            ClearError();
+            SettingsDrawerOpened = false;
+        }
+        else if (state == ConnectionState.Disconnected)
+        {
+            // Only show the generic disconnect message when no more-specific error
+            // (e.g. bad password, auth failure) is already being displayed.
+            // Auth-failure errors are set via OnStatusMessageReceived before the
+            // WebSocket close event arrives (~100 ms earlier in practice), so
+            // HasError is already true when we get here and the overwrite is skipped.
+            if (!HasError)
                 ShowError("Lost connection to server");
-                SettingsDrawerOpened = true;
-
-                Dispatcher.UIThread.Post(() =>
-                {
-                    var window = ((IClassicDesktopStyleApplicationLifetime)Application.Current!.ApplicationLifetime!)
-                        .MainWindow!;
-                    if (window.WindowState == WindowState.Minimized)
-                    {
-                        window.WindowState = WindowState.Normal;
-                    }
-                });
-                break;
-            case ConnectionState.Connecting:
-            case ConnectionState.Connected:
-                break;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(state), state, null);
+            SettingsDrawerOpened = true;
         }
     }
 
@@ -857,6 +899,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
 
         _falconRadioSharedMemoryService.ConnectionParametersChanged -=
             FalconRadioSharedMemoryServiceOnConnectionParametersChanged;
+        _falconRadioSharedMemoryService.LogbookNameChanged -= OnLogbookNameChanged;
         _falconSharedMemoryService.FlyingStateChanged -= OnFlyingStateChanged;
 
         await DisconnectAsync();

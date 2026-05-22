@@ -85,6 +85,18 @@ public class ConnectionParametersChangedEventArgs : EventArgs
     }
 }
 
+public class LogbookNameChangedEventArgs : EventArgs
+{
+    public string? OldName { get; }
+    public string? NewName { get; }
+
+    public LogbookNameChangedEventArgs(string? oldName, string? newName)
+    {
+        OldName = oldName;
+        NewName = newName;
+    }
+}
+
 public class FlyingStateChangedEventArgs : EventArgs
 {
     public bool OldFlyingState { get; }

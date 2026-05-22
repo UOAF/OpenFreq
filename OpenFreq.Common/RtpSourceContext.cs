@@ -97,46 +97,53 @@ public sealed class RtpSourceContext : IDisposable
             {
                 var p = await chan.ReadAsync(ct);
 
-                // Loss detection and concealment — per-source sequence
-                if (FirstPacketReceived)
+                // FEC/PLC — the drain thread detected a missing slot at  the correct clock position and injected this sentinel.
+                // p.Payload is non-empty when N+1 was already buffered and carries FEC bits; in that case use FEC recovery.
+                // p.Payload is empty for burst-loss or first-frame loss -> use PLC.
+                if (p.IsConcealment)
                 {
-                    long expectedSeq = LastSequenceReceived + 1;
-
-                    if (p.SequenceNumber != expectedSeq)
+                    if (FirstPacketReceived && LastValidMetadata != null)
                     {
-                        long gap = p.SequenceNumber - expectedSeq;
-
-                        if (gap > 0 && gap < 100)
-                        {
-                            Logger.LogDebug(
-                                "SSRC={Ssrc:X8}: {Gap} lost packet(s) (seq {Start} to {End}), generating concealment",
-                                Ssrc, gap, expectedSeq, p.SequenceNumber - 1);
-
-                            for (long i = 0; i < gap; i++)
-                            {
-                                ushort lostSeq = (ushort)(expectedSeq + i);
-                                // Only the last lost packet can use FEC (next packet carries FEC for it)
-                                await GenerateConcealmentAudio(ct, lostSeq, i == gap - 1 ? p : null);
-                            }
-                        }
+                        long lostSeq = LastSequenceReceived + 1;
+                        // Wrap payload in a minimal packet so GenerateConcealmentAudio  can reach it via nextPacket?.Payload; null signals pure PLC.
+                        SequencedPacket? fecPacket = p.Payload.Length > 0 ? p : null;
+                        Logger.LogDebug(
+                            "SSRC={Ssrc:X8}: proactive {Mode} for seq {Seq}",
+                            Ssrc, fecPacket != null ? "FEC" : "PLC", lostSeq);
+                        await GenerateConcealmentAudio(ct, (ushort)lostSeq, fecPacket);
+                        LastSequenceReceived = lostSeq;
                     }
+                    continue;
                 }
-                else
+
+                // Discard genuinely late packets
+                if (FirstPacketReceived && p.SequenceNumber <= LastSequenceReceived)
                 {
+                    Logger.LogWarning(
+                        "SSRC={Ssrc:X8}: discarding late packet seq={Seq} (last decoded={Last})",
+                        Ssrc, p.SequenceNumber, LastSequenceReceived);
+                    continue;
+                }
+
+                if (!FirstPacketReceived)
                     FirstPacketReceived = true;
+
+                // Diagnostic: jitter buffer should have injected ConcealmentNeeded for  every missing slot - a gap here means it missed one
+                if (FirstPacketReceived && p.SequenceNumber != LastSequenceReceived + 1)
+                {
+                    long gap = p.SequenceNumber - LastSequenceReceived - 1;
+                    if (gap is > 0 and < 100)
+                        Logger.LogDebug(
+                            "SSRC={Ssrc:X8}: unexpected seq gap of {Gap} before seq {Seq} " +
+                            "(jitter-buffer miss — PLC was not generated for these slots)",
+                            Ssrc, gap, p.SequenceNumber);
                 }
 
                 LastSequenceReceived = p.SequenceNumber;
                 await ProcessReadyPacket(ct, p);
             }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-            catch (ChannelClosedException)
-            {
-                break;
-            }
+            catch (OperationCanceledException) { break; }
+            catch (ChannelClosedException) { break; }
             catch (Exception ex)
             {
                 // Don't let a single decode failure permanently kill this SSRC's audio.
@@ -207,6 +214,15 @@ public sealed class RtpSourceContext : IDisposable
 
         concealmentAudio = DecodeOpus(nextOpusData, decodeFec: nextPacket != null);
 
+        // LBRR FEC is not guaranteed in every packet (e.g. first frame of a talkspurt, or sender had FEC disabled for that window).  Fall back to PLC.
+        if (concealmentAudio.Length == 0 && nextPacket != null)
+        {
+            Logger.LogDebug(
+                "SSRC={Ssrc:X8}: FEC had no LBRR for seq {LostSeq}, falling back to PLC",
+                Ssrc, lostSequence);
+            concealmentAudio = DecodeOpus([], decodeFec: false);
+        }
+
         if (concealmentAudio.Length == 0)
             return;
 
@@ -259,8 +275,7 @@ public sealed class RtpSourceContext : IDisposable
 
             int samplesDecoded;
 
-            // We're actually looking for the _previous_ packet,
-            // which can be FEC'd into the next in case it gets lost.
+            // We're actually looking for the _previous_ packet, which can be FEC'd into the next in case it gets lost.
             samplesDecoded = OpusDecoder.Decode(
                 opusData, outSpan.Span, OPUS_FRAME_SAMPLES, decodeFec);
 
