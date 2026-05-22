@@ -196,7 +196,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         // If we are in 3d, the SHMEM AcName and AcNCTR fields are now populated.
         
         var preset = RadioStationPresets.GetPresetByBmsAircraftNctr(_falconSharedMemoryService.AcNCTR);
-        foreach (var channelGroup in ChannelList.ChannelGroups)
+        foreach (var channelGroup in ChannelList.Locations)
         {
             channelGroup.RadioStationData.Preset = preset;
             _logger.LogDebug("BMS Aircraft info changed: switching ChannelGroup {channelGroup} to preset {preset}", channelGroup.RadioStationData, channelGroup.RadioStationData.Preset.Name);
