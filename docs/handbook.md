@@ -1,3 +1,6 @@
+---
+{}
+---
 # OpenFreq Handbook
 
 Physics-based radio communication for Falcon BMS and other flight simulators.
@@ -6,13 +9,13 @@ Physics-based radio communication for Falcon BMS and other flight simulators.
 
 ## Contents
 
-1. [Server](#1-server)
-2. [Client — BMS Mode](#2-client--bms-mode)
-3. [Client — GCI Mode](#3-client--gci-mode)
+1.  [Server](#1-server "Server")
+2.  [Client — BMS Mode](#2-client--bms-mode "Client — BMS Mode")
+3.  [Client — GCI Mode](#3-client--gci-mode "Client — GCI Mode")
 
 ---
 
-## 1. Server
+## 1\. Server
 
 ### Requirements
 
@@ -31,16 +34,15 @@ On first launch the server creates `OpenFreq.Server.json` next to the binary wit
 
 ### Configuration — `OpenFreq.Server.json`
 
-| Field | Default | Description |
-|---|---|---|
-| `serverPassword` | `""` | Password clients must supply. Empty = no auth required. |
-| `websocketPort` | `9987` | TCP port for the WebSocket signaling connection. |
-| `audioPort` | `9988` | UDP port for RTP audio relay. |
-| `maxClientsPerChannel` | `50` | Max simultaneous clients on one frequency. |
-| `maxChannelsPerClient` | `10` | Max frequencies a single client may join. |
-| `opusCompression` | `true` | Enable Opus audio encoding. Disable only for debugging. |
-| `broadcastPeerUpdates` | `true` | Broadcast peer join/leave events to all channel members. |
-
+| Field                  | Default | Description                                               |
+|------------------------|---------|-----------------------------------------------------------|
+| `serverPassword`       | `""`    | Password clients must supply. Empty = no auth required.   |
+| `websocketPort`        | `9987`  | TCP port for the WebSocket signaling connection.          |
+| `audioPort`            | `9988`  | UDP port for RTP audio relay.                             |
+| `maxClientsPerChannel` | `50`    | Max simultaneous clients on one frequency.                |
+| `maxChannelsPerClient` | `10`    | Max frequencies a single client may join.                 |
+| `opusCompression`      | `true`  | Enable Opus audio encoding. Disable only for debugging.   |
+| `broadcastPeerUpdates` | `true`  | Broadcast peer join/leave events to all channel members.  |
 
 ### TUI
 
@@ -67,7 +69,7 @@ UDP 9988  (audio relay)
 
 ---
 
-## 2. Client — BMS Mode
+## 2\. Client — BMS Mode
 
 BMS mode is **Windows-only**. The client reads radio state and position data directly from Falcon BMS shared memory — no manual frequency configuration needed.
 
@@ -78,26 +80,26 @@ BMS mode is **Windows-only**. The client reads radio state and position data dir
 
 ### First-Time Setup
 
-1. Launch the OpenFreq client.
-2. Open **Settings** (drawer on the left).
-3. Set **Mode** to **BMS**.
-4. Select your **Theater** from the dropdown. If BMS is installed, theaters are detected automatically and the heightmap path is filled in for you.
-5. Select your **Input** and **Output** audio devices.
-6. Set a **Display Name** (used as your callsign in GCI mode; in BMS mode your logbook callsign overrides this automatically).
-7. Optionally configure **UHF Squelch** and **VHF Squelch** hotkeys (see [Squelch](#squelch-bms) below).
-8. Click **Save** / close the drawer.
+1.  Launch the OpenFreq client.
+2.  Open **Settings** (drawer on the left).
+3.  Set **Mode** to **BMS**.
+4.  Select your **Theater** from the dropdown. If BMS is installed, theaters are detected automatically and the heightmap path is filled in for you.
+5.  Select your **Input** and **Output** audio devices.
+6.  Set a **Display Name** (used as your callsign in GCI mode; in BMS mode your logbook callsign overrides this automatically).
+7.  Optionally configure **UHF Squelch** and **VHF Squelch** hotkeys (see [Squelch](#squelch-bms "Squelch") below).
+8.  Click **Save** / close the drawer.
 
 ### Connecting
 
 In BMS mode the client is launched and connected **by BMS itself** when connect in BMS. You do not click Connect manually. BMS passes the server address, port, and password from its voice configuration.
 
 The connection flow:
-1. BMS signals OpenFreq to connect → client connects to the server automatically.
-2. On successful auth the window minimizes (configurable via **Minimize on Connect**).
-3. When BMS enters 3D → **Game mode** activates; RF physics (path loss, Doppler, terrain diffraction) apply to all audio.
-4. BMS exits 3D → Lobby mode activates.
-5. BMS disconnects -> OpenFreq disconnects
 
+1.  BMS signals OpenFreq to connect → client connects to the server automatically.
+2.  On successful auth the window minimizes (configurable via **Minimize on Connect**).
+3.  When BMS enters 3D → **Game mode** activates; RF physics (path loss, Doppler, terrain diffraction) apply to all audio.
+4.  BMS exits 3D → Lobby mode activates.
+5.  BMS disconnects -> OpenFreq disconnects
 
 ### Radio Channels
 
@@ -122,7 +124,7 @@ Game mode is tied to BMS flight state:
 
 Only clients in the same mode (3D or lobby) can hear each other on a given frequency.
 
-### <a name="squelch-bms"></a>Squelch
+### Squelch
 
 Squelch lets you manually open/close squelch on the UHF or VHF radio (useful when flying low or behind terrain). Assign hotkeys via **Settings → UHF Squelch Hotkey** and **VHF Squelch Hotkey**. The hotkeys are only active when Game mode is on.
 
@@ -136,7 +138,7 @@ Enable **Sidetone** to hear your own transmissions in the headset. Adjust volume
 
 ---
 
-## 3. Client — GCI Mode
+## 3\. Client — GCI Mode
 
 GCI mode is for ground-based operators (controllers, JTAC, AWACS players) who are **not** inside a BMS cockpit. It works on Windows and Linux.
 
@@ -144,15 +146,15 @@ In GCI mode you manually define your **location** (position on the theater map) 
 
 ### Setup
 
-1. Launch the OpenFreq client.
-2. Open **Settings**.
-3. Set **Mode** to **GCI**.
-4. Enter the **Server Address** (`host:port`, e.g. `192.168.1.10:9987`) and **Password**.
-5. Select your **Theater**.
-6. Set the **Heightmap Path** — this is required in GCI mode. It is the `.raw` heightmap file for the theater. If BMS is installed on the same machine, select the theater from the dropdown to fill this in automatically.
-7. Optionally enter a **Tacview Server Address** and password if you want live positional tracking via Tacview ACMI.
-8. Select **Input** and **Output** audio devices.
-9. Set a **Display Name** — this is your callsign shown to other clients.
+1.  Launch the OpenFreq client.
+2.  Open **Settings**.
+3.  Set **Mode** to **GCI**.
+4.  Enter the **Server Address** (`host:port`, e.g. `192.168.1.10:9987`) and **Password**.
+5.  Select your **Theater**.
+6.  Set the **Heightmap Path** — this is required in GCI mode. It is the `.raw` heightmap file for the theater. If BMS is installed on the same machine, select the theater from the dropdown to fill this in automatically.
+7.  Optionally enter a **Tacview Server Address** and password if you want live positional tracking via Tacview ACMI.
+8.  Select **Input** and **Output** audio devices.
+9.  Set a **Display Name** — this is your callsign shown to other clients.
 
 ### Locations
 
