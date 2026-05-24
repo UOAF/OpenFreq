@@ -1,0 +1,262 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- OpenFreq Logo – Flat Rectangular + Quadratic Mark (SVG) -->
+
+<svg
+   width="900"
+   height="240"
+   viewBox="0 0 900 240"
+   version="1.1"
+   id="svg8"
+   sodipodi:docname="open_freq_logo6.svg.2025_12_15_23_33_07.0.svg"
+   inkscape:version="1.4.2 (ebf0e940d0, 2025-05-08)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs8">
+    <rect
+       x="-193.68509"
+       y="-90.486082"
+       width="442.70876"
+       height="212.38056"
+       id="rect6" />
+    <inkscape:path-effect
+       effect="bend_path"
+       id="path-effect4"
+       is_visible="true"
+       lpeversion="1"
+       bendpath="m -167.6693,8.9738264 h 93.538853"
+       prop_scale="1.03"
+       scale_y_rel="false"
+       vertical="false"
+       hide_knot="false" />
+    <inkscape:path-effect
+       effect="envelope"
+       id="path-effect3"
+       is_visible="true"
+       lpeversion="1"
+       yy="true"
+       xx="true"
+       bendpath1="m 231.4686,110.22791 h 6.07019"
+       bendpath2="m 237.53879,110.22791 v 17.21037"
+       bendpath3="m 231.4686,127.43828 h 6.07019"
+       bendpath4="m 234.50913,114.45821 0.39659,9.54295"
+       bendpath4-nodetypes="cc" />
+    <inkscape:path-effect
+       effect="taper_stroke"
+       start_shape="center | center"
+       end_shape="center | center"
+       id="path-effect1"
+       is_visible="true"
+       lpeversion="1"
+       stroke_width="3"
+       subpath="1"
+       attach_start="0.2"
+       end_offset="0.2"
+       start_smoothing="0.5"
+       end_smoothing="0.5"
+       jointype="extrapolated"
+       miter_limit="100" />
+    <inkscape:path-effect
+       effect="perspective-envelope"
+       up_left_point="231.57,110.22791"
+       up_right_point="240.44,110.22791"
+       down_left_point="231.4686,127.43828"
+       down_right_point="240.44,127.44"
+       id="path-effect12"
+       is_visible="true"
+       lpeversion="1"
+       deform_type="perspective"
+       horizontal_mirror="false"
+       vertical_mirror="false"
+       overflow_perspective="false" />
+    <inkscape:path-effect
+       effect="taper_stroke"
+       start_shape="center | center"
+       end_shape="center | center"
+       id="path-effect9"
+       is_visible="true"
+       lpeversion="1"
+       stroke_width="2.7"
+       subpath="1"
+       attach_start="0.4"
+       end_offset="0.2"
+       start_smoothing="0.5"
+       end_smoothing="0.5"
+       jointype="extrapolated"
+       miter_limit="100" />
+    <inkscape:path-effect
+       effect="mirror_symmetry"
+       start_point="237.2233,100.99847"
+       end_point="237.2233,94.372397"
+       center_point="237.2233,97.685434"
+       id="path-effect8"
+       is_visible="true"
+       lpeversion="1.2"
+       lpesatellites=""
+       mode="free"
+       discard_orig_path="false"
+       fuse_paths="false"
+       oposite_fuse="false"
+       split_items="false"
+       split_open="false"
+       link_styles="false" />
+    <linearGradient
+       id="metal"
+       x1="-41.626914"
+       y1="-5.4772256"
+       x2="-30.672463"
+       y2="-5.4772256"
+       gradientTransform="matrix(0.91287093,0,0,1.0954451,268.21313,119)"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0%"
+         stop-color="#cfd3d6"
+         id="stop1" />
+      <stop
+         offset="50%"
+         stop-color="#9aa1a7"
+         id="stop2" />
+      <stop
+         offset="100%"
+         stop-color="#e5e7e9"
+         id="stop3" />
+    </linearGradient>
+    <inkscape:path-effect
+       effect="fill_between_many"
+       method="bsplinespiro"
+       autoreverse="false"
+       close="false"
+       join="false"
+       linkedpaths="#rect9,0,1"
+       id="path-effect10" />
+    <inkscape:path-effect
+       effect="fill_between_many"
+       method="bsplinespiro"
+       autoreverse="false"
+       close="false"
+       join="false"
+       linkedpaths="#path10,0,1"
+       id="path-effect2" />
+  </defs>
+  <sodipodi:namedview
+     id="namedview8"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="0.47277945"
+     inkscape:cx="680.02109"
+     inkscape:cy="13.748482"
+     inkscape:window-width="2560"
+     inkscape:window-height="1371"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="g8" />
+  <!-- ========== COLOR PALETTE (FLAT) ========== -->
+  <!-- Dark: #0b1220 | Accent: #38bdf8 | Light: #e5e7eb -->
+  <!-- ========== RECTANGULAR LOGO (WITH TEXT) ========== -->
+  <rect
+     x="0"
+     y="0"
+     width="898.50433"
+     height="240"
+     rx="23.960117"
+     fill="#0b1220"
+     id="rect1"
+     style="stroke-width:0.999168" />
+  <!-- Plug-inspired frequency mark -->
+  <!-- Wordmark -->
+  <g
+     id="g9"
+     transform="translate(113.64981)">
+    <g
+       transform="translate(159.7404,123.95595)"
+       id="g8">
+      <!-- Flat plug body -->
+      <rect
+         x="-70"
+         y="-18"
+         width="90"
+         height="36"
+         rx="8"
+         fill="#e5e7eb"
+         id="rect2" />
+      <!-- Plug tip -->
+      <rect
+         x="20"
+         y="-10"
+         width="36"
+         height="20"
+         rx="4"
+         fill="#e5e7eb"
+         id="rect3" />
+      <rect
+         x="55.626522"
+         y="-6.1662884"
+         width="3.0829608"
+         height="12.332577"
+         rx="0.3425512"
+         fill="#e5e7eb"
+         id="rect3-6"
+         style="stroke-width:0.229797" />
+      <ellipse
+         style="fill:#e5e7eb;fill-opacity:1;fill-rule:nonzero;stroke:#e5e7eb;stroke-width:3"
+         id="path10"
+         inkscape:linked-fill="path2"
+         cx="246.13702"
+         cy="118.30431"
+         rx="3.0350957"
+         ry="6.7544274"
+         transform="translate(-184.547,-118.30431)" />
+      <!-- Insulator bands -->
+      <rect
+         x="28"
+         y="-11.682592"
+         width="4"
+         height="22.804321"
+         fill="#0b1220"
+         id="rect4"
+         style="stroke-width:1.06781" />
+      <rect
+         x="38.268982"
+         y="-10.934773"
+         width="4"
+         height="22.056503"
+         fill="#0b1220"
+         id="rect5"
+         style="stroke-width:1.05015" />
+      <rect
+         x="48.537964"
+         y="-10.129384"
+         width="5.6825924"
+         height="20.980137"
+         fill="#0b1220"
+         id="rect5-6"
+         style="stroke-width:1.22077" />
+      <!-- Frequency lines (flat, geometric) -->
+      <path
+         style="fill:none;stroke:#38bdf8;stroke-width:5;stroke-linecap:butt;stroke-linejoin:miter;stroke-dasharray:none;stroke-opacity:1"
+         d="m -273.59584,0.14772567 141.01494,-0.051674 10.60534,-20.13943267 13.11908,31.81551 10.623803,-23.04627 8.61642,22.90459 6.12236,-12.53059123 13.304811,0.042988"
+         id="path5"
+         sodipodi:nodetypes="cccccccc" />
+    </g>
+    <text
+       xml:space="preserve"
+       id="text5"
+       style="font-size:85.3333px;line-height:1.25;font-family:sans-serif;letter-spacing:1.15px;white-space:pre;shape-inside:url(#rect6);shape-padding:5.23473;display:inline;fill:#38bdf8;fill-opacity:1;stroke-width:1;stroke-dasharray:none"
+       transform="translate(444.56814,157.50309)"><tspan
+         x="-188.45117"
+         y="-6.2635546"
+         id="tspan3"><tspan
+           style="fill:#e5e7eb"
+           id="tspan1">Open</tspan><tspan
+           style="font-weight:800;font-family:Inter;-inkscape-font-specification:'Inter Ultra-Bold'"
+           id="tspan2">Freq</tspan></tspan></text>
+  </g>
+</svg>
