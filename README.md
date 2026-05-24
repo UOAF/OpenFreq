@@ -1,6 +1,5 @@
 ---
-{}
----
+
 ![OpenFreq](docs/openfreq_banner.png)
 
 # OpenFreq
@@ -28,29 +27,29 @@ Real-time network voice radio with real-time physics simulation for [Falcon BMS]
 
 ### BMS Mode
 
-1.  Make sure IVC is not running
-2.  Launch BMS and OpenFreq in any order
-3.  Check that OpenFreq is set to BMS mode
-4.  Connect via BMS UI and enter OpenFreq server address in the BMS IVC field
+1. Make sure IVC is not running
+2. Launch BMS and OpenFreq in any order
+3. **Check that OpenFreq is set to BMS mode**
+4. Connect via BMS UI and enter OpenFreq server address in the BMS IVC field
 
 ### GCI Mode
 
 _Note: BMS is not required for GCI Mode_
 
-1.  Launch OpenFreq Client, set it to GCI Mode
-2.  Select Theater. Linux: specify Theater heightmap file
-3.  Enter connection data and Display name, Connect
-4.  Don't forget to switch to "Game" mode when clients move to 3D
+1. Launch OpenFreq Client, set it to GCI Mode
+2. Select Theater. Linux: specify Theater heightmap file
+3. Enter connection data and Display name, Connect
+4. Don't forget to switch to "Game" mode when clients move to 3D
 
 ### Server
 
-1.  Verify ports 9987 (TCP), 9988 (UDP) are open (default configuration)
-2.  Launch OpenFreq Server (sensible defaults preconfigured)
-3.  The configuration file is automatically created (`OpenFreq.Server.json`) - adapt and restart if necessary
+1. Verify ports 9987 (TCP), 9988 (UDP) are open (default configuration)
+2. Launch OpenFreq Server (sensible defaults preconfigured)
+3. The configuration file is automatically created (`OpenFreq.Server.json`) - adapt and restart if necessary
 
 ## Documentation
 
-See the [Handbook](docs/handbook.md "Handbook") for in-depth usage, configuration, and architecture details.
+See the [Handbook](docs/handbook.md "Handbook") for in-depth usage and configuration.
 
 ## Requirements
 
@@ -62,12 +61,12 @@ See the [Handbook](docs/handbook.md "Handbook") for in-depth usage, configuratio
 
 ![OpenFreq Dataflow](docs/openfreq_data_flow.png)
 
-| Component             | Role                                                 |
-|-----------------------|------------------------------------------------------|
-| `OpenFreq.Server`     | Central relay — signaling (WebSocket) + audio (UDP)  |
-| `OpenFreq.Client`     | Avalonia desktop GUI for end users                   |
-| `OpenFreq.Common`     | Shared protocol, RTP pipeline, jitter buffer         |
-| `OpenFreq.Testclient` | Minimal CLI client for testing                       |
+| Component             | Role                                                |
+| --------------------- | --------------------------------------------------- |
+| `OpenFreq.Server`     | Central relay — signaling (WebSocket) + audio (UDP) |
+| `OpenFreq.Client`     | Avalonia desktop GUI for end users                  |
+| `OpenFreq.Common`     | Shared protocol, RTP pipeline                       |
+| `OpenFreq.Testclient` | Minimal CLI client for testing                      |
 
 ## Build & Run
 
@@ -81,6 +80,10 @@ dotnet run --project OpenFreq.Server/OpenFreq.Server.csproj
 # Run client
 dotnet run --project OpenFreq.Client/OpenFreq.Client.csproj
 ```
+
+## Contributing
+
+Pull requests are welcome. Due to the complexity of this nature, please keep them small. For bugfixes, please specify clear testing/repro cases.
 
 ## License
 
