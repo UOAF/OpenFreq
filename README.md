@@ -42,6 +42,10 @@ Real-time network voice radio with real-time physics simulation for [Falcon BMS]
 3. The configuration file is automatically created (``OpenFreq.Server.json``) - adapt and restart if necessary
 
 
+## Documentation
+See the [Handbook](docs/handbook.md) for in-depth usage, configuration, and architecture details.
+
+
 ## Requirements
 
 - **Self-contained builds** — no dependencies, runs as-is

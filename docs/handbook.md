@@ -41,7 +41,6 @@ On first launch the server creates `OpenFreq.Server.json` next to the binary wit
 | `opusCompression` | `true` | Enable Opus audio encoding. Disable only for debugging. |
 | `broadcastPeerUpdates` | `true` | Broadcast peer join/leave events to all channel members. |
 
-> **Tip:** Set `serverPassword` to a non-empty string. Clients must enter it in the password field or BMS must pass it via its voice configuration.
 
 ### TUI
 
@@ -90,29 +89,33 @@ BMS mode is **Windows-only**. The client reads radio state and position data dir
 
 ### Connecting
 
-In BMS mode the client is launched and connected **by BMS itself** when you enter the 3D world. You do not click Connect manually. BMS passes the server address, port, and password from its voice configuration.
+In BMS mode the client is launched and connected **by BMS itself** when connect in BMS. You do not click Connect manually. BMS passes the server address, port, and password from its voice configuration.
 
 The connection flow:
 1. BMS signals OpenFreq to connect → client connects to the server automatically.
 2. On successful auth the window minimizes (configurable via **Minimize on Connect**).
-3. BMS enters 3D → **3D mode** activates; RF physics (path loss, Doppler, terrain diffraction) apply to all audio.
-4. BMS exits 3D → 3D mode deactivates; client disconnects.
+3. When BMS enters 3D → **Game mode** activates; RF physics (path loss, Doppler, terrain diffraction) apply to all audio.
+4. BMS exits 3D → Lobby mode activates.
+5. BMS disconnects -> OpenFreq disconnects
+
 
 ### Radio Channels
 
 OpenFreq reads the BMS RCC shared memory (Radio Control Computer) every frame. It tracks:
 
-- **UHF radio** (Radio 1): frequency and power state
-- **VHF radio** (Radio 2): frequency and power state
-- **Guard**: always monitored when the radio is powered
+- **Radio 1 (UHF for the F-16)**: frequency and power state
+- **Radio 2 (VHF for the F-16)**: frequency and power state
+- **Guard**: tied to Radio 1 as per BMS implementation.
 
 Frequency changes in the cockpit are reflected instantly in OpenFreq. When a radio is switched off or tuned to the parking frequency (9999 kHz) the channel is disconnected automatically.
 
-> **Note:** If your aircraft type is known to BMS, OpenFreq automatically selects the correct radio hardware preset (transmit power, receiver sensitivity, noise type) for that airframe.
+> **Note:** For F-16 and F-15, OpenFreq automatically selects the correct radio hardware preset (transmit power, receiver sensitivity, noise SFX) for that airframe. For all other aircraft it uses a generic preset.
 
-### 3D Mode
+### Lobby Mode / Game Mode
 
-3D mode is tied to BMS flight state:
+This mode reflects current IVC implementation: in Lobby mode, all audio communication is transmitted and received as-is without any changes.
+
+Game mode is tied to BMS flight state:
 
 - **In 3D (flying):** RF propagation physics active. Audio volume, SNR, and Doppler shift are calculated from your position relative to the transmitter using the theater heightmap for terrain diffraction.
 - **On the ground / in 2F:** Standard voice chat; no propagation modeling.
@@ -121,7 +124,7 @@ Only clients in the same mode (3D or lobby) can hear each other on a given frequ
 
 ### <a name="squelch-bms"></a>Squelch
 
-Squelch lets you manually open/close squelch on the UHF or VHF radio (useful when flying low or behind terrain). Assign hotkeys via **Settings → UHF Squelch Hotkey** and **VHF Squelch Hotkey**. The hotkeys are only active when 3D mode is on.
+Squelch lets you manually open/close squelch on the UHF or VHF radio (useful when flying low or behind terrain). Assign hotkeys via **Settings → UHF Squelch Hotkey** and **VHF Squelch Hotkey**. The hotkeys are only active when Game mode is on.
 
 ### Pan
 
@@ -139,7 +142,7 @@ GCI mode is for ground-based operators (controllers, JTAC, AWACS players) who ar
 
 In GCI mode you manually define your **location** (position on the theater map) and the **channels** (frequencies) you monitor. RF propagation applies based on your configured position.
 
-### First-Time Setup
+### Setup
 
 1. Launch the OpenFreq client.
 2. Open **Settings**.
@@ -188,7 +191,7 @@ You can also click **Join** directly from the **peer list panel** on the right �
 
 Hold the configured **PTT hotkey** to transmit. Release to stop. The channel card shows a transmit indicator while keyed.
 
-When transmitting on a channel, all other channels at the same location are automatically muted on your output to prevent feedback.
+When transmitting on a channel, all other channels at the same location are automatically muted.
 
 ### Tacview / ACMI Integration
 
@@ -200,9 +203,10 @@ Enter a Tacview server address in settings to connect to Tacview's live telemetr
 
 > Tacview ACMI is optional. Without it, position is static and set manually.
 
-### 3D Mode
+### Lobby Mode / Game Mode
 
+Same function as in BMS-Mode. However this has to be set manually by the GCI when other players switch to 3D / 2D.
 
 ### Configuration Persistence
 
-All locations, channels, hotkeys, and settings are saved automatically to `appsettings.json` next to the client binary on exit. They are restored on the next launch.
+All locations, channels, hotkeys, and settings are saved automatically to `OpenFreq.Client.json` next to the client binary on exit. They are restored on the next launch.
