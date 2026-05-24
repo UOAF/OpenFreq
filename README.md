@@ -15,7 +15,8 @@ Real-time network voice radio with real-time physics simulation for [Falcon BMS]
 - GCI Position sources: static via map UI picker & address search or live Tacview/ACMI feed
 - Transmitter / Receiver performance presets and SFX
 - Opus audio compression and modern RTP stack
-- Sidetone (microphone monitoring)
+- Peer list
+- Experimental: sidetone (microphone monitoring)
 - Server: Native Windows & Linux support
 - Client: Native Windows & Linux support (GCI mode only)
 
