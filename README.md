@@ -49,7 +49,7 @@ Real-time network voice radio with real-time physics simulation for [Falcon BMS]
 
 ## Architecture
 
-![OpenFreq Dataflow](docs/OpenFreq Data Flow.drawio.png)
+![OpenFreq Dataflow](docs/openfreq_data_flow.png)
 
 | Component | Role |
 |---|---|
