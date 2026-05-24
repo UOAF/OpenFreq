@@ -1,4 +1,4 @@
-![OpenFreq](docs/openfreq_banner.svg)
+![OpenFreq](docs/openfreq_banner.png)
 
 # OpenFreq
 
@@ -22,9 +22,9 @@ Real-time network voice radio with real-time physics simulation for [Falcon BMS]
 ## Quick Start
 ### BMS Mode
 1. Make sure IVC is not running
-- Launch BMS and OpenFreq in any order
-- Check that OpenFreq is set to BMS mode
-- Connect via BMS UI and enter OpenFreq server address in the BMS IVC field
+2. Launch BMS and OpenFreq in any order
+3. Check that OpenFreq is set to BMS mode
+4. Connect via BMS UI and enter OpenFreq server address in the BMS IVC field
 
 ### GCI Mode
 *Note: BMS is not required for GCI Mode*
@@ -49,7 +49,7 @@ Real-time network voice radio with real-time physics simulation for [Falcon BMS]
 
 ## Architecture
 
-![](docs/OpenFreq Data Flow.drawio.png)
+![OpenFreq Dataflow](docs/OpenFreq Data Flow.drawio.png)
 
 | Component | Role |
 |---|---|
