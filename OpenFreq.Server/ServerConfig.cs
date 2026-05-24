@@ -18,10 +18,7 @@ public class ServerConfig
     
     [JsonPropertyName("maxChannelsPerClient")]
     public int MaxChannelsPerClient { get; set; } = 10;
-    
-    [JsonPropertyName("opusCompression")]
-    public bool EnableOpusCompression { get; set; } = true;
-    
+
     [JsonPropertyName("broadcastPeerUpdates")]
     public bool BroadcastPeerUpdates { get; set; } = true;
 }

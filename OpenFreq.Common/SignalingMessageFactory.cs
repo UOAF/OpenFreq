@@ -54,20 +54,19 @@ public static class SignalingMessageFactory
         };
     }
 
-    public static SignalingMessage CreateSuccess(string message, SortedDictionary<int, List<PeerData>> peers, string? peerId = null, int? audioPort = null, bool opusEnabled = true)
+    public static SignalingMessage CreateSuccess(string message, SortedDictionary<int, List<PeerData>> peers, string? peerId = null, int? audioPort = null)
     {
         return new SignalingMessage
         {
             Type = SignalingMessageTypes.Success,
             Payload = JsonSerializer.SerializeToElement(
-                new SuccessMessage 
-                { 
-                    Message = message, 
-                    PeerId = peerId, 
+                new SuccessMessage
+                {
+                    Message = message,
+                    PeerId = peerId,
                     AudioPort = audioPort,
-                    OpusCompressionEnabled = opusEnabled,
                     FrequenciesPeers = peers
-                }, 
+                },
                 OpenFreqJsonContext.Default.SuccessMessage)
         };
     }

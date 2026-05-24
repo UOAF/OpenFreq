@@ -149,7 +149,6 @@ class Program
                     AudioPort = 9988,
                     MaxClientsPerChannel = 50,
                     MaxChannelsPerClient = 10,
-                    EnableOpusCompression = true,
                     BroadcastPeerUpdates = true
                 };
 

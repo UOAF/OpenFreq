@@ -16,7 +16,6 @@ public sealed class RtpJitterBufferPool : IDisposable
     private readonly ILoggerFactory _loggerFactory;
     private readonly CancellationToken _cancelled;
     private readonly ChannelWriter<AudioReceivedEventArgs> _player;
-    private readonly bool _opusEnabled;
     private readonly int _initialBufferMs;
 
     private readonly Dictionary<uint, RtpSourceContext> _sources = new();
@@ -36,14 +35,12 @@ public sealed class RtpJitterBufferPool : IDisposable
         ILoggerFactory loggerFactory,
         CancellationToken ct,
         ChannelWriter<AudioReceivedEventArgs> player,
-        bool opusEnabled,
         int initialBufferMs)
     {
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<RtpJitterBufferPool>();
         _cancelled = ct;
         _player = player;
-        _opusEnabled = opusEnabled;
         _initialBufferMs = initialBufferMs;
     }
 
@@ -58,7 +55,7 @@ public sealed class RtpJitterBufferPool : IDisposable
         if (!_sources.TryGetValue(ssrc, out src))
         {
             _logger.LogInformation("New RTP source: SSRC={Ssrc:X8}", ssrc);
-            src = new RtpSourceContext(ssrc, _loggerFactory, _cancelled, _player, _opusEnabled, _initialBufferMs);
+            src = new RtpSourceContext(ssrc, _loggerFactory, _cancelled, _player, _initialBufferMs);
             _sources.Add(ssrc, src);
             SourceAdded?.Invoke(ssrc);
         }

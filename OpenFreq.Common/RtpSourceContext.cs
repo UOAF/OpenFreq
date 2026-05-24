@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading.Channels;
 using Concentus.Structs;
@@ -39,7 +38,7 @@ public sealed class RtpSourceContext : IDisposable
     /// it's chared by all contexts.
     /// </remarks>
     private ChannelWriter<AudioReceivedEventArgs> ToPlay { get; }
-    private OpusDecoder? OpusDecoder { get; }
+    private OpusDecoder OpusDecoder { get; }
     private Task DecoderTask { get; }
     
     // Loss detection state
@@ -60,7 +59,6 @@ public sealed class RtpSourceContext : IDisposable
         ILoggerFactory loggerFactory,
         CancellationToken ct,
         ChannelWriter<AudioReceivedEventArgs> player,
-        bool opusEnabled,
         int initialBufferMs)
     {
         Logger = loggerFactory.CreateLogger<RtpSourceContext>();
@@ -71,12 +69,9 @@ public sealed class RtpSourceContext : IDisposable
         JitterBuffer = new RtpJitterBuffer(loggerFactory.CreateLogger<RtpJitterBuffer>());
         JitterBuffer.SetTargetBufferSize(initialBufferMs);
 
-        if (opusEnabled)
-        {
-            #pragma warning disable CS0618 // Using the new factory method will not work on Linux
-            OpusDecoder = new OpusDecoder(OpenFreqRtcClient.SAMPLE_RATE, 1);
-#pragma warning restore CS0618
-        }
+        #pragma warning disable CS0618 // Using the new factory method will not work on Linux
+        OpusDecoder = new OpusDecoder(OpenFreqRtcClient.SAMPLE_RATE, 1);
+        #pragma warning restore CS0618
 
         // Wire up our task and off we go.
         var decChan = Channel.CreateBounded<SequencedPacket>(new BoundedChannelOptions(128)
@@ -174,19 +169,9 @@ public sealed class RtpSourceContext : IDisposable
 
         LastValidMetadata = metadata;
 
-        Memory<short> decodedAudio;
-        if (OpusDecoder != null)
-        {
-            decodedAudio = DecodeOpus(packet.Payload, decodeFec: false);
-            if (decodedAudio.Length == 0)
-                return;
-        }
-        else
-        {
-            var buf = new short[packet.Payload.Length / 2];
-            decodedAudio = new Memory<short>(buf);
-            packet.Payload.CopyTo(MemoryMarshal.AsBytes(decodedAudio.Span));
-        }
+        var decodedAudio = DecodeOpus(packet.Payload, decodeFec: false);
+        if (decodedAudio.Length == 0)
+            return;
 
         #if DEBUG
         Logger.LogDebug($"Playing packet from {packet.Ssrc}: {packet.SequenceNumber}");
@@ -261,11 +246,6 @@ public sealed class RtpSourceContext : IDisposable
     /// </summary>
     private Memory<short> DecodeOpus(ReadOnlySpan<byte> opusData, bool decodeFec)
     {
-        if (OpusDecoder is null)
-        {
-            return Memory<short>.Empty;
-        }
-
         const int OPUS_FRAME_SAMPLES = 960; // 20ms at 48kHz (matches sender)
 
         try

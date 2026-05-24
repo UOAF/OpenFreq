@@ -317,7 +317,6 @@ public class TerminalGuiServer : IDisposable
             $"Ports: {_config.WebSocketPort} (ws://) {_config.AudioPort} (Audio) | Clients: {_stats.AuthenticatedClients} | " +
             $"TX: {_stats.ActiveTransmissions} | " +
             $"Auth:{(!string.IsNullOrEmpty(_config.ServerPassword) ? " Yes" : " No")} | " +
-            $"Opus:{(_config.EnableOpusCompression ? " Yes" : " No")} | " +
             $"F1=Freq  F2=Clients  F3=Logs  CTRL+q=Quit";
     }
 
