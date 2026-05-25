@@ -196,7 +196,7 @@ public class RtpAudioReceiver : IDisposable
                                 context.ToDecode.TryWrite(new SequencedPacket
                                 {
                                     Ssrc = context.Ssrc,
-                                    SequenceNumber = 0, // source context uses its own LastSequenceReceived+1
+                                    SequenceNumber = 0,
                                     Timestamp = 0,
                                     Payload = cn.FecPayload ?? [],
                                     Metadata = null,
