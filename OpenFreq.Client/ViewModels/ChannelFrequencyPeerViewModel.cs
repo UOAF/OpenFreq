@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -25,10 +26,10 @@ public partial class ChannelFrequencyPeerViewModel: ViewModelBase
     
     public string FrequencyMhzString
     {
-        get => (FrequencyKhz / 1000d).ToString("F3");
+        get => (FrequencyKhz / 1000d).ToString("F3", CultureInfo.InvariantCulture);
         set
         {
-            if (double.TryParse(value, out var mhz))
+            if (double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var mhz))
             {
                 FrequencyKhz = (int)(mhz * 1000d);
             }
