@@ -207,10 +207,19 @@ public class HotkeyService : IHotkeyService
     {
         _logger.LogDebug("Joystick polling thread started");
 
+        var lastRescan = DateTime.UtcNow;
+
         while (_cts is { Token.IsCancellationRequested: false })
         {
             try
             {
+                // Re-enumerate every 5s to pick up replugged devices
+                if ((DateTime.UtcNow - lastRescan).TotalSeconds >= 5)
+                {
+                    lastRescan = DateTime.UtcNow;
+                    TryAcquireNewDevices();
+                }
+
                 foreach (var device in _joystickDevices.ToList()) // ToList to avoid collection modification
                 {
                     try
@@ -250,6 +259,17 @@ public class HotkeyService : IHotkeyService
 
                         // Update previous state
                         _previousJoystickStates[deviceGuid] = currentState;
+                    }
+                    catch (SharpGen.Runtime.SharpGenException ex) when (ex.HResult == unchecked((int)0x8007001E))
+                    {
+                        // Device unplugged — evict and stop polling it
+                        var guid = device.DeviceInfo.InstanceGuid;
+                        var name = _deviceNames.GetValueOrDefault(guid, guid.ToString());
+                        _logger.LogInformation("Joystick disconnected: {DeviceName} ({Guid}), removing", name, guid);
+                        _joystickDevices.Remove(device);
+                        _previousJoystickStates.Remove(guid);
+                        _deviceNames.Remove(guid);
+                        try { device.Unacquire(); device.Dispose(); } catch { /* don't care */ }
                     }
                     catch (Exception ex)
                     {
@@ -324,6 +344,46 @@ public class HotkeyService : IHotkeyService
         {
             HotkeyReleased?.Invoke(this, new HotkeyReleasedEventArgs(
                 IHotkeyService.HotkeyType.SquelchToggle, squelchChannels));
+        }
+    }
+
+    private void TryAcquireNewDevices()
+    {
+        if (_directInput == null) return;
+        try
+        {
+            var knownGuids = new HashSet<Guid>(_joystickDevices.Select(d => d.DeviceInfo.InstanceGuid));
+            var attached = _directInput.GetDevices(DeviceClass.GameControl, DeviceEnumerationFlags.AttachedOnly);
+            foreach (var deviceInstance in attached)
+            {
+                if (knownGuids.Contains(deviceInstance.InstanceGuid)) continue;
+                try
+                {
+                    var device = _directInput.CreateDevice(deviceInstance.InstanceGuid);
+                    device.SetDataFormat<RawJoystickState>();
+                    device.SetCooperativeLevel(_windowHandle, CooperativeLevel.Background | CooperativeLevel.NonExclusive);
+                    var result = device.Acquire();
+                    if (result.Success)
+                    {
+                        _joystickDevices.Add(device);
+                        _previousJoystickStates[deviceInstance.InstanceGuid] = new JoystickState();
+                        _deviceNames[deviceInstance.InstanceGuid] = deviceInstance.ProductName;
+                        _logger.LogInformation("Joystick reconnected: {DeviceName} ({Guid})", deviceInstance.ProductName, deviceInstance.InstanceGuid);
+                    }
+                    else
+                    {
+                        device.Dispose();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Failed to re-acquire joystick {DeviceName}", deviceInstance.ProductName);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Error during device rescan");
         }
     }
 
