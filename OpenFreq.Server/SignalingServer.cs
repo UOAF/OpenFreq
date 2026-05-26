@@ -25,6 +25,8 @@ public class SignalingServer
     private CancellationTokenSource _cts = new();
 
     private const double WebsocketTimeoutMillis = 1000;
+    private static readonly TimeSpan RtpTimeoutDuration = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan WatchdogInterval = TimeSpan.FromSeconds(30);
 
     // High-performance logging delegates
     private static readonly Action<ILogger, int, Exception?> LogServerStarted =
@@ -68,6 +70,12 @@ public class SignalingServer
             LogLevel.Information,
             new EventId(7, nameof(CleanupClient)),
             "{DisplayName} ({ClientId}) cleaned up");
+
+    private static readonly Action<ILogger, string, string, Exception?> LogClientRtpTimeout =
+        LoggerMessage.Define<string, string>(
+            LogLevel.Warning,
+            new EventId(8, nameof(IdleWatchdogAsync)),
+            "{DisplayName} ({ClientId}) removed: RTP heartbeat timeout (60 s)");
 
     public ConcurrentDictionary<string, ClientSession> Clients => _clients;
     public FrequencyChannelManager ChannelManager => _channelManager;
@@ -150,6 +158,37 @@ public class SignalingServer
         {
             _logger.LogError(ex, "Failed to start server");
             throw;
+        }
+
+        _ = IdleWatchdogAsync(_cts.Token);
+    }
+
+    private async Task IdleWatchdogAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(WatchdogInterval, ct);
+
+                var now = DateTime.UtcNow;
+                foreach (var (clientId, session) in _clients)
+                {
+                    if (!session.IsAuthenticated) continue;
+
+                    var lastRtp = _audioServer.GetLastRtpReceived(clientId);
+                    if (lastRtp == null) continue; // audio session not yet created
+
+                    if (now - lastRtp.Value <= RtpTimeoutDuration) continue; // timeout not reached
+                    
+                    LogClientRtpTimeout(_logger, GetDisplayName(session), clientId, null);
+                    _ = CleanupClient(clientId);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Server shutting down — expected
         }
     }
 
