@@ -652,23 +652,25 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         }
         else if (state == ConnectionState.Disconnected)
         {
-            // Only show the generic disconnect message when no more-specific error
-            // (e.g. bad password, auth failure) is already being displayed.
-            // Auth-failure errors are set via OnStatusMessageReceived before the
-            // WebSocket close event arrives (~100 ms earlier in practice), so
-            // HasError is already true when we get here and the overwrite is skipped.
-            if (!HasError)
-                ShowError("Lost connection to server");
-            SettingsDrawerOpened = true;
-            
-                Dispatcher.UIThread.Post(() =>
-                {
-                    var window = ((IClassicDesktopStyleApplicationLifetime)Application.Current!.ApplicationLifetime!)
-                        .MainWindow!;
-                    if (window.WindowState == WindowState.Minimized)
-                        window.WindowState = WindowState.Normal;
-                });
-            
+            // This handler fires from the WebSocket receive background thread.
+            // ShowError mutates ErrorLog (ObservableCollection) which must happen
+            // on the UI thread — consolidate all UI work into one Post.
+            Dispatcher.UIThread.Post(() =>
+            {
+                // Only show the generic disconnect message when no more-specific error
+                // (e.g. bad password, auth failure) is already being displayed.
+                // Auth-failure errors are set via OnStatusMessageReceived before the
+                // WebSocket close event arrives (~100 ms earlier in practice), so
+                // HasError is already true when we get here and the overwrite is skipped.
+                if (!HasError)
+                    ShowError("Lost connection to server");
+                SettingsDrawerOpened = true;
+
+                var window = ((IClassicDesktopStyleApplicationLifetime)Application.Current!.ApplicationLifetime!)
+                    .MainWindow!;
+                if (window.WindowState == WindowState.Minimized)
+                    window.WindowState = WindowState.Normal;
+            });
         }
     }
 
@@ -723,11 +725,12 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
 
     private void OnStatusMessageReceived(object? sender, string message)
     {
-        // Check if message contains error indicators
+        // Fires from background threads (WebSocket receive, audio callbacks).
+        // ShowError mutates ErrorLog (ObservableCollection) — must be on UI thread.
         if (message.Contains("error", StringComparison.OrdinalIgnoreCase) ||
             message.Contains("failed", StringComparison.OrdinalIgnoreCase))
         {
-            ShowError(message);
+            Dispatcher.UIThread.Post(() => ShowError(message));
         }
         else
         {

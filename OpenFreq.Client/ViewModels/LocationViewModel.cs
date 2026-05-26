@@ -199,14 +199,19 @@ public partial class LocationViewModel : ViewModelBase, IDisposable
         // Auto connect is triggered from the ChannelCardListViewModel
         if (state == ConnectionState.Disconnected)
         {
-            // Reset all channel status on disconnect
-            foreach (var channel in Channels)
+            // Fires from the WebSocket receive background thread — marshal to UI thread
+            // so that ObservableCollection mutations and property changes are safe.
+            Dispatcher.UIThread.Post(() =>
             {
-                channel.ConnectionStatus = Channel.ChannelConnectionStatus.Disconnected;
-            }
+                // Reset all channel status on disconnect
+                foreach (var channel in Channels)
+                {
+                    channel.ConnectionStatus = Channel.ChannelConnectionStatus.Disconnected;
+                }
 
-            AnyChannelTransmitting = false;
-            AnyChannelReceiving = false;
+                AnyChannelTransmitting = false;
+                AnyChannelReceiving = false;
+            });
         }
         else if (Settings.ModeIsGci && state == ConnectionState.Connected && !IsAcmiConnected)
         {
