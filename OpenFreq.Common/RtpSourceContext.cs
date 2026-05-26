@@ -41,11 +41,7 @@ public sealed class RtpSourceContext : IDisposable
     private ChannelWriter<AudioReceivedEventArgs> ToPlay { get; }
     private OpusDecoder? OpusDecoder { get; }
     private Task DecoderTask { get; }
-    
-    // Loss detection state
-    private long LastSequenceReceived { get; set; }
-    private bool FirstPacketReceived { get; set; }
-    
+
     // Last valid metadata from this source, used to reconstruct concealment packets
     private AudioPacketMetadata? LastValidMetadata { get; set; }
     
@@ -102,44 +98,18 @@ public sealed class RtpSourceContext : IDisposable
                 // p.Payload is empty for burst-loss or first-frame loss -> use PLC.
                 if (p.IsConcealment)
                 {
-                    if (FirstPacketReceived && LastValidMetadata != null)
+                    if (LastValidMetadata != null)
                     {
-                        long lostSeq = LastSequenceReceived + 1;
                         // Wrap payload in a minimal packet so GenerateConcealmentAudio  can reach it via nextPacket?.Payload; null signals pure PLC.
                         SequencedPacket? fecPacket = p.Payload.Length > 0 ? p : null;
                         Logger.LogDebug(
-                            "SSRC={Ssrc:X8}: proactive {Mode} for seq {Seq}",
-                            Ssrc, fecPacket != null ? "FEC" : "PLC", lostSeq);
-                        await GenerateConcealmentAudio(ct, (ushort)lostSeq, fecPacket);
-                        LastSequenceReceived = lostSeq;
+                            "SSRC={Ssrc:X8}: proactive {Mode}",
+                            Ssrc, fecPacket != null ? "FEC" : "PLC");
+                        await GenerateConcealmentAudio(ct, fecPacket);
                     }
                     continue;
                 }
 
-                // Discard genuinely late packets
-                if (FirstPacketReceived && p.SequenceNumber <= LastSequenceReceived)
-                {
-                    Logger.LogWarning(
-                        "SSRC={Ssrc:X8}: discarding late packet seq={Seq} (last decoded={Last})",
-                        Ssrc, p.SequenceNumber, LastSequenceReceived);
-                    continue;
-                }
-
-                if (!FirstPacketReceived)
-                    FirstPacketReceived = true;
-
-                // Diagnostic: jitter buffer should have injected ConcealmentNeeded for  every missing slot - a gap here means it missed one
-                if (FirstPacketReceived && p.SequenceNumber != LastSequenceReceived + 1)
-                {
-                    long gap = p.SequenceNumber - LastSequenceReceived - 1;
-                    if (gap is > 0 and < 100)
-                        Logger.LogDebug(
-                            "SSRC={Ssrc:X8}: unexpected seq gap of {Gap} before seq {Seq} " +
-                            "(jitter-buffer miss — PLC was not generated for these slots)",
-                            Ssrc, gap, p.SequenceNumber);
-                }
-
-                LastSequenceReceived = p.SequenceNumber;
                 await ProcessReadyPacket(ct, p);
             }
             catch (OperationCanceledException) { break; }
@@ -202,15 +172,15 @@ public sealed class RtpSourceContext : IDisposable
     /// <summary>
     /// Generate FEC or PLC concealment audio for a lost packet within one source's context.
     /// </summary>
-    private async Task GenerateConcealmentAudio(CancellationToken ct, ushort lostSequence, SequencedPacket? nextPacket)
+    private async Task GenerateConcealmentAudio(CancellationToken ct, SequencedPacket? nextPacket)
     {
         Memory<short> concealmentAudio;
 
         byte[] nextOpusData = nextPacket?.Payload ?? [];
 
         Logger.LogDebug(
-            "SSRC={Ssrc:X8}: loss recovery for seq {LostSeq}: {Bytes} bytes",
-            Ssrc, lostSequence, nextOpusData.Length);
+            "SSRC={Ssrc:X8}: loss recovery: {Bytes} bytes",
+            Ssrc, nextOpusData.Length);
 
         concealmentAudio = DecodeOpus(nextOpusData, decodeFec: nextPacket != null);
 
@@ -218,8 +188,8 @@ public sealed class RtpSourceContext : IDisposable
         if (concealmentAudio.Length == 0 && nextPacket != null)
         {
             Logger.LogDebug(
-                "SSRC={Ssrc:X8}: FEC had no LBRR for seq {LostSeq}, falling back to PLC",
-                Ssrc, lostSequence);
+                "SSRC={Ssrc:X8}: FEC had no LBRR, falling back to PLC",
+                Ssrc);
             concealmentAudio = DecodeOpus([], decodeFec: false);
         }
 
