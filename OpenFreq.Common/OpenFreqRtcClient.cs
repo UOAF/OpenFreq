@@ -380,11 +380,19 @@ public class OpenFreqRtcClient : IDisposable
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "WebSocket receive loop terminated unexpectedly");
             OnError($"WebSocket error: {ex.Message}");
             CleanupRtp();
             IsConnected = false;
             IsAuthenticated = false;
-            OnConnectionStateChanged(ConnectionState.Disconnected);
+            try
+            {
+                OnConnectionStateChanged(ConnectionState.Disconnected);
+            }
+            catch (Exception notifyEx)
+            {
+                _logger.LogError(notifyEx, "Failed to notify disconnected state — client may appear stuck");
+            }
         }
     }
 

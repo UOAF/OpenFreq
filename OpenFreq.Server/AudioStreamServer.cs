@@ -153,6 +153,12 @@ public class AudioStreamServer
                         _endpointToClient.TryRemove(remoteEndpoint, out _);
                         clientId = null;
                     }
+                    else if (_sessions.TryGetValue(clientId, out var knownSession))
+                    {
+                        // Update heartbeat for all packets from known clients, including
+                        // keepalives (no metadata extension) that the parser discards below.
+                        knownSession.LastReceived = DateTime.UtcNow;
+                    }
                 }
 
                 // Parse packet
