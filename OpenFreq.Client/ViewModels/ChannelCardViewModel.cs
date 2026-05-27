@@ -265,8 +265,8 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         if (Settings is { ModeIsGci: false, Is3dMode: true })
             return;
 
-        var mutedFrequencies = _parentLocationViewModel.GetAllFrequenciesOfLocation(Type);
-        mutedFrequencies.Remove(FrequencyKhz);
+        // mute only the transmitting frequency
+        var mutedFrequencies = new List<int> { FrequencyKhz };
         WeakReferenceMessenger.Default.Send(new StartTransmissionMessage(Id, FrequencyKhz, RadioStationData,
             mutedFrequencies));
     }

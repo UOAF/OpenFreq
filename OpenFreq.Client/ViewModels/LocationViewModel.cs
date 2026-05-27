@@ -287,9 +287,8 @@ public partial class LocationViewModel : ViewModelBase, IDisposable
                     if (channel != null && channel.ConnectionStatus != Channel.ChannelConnectionStatus.Disconnected &&
                         !channel.IsEditing)
                     {
-                        // mute all channels of the same channel type in this location when transmitting
-                        var mutedFrequencies = GetAllFrequenciesOfLocation(channel.Type);
-                        mutedFrequencies.Remove(channel.FrequencyKhz);
+                        // mute only the transmitting frequency
+                        var mutedFrequencies = new List<int> { channel.FrequencyKhz };
                         await _openFreqService.StartTransmissionAsync(channel.FrequencyKhz, channel.Id,
                             mutedFrequencies);
                     }
