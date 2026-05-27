@@ -43,7 +43,7 @@ sealed class Program
 
             // Outputs the packet timings (playback queue)
             .MinimumLevel.Override("OpenFreq.Common.RtpAudioReceiver", LogEventLevel.Debug)
-            
+
             // Outputs the RTP receiver
             .MinimumLevel.Override("OpenFreq.Common.RtpSourceContext", LogEventLevel.Debug)
 

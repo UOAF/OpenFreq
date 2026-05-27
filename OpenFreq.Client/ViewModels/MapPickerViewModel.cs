@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Globalization;
 using System.Net.Http;
 using System.Text.Json;
@@ -18,9 +18,9 @@ using NetTopologySuite.Geometries;
 using OpenFreq.Utilities;
 using OpenFreqClient.Json;
 using Brush = Mapsui.Styles.Brush;
-using Point = NetTopologySuite.Geometries.Point;
 using MapsuiColor = Mapsui.Styles.Color;
 using Pen = Mapsui.Styles.Pen;
+using Point = NetTopologySuite.Geometries.Point;
 
 namespace OpenFreqClient.ViewModels;
 
@@ -118,7 +118,7 @@ public partial class MapPickerViewModel : ViewModelBase
     {
         // Disable position picking in tracking mode
         if (IsTrackingMode) return;
-        
+
         var lonLat = SphericalMercator.ToLonLat(worldPosition.X, worldPosition.Y);
 
         Latitude = lonLat.lat;
@@ -150,7 +150,7 @@ public partial class MapPickerViewModel : ViewModelBase
                 SymbolScale = 0.05,
                 SymbolRotation = aircraftHeading,
                 Offset = new Offset(0, 0),
-                
+
             });
         }
         else
@@ -197,7 +197,7 @@ public partial class MapPickerViewModel : ViewModelBase
     {
         // Disable search in tracking mode
         if (IsTrackingMode) return;
-        
+
         if (string.IsNullOrWhiteSpace(SearchQuery))
             return;
 

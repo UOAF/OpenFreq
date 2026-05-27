@@ -17,7 +17,7 @@ namespace OpenFreqClient;
 public partial class App : Application
 {
     private List<ILifecycleService>? _services;
-    
+
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
@@ -27,14 +27,14 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-        
+
             // Get services from DI
             var serviceProvider = Program.ServiceProvider;
             if (serviceProvider is null)
             {
                 throw new InvalidOperationException("Service provider not initialized");
             }
-        
+
 #if WINDOWS
         _services =
         [
@@ -50,32 +50,32 @@ public partial class App : Application
                 serviceProvider.GetRequiredService<IHotkeyService>(),
             };
 #endif
-        
+
             // Start services
             foreach (var service in _services)
             {
                 service.Start();
             }
-        
+
             var mainViewModel = Program.ServiceProvider?.GetService<MainWindowViewModel>()
                                 ?? throw new InvalidOperationException("Service provider not initialized");
             desktop.MainWindow = new MainWindow
             {
                 DataContext = mainViewModel,
             };
-        
+
             desktop.ShutdownRequested += async (s, e) =>
             {
                 // Defer shutdown until we're done cleaning up
                 e.Cancel = true;
-            
+
                 foreach (var service in _services)
                 {
                     service.Stop();
                 }
-            
+
                 await mainViewModel.DisposeAsync();
-            
+
                 // Now actually shutdown
                 desktop.Shutdown();
             };

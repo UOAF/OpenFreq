@@ -27,7 +27,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     [NotifyPropertyChangedFor(nameof(FrequencyMhzString))]
     [NotifyPropertyChangedFor(nameof(Type))]
     public partial int FrequencyKhz { get; set; }
-    
+
     /// <summary>
     /// Frequency display string in MHz
     /// </summary>
@@ -126,7 +126,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         PttHotKey = new KeyboardBinding(KeyCode.VcF2);
         ToggleEditing();
     }
-    
+
 
     public ChannelCardViewModel(IOpenFreqService openFreqService, IHotkeyService hotkeyService, string name,
         int frequencyKhz, bool isInEditMode,

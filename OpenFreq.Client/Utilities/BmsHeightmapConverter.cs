@@ -1,11 +1,11 @@
-﻿/// <summary>
+/// <summary>
 /// Converts between BMS SharedMemory coordinates (feet) and BMS Heightmap coordinates (METERS for FastPathAudioSim)
 /// </summary>
 public static class BmsHeightmapConverter
 {
     private const double HEIGHTMAP_SIZE_METERS = 1_024_000.0;
     private const double FEET_PER_METER = 3.28084;
-    
+
     /// <summary>
     /// Converts BMS SharedMemory coordinates to Heightmap coordinates (in METERS for FastPathAudioSim)
     /// </summary>
@@ -19,10 +19,10 @@ public static class BmsHeightmapConverter
         var heightmapX = x / FEET_PER_METER;
         var heightmapY = HEIGHTMAP_SIZE_METERS - (y / FEET_PER_METER);
         var altitudeMeters = z / FEET_PER_METER;
-        
+
         return (heightmapX, heightmapY, altitudeMeters);
     }
-    
+
     /// <summary>
     /// Converts Heightmap coordinates to BMS SharedMemory coordinates
     /// </summary>
@@ -35,7 +35,7 @@ public static class BmsHeightmapConverter
         var x = heightmapX * FEET_PER_METER;
         var y = (HEIGHTMAP_SIZE_METERS - heightmapY) * FEET_PER_METER;
         var z = altitudeMeters * FEET_PER_METER;
-        
+
         return (x, y, z);
     }
 }

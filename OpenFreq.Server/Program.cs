@@ -13,7 +13,7 @@ class Program
         // Initialize Serilog for file logging
         var logsDirectory = Path.Combine(AppContext.BaseDirectory, "logs");
         Directory.CreateDirectory(logsDirectory);
-        
+
         var logFile = Path.Combine(logsDirectory, $"openfreq-{DateTime.Now:yyyy-MM-dd}.log");
 
 #if DEBUG

@@ -39,7 +39,7 @@ public class FlightVelocity
         Z = z;
         Timestamp = DateTime.UtcNow;
     }
-    
+
     public override string ToString()
     {
         return $"Velocity(X={X:F2}, Y={Y:F2}, Z={Z:F2})";

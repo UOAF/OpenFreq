@@ -1,4 +1,4 @@
-﻿using FalconBmsDataService.Models;
+using FalconBmsDataService.Models;
 
 namespace FalconRadioService.Models;
 

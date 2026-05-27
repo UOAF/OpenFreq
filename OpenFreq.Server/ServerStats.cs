@@ -34,7 +34,7 @@ public class ServerStats(ConcurrentDictionary<string, ClientSession> clients, Fr
 
         return stats.OrderBy(s => s.FrequencyKhz).ToList();
     }
-    
+
     public DateTime? GetLastRtpReceived(string clientId) => audioServer.GetLastRtpReceived(clientId);
 
     public List<ClientSession> GetActiveClients()

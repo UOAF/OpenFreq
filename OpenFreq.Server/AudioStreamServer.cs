@@ -386,7 +386,7 @@ public class AudioStreamServer
                     GetDisplayName(clientId), clientId);
                 continue;
             }
-            
+
             var rtpPacket = CreateRtpAudioPacket(clientId, originalRtpPacket, metadata, audioData);
             SendPacket(rtpPacket, targetSession.RemoteEndPoint);
         }

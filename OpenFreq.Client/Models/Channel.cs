@@ -6,10 +6,10 @@ public class Channel
     /// Frequency in KHz
     /// </summary>
     public int FrequencyKhz { get; set; }
-    
-    public string? Name  { get; set; }
-    public float RxDb {get; set;}
-    
+
+    public string? Name { get; set; }
+    public float RxDb { get; set; }
+
     public enum ChannelType
     {
         UHF, VHF, Custom

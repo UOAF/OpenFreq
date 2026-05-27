@@ -112,10 +112,12 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial int BmsRadio2Pan { get; set; } = 0;
 
-    [ObservableProperty][NotifyPropertyChangedFor(nameof(BmsUhfSquelchHotkeyDisplay))]
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(BmsUhfSquelchHotkeyDisplay))]
     public partial HotkeyBinding? BmsUhfSquelchHotkey { get; set; }
 
-    [ObservableProperty][NotifyPropertyChangedFor(nameof(BmsVhfSquelchHotkeyDisplay))]
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(BmsVhfSquelchHotkeyDisplay))]
     public partial HotkeyBinding? BmsVhfSquelchHotkey { get; set; }
 
     public string BmsUhfSquelchHotkeyDisplay =>
@@ -126,7 +128,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
 
 
     // This is displayed in the Top Bar but shared throughout the app
-        [ObservableProperty] public partial bool Is3dMode { get; set; }
+    [ObservableProperty] public partial bool Is3dMode { get; set; }
 
     partial void OnIs3dModeChanged(bool value)
     {
@@ -228,7 +230,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
             });
         }
     }
-    
+
     private void OnRecordingDevicesChanged(object? sender, DeviceChangedEventArgs e)
     {
         Dispatcher.UIThread.Post(() =>

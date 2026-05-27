@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 using OpenFreq.Client.Models;
 using OpenFreqClient.Models;
 using OpenFreqClient.ViewModels;

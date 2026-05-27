@@ -7,7 +7,7 @@ using OpenFreqClient.Models;
 
 namespace OpenFreqClient.Converters;
 
-public class ChannelTransmissionStatusToColorConverter: IValueConverter
+public class ChannelTransmissionStatusToColorConverter : IValueConverter
 {
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
@@ -15,7 +15,7 @@ public class ChannelTransmissionStatusToColorConverter: IValueConverter
         var app = Application.Current;
         if (app?.Resources == null)
             return GetFallbackBrush(status);
-            
+
         return status switch
         {
             Channel.ChannelTransmissionStatus.Receiving => GetThemeColor(app, "ChannelStatusReceivingBrush"),
@@ -43,7 +43,7 @@ public class ChannelTransmissionStatusToColorConverter: IValueConverter
             _ => new SolidColorBrush(Color.FromRgb(60, 60, 60))
         };
     }
-    
+
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         throw new NotImplementedException();

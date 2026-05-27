@@ -414,8 +414,8 @@ public class OpenFreqService : IOpenFreqService
         if (_playbackService != null)
         {
             foreach (var freqs in _peerStreams.Values)
-            foreach (var streamId in freqs.Values)
-                await _playbackService.StopStream(streamId);
+                foreach (var streamId in freqs.Values)
+                    await _playbackService.StopStream(streamId);
         }
 
         _peerStreams.Clear();
@@ -669,15 +669,15 @@ public class OpenFreqService : IOpenFreqService
         switch (newMode)
         {
             case IOpenFreqService.Mode.BMS:
-            {
-                _acmiClientService.Stop();
-                if (_falconSharedMemoryService.State == ServiceState.Stopped)
                 {
-                    _falconSharedMemoryService.Start();
-                }
+                    _acmiClientService.Stop();
+                    if (_falconSharedMemoryService.State == ServiceState.Stopped)
+                    {
+                        _falconSharedMemoryService.Start();
+                    }
 
-                break;
-            }
+                    break;
+                }
             case IOpenFreqService.Mode.GCI:
                 _falconSharedMemoryService.Stop();
                 // TODO

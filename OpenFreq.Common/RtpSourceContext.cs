@@ -44,7 +44,7 @@ public sealed class RtpSourceContext : IDisposable
 
     // Last valid metadata from this source, used to reconstruct concealment packets
     private AudioPacketMetadata? LastValidMetadata { get; set; }
-    
+
     // Used by the pool to prune sources that have gone silent
     public long LastActivityTicks { get; set; }
 
@@ -69,7 +69,7 @@ public sealed class RtpSourceContext : IDisposable
 
         if (opusEnabled)
         {
-            #pragma warning disable CS0618 // Using the new factory method will not work on Linux
+#pragma warning disable CS0618 // Using the new factory method will not work on Linux
             OpusDecoder = new OpusDecoder(OpenFreqRtcClient.SAMPLE_RATE, 1);
 #pragma warning restore CS0618
         }
@@ -122,7 +122,7 @@ public sealed class RtpSourceContext : IDisposable
         }
     }
 
-        /// <summary>
+    /// <summary>
     /// Process a packet that is ready for playout, using the source's own Opus decoder.
     /// </summary>
     private async Task ProcessReadyPacket(CancellationToken ct, SequencedPacket packet)
@@ -158,10 +158,10 @@ public sealed class RtpSourceContext : IDisposable
             packet.Payload.CopyTo(MemoryMarshal.AsBytes(decodedAudio.Span));
         }
 
-        #if DEBUG
+#if DEBUG
         Logger.LogDebug($"Playing packet from {packet.Ssrc}: {packet.SequenceNumber}");
-        #endif
-            
+#endif
+
         await ToPlay.WriteAsync(new AudioReceivedEventArgs
         {
             AudioData = decodedAudio,

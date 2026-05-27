@@ -11,7 +11,7 @@ public class OpenFreqSettings
     public IOpenFreqService.Mode OwnPositionMode { get; set; } = IOpenFreqService.Mode.BMS;
     public string TacviewServerAddress { get; set; } = "";
     public string TacviewServerPassword { get; set; } = "";
-    
+
     public string HeightmapPath { get; set; } = "";
 
     public string InputDeviceName { get; set; } = "";
@@ -20,10 +20,10 @@ public class OpenFreqSettings
 
     public int BmsRadio1Pan { get; set; } // 0 == center
     public int BmsRadio2Pan { get; set; }
-    
+
     public HotkeyBinding? BmsSquelchUhfHotkey { get; set; }
     public HotkeyBinding? BmsSquelchVhfHotkey { get; set; }
-    
+
     // Window Position & Size
     public int? Left { get; set; }
     public int? Top { get; set; }

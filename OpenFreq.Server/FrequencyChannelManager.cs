@@ -28,7 +28,7 @@ public class FrequencyChannelManager
         if (_channels.TryGetValue(frequencyKhz, out var peers))
         {
             var removed = peers.TryRemove(clientId, out _);
-            
+
             // Clean up empty channels
             if (peers.IsEmpty)
             {
@@ -64,7 +64,7 @@ public class FrequencyChannelManager
             }
         }
     }
-    
+
     /// <summary>
     /// Update the display name for a peer across all channels they're in
     /// </summary>
@@ -130,14 +130,14 @@ public class FrequencyChannelManager
     public SortedDictionary<int, List<PeerData>> GetAllChannelStates()
     {
         var result = new SortedDictionary<int, List<PeerData>>();
-    
+
         foreach (var (frequency, peers) in _channels)
         {
             result[frequency] = peers.Values
                 .OrderBy(p => p.Name)
                 .ToList();
         }
-    
+
         return result;
     }
 
@@ -163,7 +163,7 @@ public class FrequencyChannelManager
     public List<double> GetClientChannels(string clientId)
     {
         var channels = new List<double>();
-        
+
         foreach (var kvp in _channels)
         {
             if (kvp.Value.ContainsKey(clientId))
@@ -171,7 +171,7 @@ public class FrequencyChannelManager
                 channels.Add(kvp.Key);
             }
         }
-        
+
         return channels;
     }
 

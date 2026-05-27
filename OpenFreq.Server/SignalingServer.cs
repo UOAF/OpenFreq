@@ -180,7 +180,7 @@ public class SignalingServer
                     if (lastRtp == null) continue; // audio session not yet created
 
                     if (now - lastRtp.Value <= RtpTimeoutDuration) continue; // timeout not reached
-                    
+
                     LogClientRtpTimeout(_logger, GetDisplayName(session), clientId, null);
                     _ = CleanupClient(clientId);
                 }
@@ -590,7 +590,7 @@ public class SignalingServer
     {
         if (session.IsDisposed)
             return;
-        
+
         if (session.WebSocket.State != WebSocketState.Open)
         {
             await CleanupClient(session.Id);
@@ -648,7 +648,7 @@ public class SignalingServer
         if (_clients.TryRemove(clientId, out var session))
         {
             await LeaveAllChannels(session);
-        
+
             _channelManager.LeaveAllChannels(clientId);
             _audioServer.RemoveSession(clientId);
 

@@ -11,7 +11,7 @@ public static class SignalingMessageFactory
         {
             Type = SignalingMessageTypes.Authenticate,
             Payload = JsonSerializer.SerializeToElement(
-                new AuthenticateMessage { Password = password, DisplayName =  displayName }, 
+                new AuthenticateMessage { Password = password, DisplayName = displayName },
                 OpenFreqJsonContext.Default.AuthenticateMessage)
         };
     }
@@ -22,7 +22,7 @@ public static class SignalingMessageFactory
         {
             Type = SignalingMessageTypes.Join,
             Payload = JsonSerializer.SerializeToElement(
-                new JoinChannelMessage { FrequencyKhz = frequencyKhz }, 
+                new JoinChannelMessage { FrequencyKhz = frequencyKhz },
                 OpenFreqJsonContext.Default.JoinChannelMessage)
         };
     }
@@ -33,7 +33,7 @@ public static class SignalingMessageFactory
         {
             Type = SignalingMessageTypes.Leave,
             Payload = JsonSerializer.SerializeToElement(
-                new LeaveChannelMessage { FrequencyKhz = frequencyKhz }, 
+                new LeaveChannelMessage { FrequencyKhz = frequencyKhz },
                 OpenFreqJsonContext.Default.LeaveChannelMessage)
         };
     }
@@ -44,12 +44,12 @@ public static class SignalingMessageFactory
         {
             Type = SignalingMessageTypes.Transmission,
             Payload = JsonSerializer.SerializeToElement(
-                new AudioTransmissionMessage 
-                { 
-                    FrequencyKhz = frequencyKhz, 
+                new AudioTransmissionMessage
+                {
+                    FrequencyKhz = frequencyKhz,
                     Transmitting = transmitting,
                     Is3d = is3d
-                }, 
+                },
                 OpenFreqJsonContext.Default.AudioTransmissionMessage)
         };
     }
@@ -60,14 +60,14 @@ public static class SignalingMessageFactory
         {
             Type = SignalingMessageTypes.Success,
             Payload = JsonSerializer.SerializeToElement(
-                new SuccessMessage 
-                { 
-                    Message = message, 
-                    PeerId = peerId, 
+                new SuccessMessage
+                {
+                    Message = message,
+                    PeerId = peerId,
                     AudioPort = audioPort,
                     OpusCompressionEnabled = opusEnabled,
                     FrequenciesPeers = peers
-                }, 
+                },
                 OpenFreqJsonContext.Default.SuccessMessage)
         };
     }
@@ -78,7 +78,7 @@ public static class SignalingMessageFactory
         {
             Type = SignalingMessageTypes.Error,
             Payload = JsonSerializer.SerializeToElement(
-                new ErrorMessage { Error = error }, 
+                new ErrorMessage { Error = error },
                 OpenFreqJsonContext.Default.ErrorMessage)
         };
     }
@@ -89,12 +89,12 @@ public static class SignalingMessageFactory
         {
             Type = SignalingMessageTypes.PeerJoined,
             Payload = JsonSerializer.SerializeToElement(
-                new PeerJoinedMessage 
-                { 
-                    PeerId = peerId, 
+                new PeerJoinedMessage
+                {
+                    PeerId = peerId,
                     PeerDisplayName = peerDisplayName ?? "Unnamed",
-                    FrequencyKhz = frequencyKhz 
-                }, 
+                    FrequencyKhz = frequencyKhz
+                },
                 OpenFreqJsonContext.Default.PeerJoinedMessage)
         };
     }
@@ -105,11 +105,11 @@ public static class SignalingMessageFactory
         {
             Type = SignalingMessageTypes.PeerLeft,
             Payload = JsonSerializer.SerializeToElement(
-                new PeerLeftMessage 
-                { 
-                    PeerId = peerId, 
-                    FrequencyKhz = frequencyKhz 
-                }, 
+                new PeerLeftMessage
+                {
+                    PeerId = peerId,
+                    FrequencyKhz = frequencyKhz
+                },
                 OpenFreqJsonContext.Default.PeerLeftMessage)
         };
     }
@@ -131,13 +131,13 @@ public static class SignalingMessageFactory
         {
             Type = SignalingMessageTypes.Transmission,
             Payload = JsonSerializer.SerializeToElement(
-                new TransmissionEventMessage 
-                { 
-                    PeerId = peerId, 
-                    FrequencyKhz = frequencyKhz, 
+                new TransmissionEventMessage
+                {
+                    PeerId = peerId,
+                    FrequencyKhz = frequencyKhz,
                     Transmitting = transmitting,
-                    Is3d =  is3d
-                }, 
+                    Is3d = is3d
+                },
                 OpenFreqJsonContext.Default.TransmissionEventMessage)
         };
     }
@@ -148,11 +148,11 @@ public static class SignalingMessageFactory
         {
             Type = SignalingMessageTypes.ChannelState,
             Payload = JsonSerializer.SerializeToElement(
-                new ChannelStateMessage 
-                { 
-                    FrequencyKhz = frequencyKhz, 
-                    Peers = peers 
-                }, 
+                new ChannelStateMessage
+                {
+                    FrequencyKhz = frequencyKhz,
+                    Peers = peers
+                },
                 OpenFreqJsonContext.Default.ChannelStateMessage)
         };
     }
@@ -163,10 +163,10 @@ public static class SignalingMessageFactory
         {
             Type = SignalingMessageTypes.AllPeersStatus,
             Payload = JsonSerializer.SerializeToElement(
-                new AllPeersStatusMessage() 
-                { 
-                    FrequenciesPeers =  allPeersStatus
-                }, 
+                new AllPeersStatusMessage()
+                {
+                    FrequenciesPeers = allPeersStatus
+                },
                 OpenFreqJsonContext.Default.AllPeersStatusMessage)
         };
     }

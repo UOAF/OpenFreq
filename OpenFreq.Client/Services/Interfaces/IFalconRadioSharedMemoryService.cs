@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using FalconBmsDataService.Models;
 using FalconRadioService.Models;
 using OpenFreq.Client.Services.Interfaces;
@@ -37,7 +37,7 @@ public interface IFalconRadioSharedMemoryService : IDisposable, ILifecycleServic
 
     // Logbook name change (mPlayerMap[0].LogBookName — populated once in-game)
     event EventHandler<LogbookNameChangedEventArgs>? LogbookNameChanged;
-    
+
     // Constant
     public const int BmsRadioOffFrequency = 9999;
 }

@@ -22,7 +22,7 @@ public static class ServiceCollectionExtensions
             builder.ClearProviders();
             builder.AddSerilog(dispose: true);
         });
-        
+
         services.AddSingleton<IAudioService, AudioService>();
         services.AddSingleton<IOpenFreqService, OpenFreqService>();
         services.AddSingleton<IHotkeyService, HotkeyService>();
@@ -36,7 +36,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<ChannelCardListViewModel>();
         services.AddSingleton<MainWindowViewModel>();
-        
+
         return services;
     }
 }

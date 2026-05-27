@@ -24,7 +24,7 @@ public class RtpPacket
 
     public const int HEADER_SIZE = 12;
     public const ushort OpenFreqProfile = 0x4F46; // "OF" - OpenFreq
-    
+
     /// <summary>
     /// Parse RTP packet from bytes
     /// </summary>
@@ -32,9 +32,9 @@ public class RtpPacket
     {
         if (data.Length < HEADER_SIZE)
             return null;
-        
+
         var packet = new RtpPacket();
-        
+
         // Byte 0: V(2), P(1), X(1), CC(4)
         packet.Version = (byte)((data[0] >> 6) & 0x03);
         packet.Padding = (data[0] & 0x20) != 0;
@@ -85,7 +85,7 @@ public class RtpPacket
 
         return packet;
     }
-    
+
     /// <summary>
     /// Serialize RTP packet to bytes
     /// </summary>
@@ -124,7 +124,7 @@ public class RtpPacket
         if (hasExtension)
         {
             int wordLength = paddedExtLength / 4;
-            data[offset]     = (byte)(ExtensionProfile >> 8);
+            data[offset] = (byte)(ExtensionProfile >> 8);
             data[offset + 1] = (byte)(ExtensionProfile & 0xFF);
             data[offset + 2] = (byte)(wordLength >> 8);
             data[offset + 3] = (byte)(wordLength & 0xFF);
@@ -140,7 +140,7 @@ public class RtpPacket
 
         return data;
     }
-        
+
     public override string ToString()
     {
         return $"RTP[Seq={SequenceNumber}, TS={Timestamp}, SSRC=0x{Ssrc:X8}, PT={PayloadType}, Payload={Payload.Length}b]";
