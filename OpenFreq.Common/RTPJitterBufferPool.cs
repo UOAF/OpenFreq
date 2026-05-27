@@ -1,8 +1,8 @@
-using Microsoft.Extensions.Logging;
-using OpenFreq.Common.Rtp;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
+using OpenFreq.Common.Rtp;
 using static OpenFreq.Common.RtpAudioReceiver;
 
 namespace OpenFreq.Common;
@@ -110,12 +110,12 @@ public sealed class RtpJitterBufferPool : IDisposable
         foreach (var ctx in GetActiveSources())
         {
             var s = ctx.JitterBuffer.GetStatistics();
-            received  += s.received;
-            lost      += s.lost;
-            late      += s.late;
+            received += s.received;
+            lost += s.lost;
+            late += s.late;
             duplicate += s.duplicate;
-            played    += s.played;
-            buffered  += s.buffered;
+            played += s.played;
+            buffered += s.buffered;
             jitterSum += s.jitterMs;
             bufferSum += s.bufferMs;
             numSources++;
@@ -130,8 +130,8 @@ public sealed class RtpJitterBufferPool : IDisposable
 
         return (received, lost, late, duplicate, played,
             lossPercent,
-            jitterSum  / numSources,   // average jitter across sources
-            bufferSum  / numSources,   // average buffer size across sources
+            jitterSum / numSources,   // average jitter across sources
+            bufferSum / numSources,   // average buffer size across sources
             buffered);
     }
 

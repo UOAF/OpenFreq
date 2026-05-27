@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
@@ -19,7 +19,7 @@ public abstract class HotkeyBinding : IEquatable<HotkeyBinding>
     /// <summary>
     /// Human-readable display name for the binding
     /// </summary>
-    [JsonIgnore] 
+    [JsonIgnore]
     public abstract string DisplayName { get; }
 
     /// <summary>

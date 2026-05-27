@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text.RegularExpressions;
@@ -57,11 +57,11 @@ namespace OpenFreq.Utilities
             private readonly ProjectionInfo _projectionInfo;
             private readonly ProjectionInfo _wgs84;
             public (double x, double y) CenterProjected { get; private set; }
-            
+
             // Pre-calculated corners in lat/lon (WGS84)
             public (double lat, double lon)[] CornersLatLon { get; }
             public (double lat, double lon) CenterLatLon { get; set; }
-            
+
             public Theater(string name, string projString, double centerLat, double centerLon)
             {
                 Name = name;
@@ -70,10 +70,10 @@ namespace OpenFreq.Utilities
 
                 _wgs84 = KnownCoordinateSystems.Geographic.World.WGS1984;
                 _projectionInfo = ProjectionInfo.FromProj4String(ProjString);
-                
+
                 // Use the authoritative center from theater definition
                 CenterProjected = Transform(centerLat, centerLon);
-                
+
                 // Pre-calculate corners (in BMS position coordinate system)
                 var corners = new[]
                 {
@@ -83,7 +83,7 @@ namespace OpenFreq.Utilities
                     (x: 0.0, y: (double)HEIGHTMAP_SIZE_M),              // Top-left
                     (x: 0.0, y: 0.0)                                     // Close the polygon
                 };
-                
+
                 CornersLatLon = new (double lat, double lon)[corners.Length];
                 for (int i = 0; i < corners.Length; i++)
                 {
@@ -135,7 +135,7 @@ namespace OpenFreq.Utilities
             {
                 const double HEIGHTMAP_SIZE_M = 1024000.0;
                 const double HALF_SIZE_M = HEIGHTMAP_SIZE_M / 2;
-        
+
                 // Heightmap bottom-left corner in projection space (METERS)
                 double xOffset = theater.CenterProjected.x - HALF_SIZE_M;
                 double yOffset = theater.CenterProjected.y - HALF_SIZE_M;
@@ -188,7 +188,7 @@ namespace OpenFreq.Utilities
             }
             return theater.CenterLatLon;
         }
-        
+
         /// <summary>
         /// Gets the corner coordinates (lat/lon) for the specified theater.
         /// Returns 5 points: bottom-left, bottom-right, top-right, top-left, bottom-left (closed polygon).
@@ -233,7 +233,7 @@ namespace OpenFreq.Utilities
 
             var xy = LatLonToXYMeters(theaterName, latitude, longitude, CoordinateSystem.BMS_HEIGHTMAP_COORDINATE_SYTEM);
             xy.y = HEIGHTMAP_SIZE_M - xy.y;
-            
+
             const double epsilon = 2;
             return xy.x is >= -epsilon and < HEIGHTMAP_SIZE_M + epsilon &&
                    xy.y is >= -epsilon and < HEIGHTMAP_SIZE_M + epsilon;

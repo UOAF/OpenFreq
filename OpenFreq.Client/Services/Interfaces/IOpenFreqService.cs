@@ -24,7 +24,7 @@ public interface IOpenFreqService : IDisposable
     double SidetoneVolume { get; set; }
     double MasterVolume { get; set; }
     double AmbientNoiseVolume { get; set; }
-    
+
     Mode OwnPositionMode { get; }
 
     // Events
@@ -37,7 +37,7 @@ public interface IOpenFreqService : IDisposable
     event EventHandler<string>? AudioPlaybackErrorOccurred;
     event EventHandler<FrequencyConnectionStatusEventArgs>? FrequencyConnectionStatusChanged;
     event EventHandler<FrequencyTransmissionStatusEventArgs>? FrequencyTransmissionStatusChanged;
-    
+
     public event EventHandler<FrequencyJoinedEventArgs>? FrequencyJoined;
     public event EventHandler<PeerEventArgs>? PeerJoined;
     public event EventHandler<PeerEventArgs>? PeerLeft;
@@ -61,9 +61,9 @@ public interface IOpenFreqService : IDisposable
 
     void EnableFrequency(int frequencyKhz, Guid slotId);
     void DisableFrequency(int frequencyKhz, Guid slotId);
-    
+
     void SetSquelch(int frequencyKhz, Guid slotId, bool isSquelchClosed);
-    
+
     public enum OpenFreqStatus
     {
         Connected,
@@ -73,9 +73,9 @@ public interface IOpenFreqService : IDisposable
     }
 
     public OpenFreqStatus Status { get; }
-    
+
     public void LoadHeightmap(string path, int width = 32768, int height = 32768, int bytesPerSample = 2);
-    
+
     public void SetOwnPositionMode(Mode newMode);
 
     public enum Mode

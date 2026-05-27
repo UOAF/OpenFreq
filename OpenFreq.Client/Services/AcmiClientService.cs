@@ -20,43 +20,43 @@ namespace OpenFreq.Services.Acmi;
 public class AcmiClientService : IAcmiClientService
 {
     private const int DefaultPort = 42674;
-    
+
     private readonly ILogger<AcmiClientService> _logger;
     private readonly ConcurrentDictionary<string, AcmiAircraft> _trackedAircraft = new();
-    
+
     private TcpClient? _client;
     private NetworkStream? _stream;
     private CancellationTokenSource? _cts;
     private Task? _receiveTask;
-    
+
     private string _serverAddress = string.Empty;
     private int _serverPort;
     private string _password = string.Empty;
     private int _maxRetries = 3;
-    
+
     private DateTime _referenceTime = DateTime.UnixEpoch;
     private double _relativeTime;
-    
+
     private readonly Lock _statusLock = new();
     private AcmiConnectionStatus _status = AcmiConnectionStatus.Disconnected;
-    
+
     // Track all encountered callsigns (objectId -> callsign)
     private readonly ConcurrentDictionary<string, string> _allEncounteredCallsigns = new();
     // Currently selected aircraft for tracking
     private string? _selectedAircraftId;
-    
+
     /// <summary>Fired when connection status changes</summary>
     public event EventHandler<AcmiConnectionEventArgs>? ConnectionStatusChanged;
-    
+
     /// <summary>Fired when connection is established</summary>
     public event EventHandler<AcmiConnectionEventArgs>? Connected;
-    
+
     /// <summary>Fired when connection is lost</summary>
     public event EventHandler<AcmiConnectionEventArgs>? ConnectionLost;
-    
+
     /// <summary>Fired when a new aircraft is discovered</summary>
     public event EventHandler<AcmiAircraftDiscoveredEventArgs>? AircraftDiscovered;
-    
+
     /// <summary>Removes an aircraft from tracking</summary>
     public void RemoveTrackingForAircraft(string? objectId)
     {
@@ -64,9 +64,9 @@ public class AcmiClientService : IAcmiClientService
             return;
 
         if (!_trackedAircraft.TryRemove(objectId, out var aircraft)) return;
-        _logger.LogInformation("Removed tracking for aircraft: {ObjectId} ({CallSign})", 
+        _logger.LogInformation("Removed tracking for aircraft: {ObjectId} ({CallSign})",
             objectId, aircraft.CallSign);
-                
+
         // If this was the selected aircraft, clear selection
         if (_selectedAircraftId == objectId)
         {
@@ -100,7 +100,7 @@ public class AcmiClientService : IAcmiClientService
 
     /// <summary>Read-only collection of currently tracked aircraft</summary>
     public IReadOnlyDictionary<string, AcmiAircraft> TrackedAircraft => _trackedAircraft;
-    
+
     public AcmiClientService(ILogger<AcmiClientService> logger)
     {
         _logger = logger;
@@ -114,14 +114,14 @@ public class AcmiClientService : IAcmiClientService
             _logger.LogWarning("Already connected or connecting");
             return false;
         }
-        
+
         var ipPort = Util.ResolveAddress(connectionString, DefaultPort);
-        
+
         _serverAddress = ipPort.ipAddress;
         _serverPort = ipPort.port;
         _password = string.IsNullOrEmpty(password) ? "0" : password;
         _maxRetries = maxRetries;
-        
+
         _cts = new CancellationTokenSource();
         _receiveTask = Task.Run(() => ConnectionLoopAsync(_cts.Token));
 
@@ -138,7 +138,7 @@ public class AcmiClientService : IAcmiClientService
         {
             // CTS already disposed, ignore
         }
-        
+
         Status = AcmiConnectionStatus.Disconnected;
         RaiseConnectionStatusChanged(AcmiConnectionStatus.Disconnected, "Disconnected");
     }
@@ -155,7 +155,7 @@ public class AcmiClientService : IAcmiClientService
         {
             // CTS already disposed, ignore
         }
-        
+
         // Wait for receive task to complete before disposing resources
         if (_receiveTask != null)
         {
@@ -168,23 +168,26 @@ public class AcmiClientService : IAcmiClientService
             {
                 _logger.LogWarning("Receive task did not complete within timeout during disconnect");
             }
+
+#pragma warning disable RCS1075
             catch (Exception)
             {
                 // Task may have thrown during cancellation, which is expected
             }
+#pragma warning restore RCS1075
         }
-        
+
         // Now safe to dispose resources since background task has stopped
         _stream?.Dispose();
         _client?.Dispose();
         var ctsToDispose = _cts;
         _cts = null;
         ctsToDispose?.Dispose();
-        
+
         _stream = null;
         _client = null;
         _receiveTask = null;
-        
+
         // Clear persistent buffer to avoid data leaking between connections
         _persistentBuffer.Clear();
 
@@ -195,7 +198,7 @@ public class AcmiClientService : IAcmiClientService
 
 
     /// <summary>Gets an aircraft by its object ID</summary>
-    public AcmiAircraft? GetAircraft(string objectId) => 
+    public AcmiAircraft? GetAircraft(string objectId) =>
         _trackedAircraft.GetValueOrDefault(objectId);
 
     /// <summary>Gets all aircraft currently tracked</summary>
@@ -204,7 +207,7 @@ public class AcmiClientService : IAcmiClientService
     public void AddTrackingForAircraft(string? objectId)
     {
         if (string.IsNullOrEmpty(objectId)) return;
-        _trackedAircraft.TryAdd(objectId, new AcmiAircraft{ObjectId = objectId});
+        _trackedAircraft.TryAdd(objectId, new AcmiAircraft { ObjectId = objectId });
     }
 
     /// <summary>Clears all tracked aircraft</summary>
@@ -217,11 +220,11 @@ public class AcmiClientService : IAcmiClientService
     }
 
     /// <summary>Gets all encountered callsigns as a dictionary of objectId -> callsign</summary>
-    public IReadOnlyDictionary<string, string> GetAllEncounteredCallsigns() => 
+    public IReadOnlyDictionary<string, string> GetAllEncounteredCallsigns() =>
         _allEncounteredCallsigns;
 
     /// <summary>Gets a list of all unique callsigns encountered</summary>
-    public IEnumerable<string> GetCallsignsList() => 
+    public IEnumerable<string> GetCallsignsList() =>
         _allEncounteredCallsigns.Values.Distinct().OrderBy(c => c);
 
     /// <summary>Selects an aircraft to track by its object ID</summary>
@@ -242,7 +245,7 @@ public class AcmiClientService : IAcmiClientService
         var objectId = _allEncounteredCallsigns
             .FirstOrDefault(kvp => kvp.Value.Equals(callsign, StringComparison.OrdinalIgnoreCase))
             .Key;
-            
+
         if (!string.IsNullOrEmpty(objectId))
         {
             _selectedAircraftId = objectId;
@@ -253,7 +256,7 @@ public class AcmiClientService : IAcmiClientService
     }
 
     /// <summary>Gets the currently selected aircraft</summary>
-    public AcmiAircraft? GetSelectedAircraft() => 
+    public AcmiAircraft? GetSelectedAircraft() =>
         _selectedAircraftId != null ? GetAircraft(_selectedAircraftId) : null;
 
     /// <summary>Clears the aircraft selection</summary>
@@ -276,7 +279,7 @@ public class AcmiClientService : IAcmiClientService
             try
             {
                 Status = AcmiConnectionStatus.Connecting;
-                RaiseConnectionStatusChanged(AcmiConnectionStatus.Connecting, 
+                RaiseConnectionStatusChanged(AcmiConnectionStatus.Connecting,
                     $"Connecting (attempt {retryCount + 1})");
 
                 _logger.LogInformation("Connecting to {Address}:{Port}", _serverAddress, _serverPort);
@@ -299,7 +302,7 @@ public class AcmiClientService : IAcmiClientService
                 Status = AcmiConnectionStatus.Connected;
                 RaiseConnectionStatusChanged(AcmiConnectionStatus.Connected, "Connected");
                 RaiseConnected("Connected to ACMI server");
-                
+
                 retryCount = 0;
 
                 await ProcessDataStreamAsync(cancellationToken);
@@ -317,7 +320,7 @@ public class AcmiClientService : IAcmiClientService
                 _logger.LogError(ex, "Connection error");
                 Status = AcmiConnectionStatus.Failed;
                 RaiseConnectionStatusChanged(AcmiConnectionStatus.Failed, $"Error: {ex.Message}");
-                
+
                 retryCount++;
                 if (_maxRetries > 0 && retryCount >= _maxRetries)
                 {
@@ -353,17 +356,17 @@ public class AcmiClientService : IAcmiClientService
         {
             string handshakeMsg = $"XtraLib.Stream.0\nTacview.RealTimeTelemetry.0\nOpenFreq\n{_password}\0";
             byte[] handshakeBytes = Encoding.UTF8.GetBytes(handshakeMsg);
-            
+
             _logger.LogDebug("Sending handshake: {Length} bytes", handshakeBytes.Length);
-            _logger.LogDebug("Handshake content: {Content}", 
+            _logger.LogDebug("Handshake content: {Content}",
                 handshakeMsg.Replace("\0", "\\0").Replace("\n", "\\n"));
-            
+
             await _stream.WriteAsync(handshakeBytes, cancellationToken);
             await _stream.FlushAsync(cancellationToken);
 
             _logger.LogDebug("Waiting for handshake response...");
             var response = await ReadUntilAsync('\0', cancellationToken);
-            
+
             if (response == null)
             {
                 _logger.LogError("No handshake response received");
@@ -371,7 +374,7 @@ public class AcmiClientService : IAcmiClientService
             }
 
             _logger.LogDebug("Received handshake response: {Length} bytes", response.Length);
-            _logger.LogDebug("Response content: {Content}", 
+            _logger.LogDebug("Response content: {Content}",
                 response.Replace("\0", "\\0").Replace("\n", "\\n"));
 
             if (response.StartsWith("XtraLib.Stream.0\nTacview.RealTimeTelemetry.0\n"))
@@ -381,7 +384,7 @@ public class AcmiClientService : IAcmiClientService
             }
 
             _logger.LogError("Invalid handshake response. Expected to start with 'XtraLib.Stream.0\\nTacview.RealTimeTelemetry.0\\n'");
-            _logger.LogError("Actual response: {Response}", 
+            _logger.LogError("Actual response: {Response}",
                 response.Length > 100 ? response.Substring(0, 100) + "..." : response);
             return false;
         }
@@ -402,7 +405,7 @@ public class AcmiClientService : IAcmiClientService
         try
         {
             _logger.LogDebug("Starting ACMI data stream processing");
-            
+
             while (!cancellationToken.IsCancellationRequested)
             {
                 var line = await ReadLineAsync(cancellationToken);
@@ -414,7 +417,7 @@ public class AcmiClientService : IAcmiClientService
 
                 lineCount++;
                 bool wasValid = ProcessLine(line);
-                
+
                 if (wasValid)
                     validLines++;
                 else
@@ -423,16 +426,16 @@ public class AcmiClientService : IAcmiClientService
                 // Log every 1000 lines or if we've accumulated 10+ invalid lines since last log
                 if (lineCount % 1000 == 0 || (invalidLines - lastLogLine >= 10 && invalidLines % 10 == 0))
                 {
-                    _logger.LogDebug("Processed {Count} lines ({Valid} valid, {Invalid} invalid), {Aircraft} aircraft, buffer: {BufferSize} bytes", 
+                    _logger.LogDebug("Processed {Count} lines ({Valid} valid, {Invalid} invalid), {Aircraft} aircraft, buffer: {BufferSize} bytes",
                         lineCount, validLines, invalidLines, _trackedAircraft.Count, _persistentBuffer.Count);
                     lastLogLine = invalidLines;
                 }
             }
-            
+
             if (invalidLines > 0)
             {
                 _logger.LogInformation(
-                    "Stream ended: {Total} lines processed, {Invalid} invalid lines skipped ({Percent:F1}% error rate)", 
+                    "Stream ended: {Total} lines processed, {Invalid} invalid lines skipped ({Percent:F1}% error rate)",
                     lineCount, invalidLines, (invalidLines * 100.0 / lineCount));
             }
             else
@@ -463,7 +466,7 @@ public class AcmiClientService : IAcmiClientService
         // Time update
         if (line[0] == '#')
         {
-            if (double.TryParse(line.AsSpan(1), NumberStyles.Float, 
+            if (double.TryParse(line.AsSpan(1), NumberStyles.Float,
                 CultureInfo.InvariantCulture, out double time))
             {
                 _relativeTime = time;
@@ -491,49 +494,49 @@ public class AcmiClientService : IAcmiClientService
         if (firstComma < 0)
         {
             // No comma found - completely malformed line
-            _logger.LogDebug("Malformed line (no comma): {Line}", 
+            _logger.LogDebug("Malformed line (no comma): {Line}",
                 line.Length > 80 ? line.Substring(0, 80) + "..." : line);
             return false;
         }
 
         // Extract object ID (everything before first comma)
         var objectIdSpan = span.Slice(0, firstComma);
-        
+
         // Check for empty or whitespace-only object ID
         if (objectIdSpan.IsWhiteSpace() || objectIdSpan.Length == 0)
         {
-            _logger.LogWarning("Empty object ID in line: {Line}", 
+            _logger.LogWarning("Empty object ID in line: {Line}",
                 line.Length > 80 ? line.Substring(0, 80) + "..." : line);
             return false;
         }
-        
+
         var objectId = objectIdSpan.ToString().Trim();
-        
+
         // Check if "object ID" looks like a property instead (missing object ID)
         // Properties have format: PropertyName=Value
         if (objectId.Contains('='))
         {
-            _logger.LogWarning("Line appears to be missing object ID (starts with property): {Line}", 
+            _logger.LogWarning("Line appears to be missing object ID (starts with property): {Line}",
                 line.Length > 80 ? line.Substring(0, 80) + "..." : line);
             return false;
         }
-        
+
         // Check if "object ID" looks like transform data (contains pipes)
         if (objectId.Contains('|'))
         {
-            _logger.LogWarning("Line appears to be corrupted (object ID contains pipes): {Line}", 
+            _logger.LogWarning("Line appears to be corrupted (object ID contains pipes): {Line}",
                 line.Length > 80 ? line.Substring(0, 80) + "..." : line);
             return false;
         }
-        
+
         // Validate object ID format (decimal or hexadecimal)
         if (!IsValidObjectId(objectId))
         {
-            _logger.LogWarning("Invalid object ID format '{ObjectId}': {Line}", 
+            _logger.LogWarning("Invalid object ID format '{ObjectId}': {Line}",
                 objectId, line.Length > 80 ? line.Substring(0, 80) + "..." : line);
             return false;
         }
-        
+
         // Global properties (objectId = 0)
         if (objectId == "0")
         {
@@ -544,11 +547,11 @@ public class AcmiClientService : IAcmiClientService
         // Update or create aircraft
         var isNewAircraft = false;
         AcmiAircraft? aircraftData;
-        
+
         if (_trackedAircraft.ContainsKey(objectId))
         {
             _trackedAircraft.TryGetValue(objectId, out aircraftData);
-            
+
             // this should never happen but let's be sure
             if (aircraftData == null)
             {
@@ -564,9 +567,9 @@ public class AcmiClientService : IAcmiClientService
             _trackedAircraft[objectId] = aircraftData;
             isNewAircraft = true;
         }
-        
+
         ParseAircraftProperties(aircraftData, span.Slice(firstComma + 1));
-        
+
         // Track callsign and fire discovery event for new aircraft
         if (isNewAircraft && !string.IsNullOrEmpty(aircraftData.CallSign))
         {
@@ -586,18 +589,18 @@ public class AcmiClientService : IAcmiClientService
     {
         if (string.IsNullOrEmpty(objectId))
             return false;
-        
+
         // Object ID can be decimal (9341) or hexadecimal (ff000079b4)
         // Valid characters: 0-9, a-f, A-F
         foreach (char c in objectId)
         {
-            if (!char.IsDigit(c) && 
+            if (!char.IsDigit(c) &&
                 !((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')))
             {
                 return false;
             }
         }
-        
+
         return true;
     }
 
@@ -609,11 +612,11 @@ public class AcmiClientService : IAcmiClientService
         {
             refTimeStart += 14; // Length of "ReferenceTime="
             int refTimeEnd = properties.Slice(refTimeStart).IndexOf(',');
-            var refTimeSpan = refTimeEnd < 0 
-                ? properties.Slice(refTimeStart) 
+            var refTimeSpan = refTimeEnd < 0
+                ? properties.Slice(refTimeStart)
                 : properties.Slice(refTimeStart, refTimeEnd);
-            
-            if (DateTime.TryParseExact(refTimeSpan, "yyyy-M-dTHH:mm:ssZ", 
+
+            if (DateTime.TryParseExact(refTimeSpan, "yyyy-M-dTHH:mm:ssZ",
                 CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var refTime))
             {
                 _referenceTime = refTime.ToUniversalTime();
@@ -624,7 +627,7 @@ public class AcmiClientService : IAcmiClientService
     private void ParseAircraftProperties(AcmiAircraft aircraft, ReadOnlySpan<char> properties)
     {
         aircraft.LastUpdate = _referenceTime.AddSeconds(_relativeTime);
-        
+
         // Parse only essential properties
         int pos = 0;
         while (pos < properties.Length)
@@ -632,7 +635,7 @@ public class AcmiClientService : IAcmiClientService
             int nextComma = properties.Slice(pos).IndexOf(',');
             int propEnd = nextComma < 0 ? properties.Length : pos + nextComma;
             var prop = properties.Slice(pos, propEnd - pos);
-            
+
             int equals = prop.IndexOf('=');
             if (equals > 0)
             {
@@ -753,8 +756,8 @@ public class AcmiClientService : IAcmiClientService
     }
 
     private readonly List<byte> _persistentBuffer = new();
-    
-    private async Task<string?> ReadLineAsync(CancellationToken cancellationToken) => 
+
+    private async Task<string?> ReadLineAsync(CancellationToken cancellationToken) =>
         await ReadUntilAsync('\n', cancellationToken);
 
     private async Task<string?> ReadUntilAsync(char separator, CancellationToken cancellationToken)
@@ -771,35 +774,35 @@ public class AcmiClientService : IAcmiClientService
             {
                 // First, check if we already have a complete line in our buffer
                 int separatorIndex = _persistentBuffer.IndexOf(separatorByte);
-                
+
                 if (separatorIndex >= 0)
                 {
                     // We have a complete line!
                     byte[] lineBytes = _persistentBuffer.GetRange(0, separatorIndex).ToArray();
-                    
+
                     // Remove the line and separator from buffer
                     _persistentBuffer.RemoveRange(0, separatorIndex + 1);
-                    
+
                     // Convert to string
                     string line = Encoding.UTF8.GetString(lineBytes);
-                    
+
                     // For regular lines (\n separator), trim whitespace
                     // For handshake (\0 separator), don't trim
                     if (separator == '\n')
                     {
                         line = line.Replace("\r", "").Trim();
-                        
+
                         // Skip empty lines
                         if (string.IsNullOrEmpty(line))
                             continue; // Check buffer again for next line
                     }
-                    
+
                     return line;
                 }
-                
+
                 // No complete line in buffer, read more data
                 int bytesRead = await _stream.ReadAsync(readBuffer, 0, readBuffer.Length, cancellationToken);
-                
+
                 if (bytesRead == 0)
                 {
                     // Connection closed
@@ -811,7 +814,7 @@ public class AcmiClientService : IAcmiClientService
                 {
                     _persistentBuffer.Add(readBuffer[i]);
                 }
-                
+
                 // Loop back to check if we now have a complete line
             }
 
@@ -862,7 +865,7 @@ public class AcmiClientService : IAcmiClientService
             Aircraft = aircraft,
             Timestamp = DateTime.UtcNow
         });
-        
+
         _logger.LogDebug("New aircraft discovered: {ObjectId} - {CallSign} ({Name})",
             aircraft.ObjectId, aircraft.CallSign ?? "Unknown", aircraft.Name ?? "Unknown");
     }

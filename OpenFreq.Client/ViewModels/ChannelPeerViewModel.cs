@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -17,24 +17,24 @@ public partial class ChannelPeerViewModel : ViewModelBase
 
     [ObservableProperty] public partial string Id { get; set; }
     [ObservableProperty] public partial string Name { get; set; }
-    
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(TransmitBorderColor), nameof(TransmitBorderThickness),
         nameof(TransmitHighlightColor))]
     public partial bool IsTransmitting { get; set; } = false;
-    
+
     public bool IsOwnUser { get; set; }
-    
+
     public Color TransmitHighlightColor => IsTransmitting
         ? Color.FromArgb(20, 255, 193, 7)
         : Colors.Transparent;
-    
+
     public Color TransmitBorderColor => Color.FromRgb(255, 193, 7);
-    
+
     public Thickness TransmitBorderThickness => IsTransmitting
         ? new Thickness(2, 0, 0, 0) // Left border
         : new Thickness(0);
-    
+
     public FontWeight PeerFontWeight => IsOwnUser ? FontWeight.Bold : FontWeight.Normal;
 
     private sealed class IdEqualityComparer : IEqualityComparer<ChannelPeerViewModel>
@@ -53,7 +53,7 @@ public partial class ChannelPeerViewModel : ViewModelBase
             return obj.Id.GetHashCode();
         }
     }
-    
+
     protected bool Equals(ChannelPeerViewModel other)
     {
         return Id == other.Id;

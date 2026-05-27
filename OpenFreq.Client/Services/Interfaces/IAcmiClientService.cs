@@ -30,7 +30,7 @@ public interface IAcmiClientService : IDisposable, ILifecycleService
 
     /// <summary>Gets all aircraft currently tracked</summary>
     IEnumerable<AcmiAircraft> GetAllAircraft();
-    
+
     /// <summary>
     /// Adds an object ID which will be tracked.
     /// Only this aircraft will trigger the TrackedAircraftTransformUpdated event.
@@ -38,8 +38,8 @@ public interface IAcmiClientService : IDisposable, ILifecycleService
     /// </summary>
     void AddTrackingForAircraft(string? objectId);
     void RemoveTrackingForAircraft(string? objectId);
-    
-    
+
+
     public AcmiConnectionStatus Status { get; }
 }
 
@@ -50,10 +50,10 @@ public class AircraftTransformEventArgs : EventArgs
 {
     /// <summary>The aircraft's object ID</summary>
     public string ObjectId { get; set; } = string.Empty;
-    
+
     /// <summary>The aircraft's current transform data</summary>
     public AircraftTransform Transform { get; set; } = new();
-    
+
     /// <summary>When this update occurred</summary>
     public DateTime Timestamp { get; set; }
 }

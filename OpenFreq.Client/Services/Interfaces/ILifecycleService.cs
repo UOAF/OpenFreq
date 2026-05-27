@@ -1,4 +1,4 @@
-﻿namespace OpenFreq.Client.Services.Interfaces;
+namespace OpenFreq.Client.Services.Interfaces;
 
 public interface ILifecycleService
 {

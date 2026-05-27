@@ -81,28 +81,28 @@ public class RtpJitterBuffer
     //    Opus PLC degrades to noise well before this; past it we resync.
     private const int MAX_BLIND_CONCEAL_FRAMES = 3;
     private const int MAX_CONCEAL_FRAMES = 15;
-    
+
     // _lastReleasedPt: relative timestamp (ts - _baseTimestamp) of the last slot we delivered (real packet or concealment)
     // _lastReceivedPt: relative timestamp of the latest packet we have ever received.
     private long? _lastReleasedPt;
     private long _lastReceivedPt = -1;
     // Consecutive concealment frames emitted since the last real packet was released.
     private int _concealmentRunLength;
-        
+
     // Statistics
     private int _packetsReceived;
     private int _packetsLost;
     private int _packetsLate;
     private int _packetsDuplicate;
     private int _packetsPlayed;
-        
+
     public RtpJitterBuffer(ILogger<RtpJitterBuffer> logger, int sampleRate = OpenFreqRtcClient.SAMPLE_RATE, int maxBufferPackets = 200)
     {
         _logger = logger;
         _packetsLate = 0;
         _maxBufferPackets = maxBufferPackets;
     }
-        
+
     /// <summary>
     /// Add packet to jitter buffer
     /// </summary>
@@ -314,7 +314,7 @@ public class RtpJitterBuffer
         long jitterAdjustedElapsedSamples = (long)(
             (double)(elapsedTicks - bufferDelayTicks) /
                 Stopwatch.Frequency * OpenFreqRtcClient.SAMPLE_RATE);
-        
+
         // When the playout clock passes a slot and no real packet is in the buffer,
         // signal the drain thread to inject PLC now rather than waiting for the
         // next real packet to arrive (which would be a full frame too late).
@@ -421,7 +421,7 @@ public class RtpJitterBuffer
         _concealmentRunLength = 0; // real audio resumed — reset the concealment budget
         return new PacketsReady(readies);
     }
-        
+
     /// <summary>
     /// Measure packet arrival jitter
     /// </summary>
@@ -438,7 +438,7 @@ public class RtpJitterBuffer
 
         double actualInterval = (double)(ticksElapsed - _lastPacketReceivedTicks) / Stopwatch.Frequency;
         double expectedInterval = (double)(samplesElapsed - _lastPacketTimestamp) / OpenFreqRtcClient.SAMPLE_RATE;
-    
+
         // Detect transmission gap (PTT released).
         if (expectedInterval > 0.5)
         {
@@ -452,23 +452,23 @@ public class RtpJitterBuffer
             _activeBufferMs = _targetBufferMs;
             return;
         }
-    
+
         // Normal jitter calculation
         double jitterMs = Math.Abs(actualInterval - expectedInterval) * 1000;
-    
+
         _jitterSamples.Enqueue(jitterMs);
         while (_jitterSamples.Count > 50)
             _jitterSamples.Dequeue();
-    
+
         if (_jitterSamples.Count >= 10)
         {
             _measuredJitterMs = _jitterSamples.Average();
         }
-    
+
         _lastPacketReceivedTicks = ticksElapsed;
         _lastPacketTimestamp = samplesElapsed;
     }
-        
+
     /// <summary>
     /// Adapt target buffer size from observed playout margin.
     /// Sizes the buffer so the worst recent packet would still have had
@@ -500,11 +500,11 @@ public class RtpJitterBuffer
         _targetBufferMs = Math.Clamp(_targetBufferMs, MIN_BUFFER_MS, MAX_BUFFER_MS);
     }
 
-        
+
     /// <summary>
     /// Get buffer statistics
     /// </summary>
-    public (int received, int lost, int late, int duplicate, int played, 
+    public (int received, int lost, int late, int duplicate, int played,
         double lossPercent, double jitterMs, double bufferMs, int buffered) GetStatistics()
     {
         double lossPercent = (_packetsReceived + _packetsLost) > 0
@@ -514,13 +514,13 @@ public class RtpJitterBuffer
         int bufferedCount = _buffer.Count;
 
         return (
-            _packetsReceived, 
-            _packetsLost, 
-            _packetsLate, 
-            _packetsDuplicate, 
+            _packetsReceived,
+            _packetsLost,
+            _packetsLate,
+            _packetsDuplicate,
             _packetsPlayed,
-            lossPercent, 
-            _measuredJitterMs, 
+            lossPercent,
+            _measuredJitterMs,
             _targetBufferMs,
             bufferedCount
         );

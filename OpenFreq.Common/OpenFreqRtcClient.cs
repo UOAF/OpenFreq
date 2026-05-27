@@ -269,10 +269,13 @@ public class OpenFreqRtcClient : IDisposable
         {
             throw new InvalidOperationException("Not authenticated");
         }
-        
+
         await SendMessageAsync(SignalingMessageFactory.CreateSetDisplayName(displayName));
     }
 
+    /// <summary>
+    /// Marks the start time of a TX
+    /// </summary>
     /// <see cref="RtpAudioSender.MarkTransmitStartTime"/>
     public void MarkTransmitStartTime()
     {
@@ -294,7 +297,7 @@ public class OpenFreqRtcClient : IDisposable
                 in3d: in3d
             ));
         }
-        
+
         _rtpSender?.SendAudio(pcmData, frequencyTransmissions);
     }
 
@@ -587,7 +590,7 @@ public class AuthenticationEventArgs : EventArgs
 {
     public string PeerId { get; }
     public int AudioPort { get; }
-    
+
     public SortedDictionary<int, List<PeerData>> Peers { get; }
 
     public AuthenticationEventArgs(string peerId, SortedDictionary<int, List<PeerData>> peers, int audioPort)
@@ -652,7 +655,7 @@ public class PeerTransmissionEventArgs : EventArgs
         PeerDisplayName = peerDisplayName;
         FrequencyKhz = frequencyKhz;
         IsTransmitting = isTransmitting;
-        Is3d =  is3d;
+        Is3d = is3d;
     }
 }
 

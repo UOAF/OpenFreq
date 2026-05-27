@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using OpenFreq.Common;
 
 /// <summary>
@@ -7,7 +7,7 @@ using OpenFreq.Common;
 public static class AcmiHeightmapConverter
 {
     private const double THEATRE_SIZE_METERS = 1_024_000.0;
-    
+
     /// <summary>
     /// Converts ACMI coordinates to Heightmap coordinates (in METERS for FastPathAudioSim)
     /// </summary>
@@ -20,10 +20,10 @@ public static class AcmiHeightmapConverter
         // ACMI coordinates are already in meters, just need Y-flip
         var x = u;
         var y = THEATRE_SIZE_METERS - v;
-        
+
         return (x, y, altitudeMeters);
     }
-    
+
     /// <summary>
     /// Converts Heightmap coordinates to ACMI coordinates
     /// </summary>
@@ -35,11 +35,11 @@ public static class AcmiHeightmapConverter
     {
         var u = x;
         var v = THEATRE_SIZE_METERS - y;
-        
+
         return (u, v, altitudeMeters);
     }
-    
-   /// <summary>
+
+    /// <summary>
     /// Converts aircraft true airspeed and orientation into a 3D velocity vector in world coordinates.
     /// </summary>
     /// <param name="airSpeedMach">Air Speed in Mach</param>
@@ -59,17 +59,17 @@ public static class AcmiHeightmapConverter
 
         // Horizontal velocity component
         var vHorizontal = trueAirspeedMps * Math.Cos(pitch);
-        
+
         // Decompose horizontal into North and East
         var vNorth = vHorizontal * Math.Cos(yaw);
         var vEast = vHorizontal * Math.Sin(yaw);
-        
+
         // Vertical component (positive up)
         var vUp = trueAirspeedMps * Math.Sin(pitch);
 
         return new Vector3(vNorth, vEast, vUp);
     }
-   
+
     /// <summary>
     /// Calculates True Airspeed from Mach number and altitude
     /// </summary>
@@ -82,7 +82,7 @@ public static class AcmiHeightmapConverter
         const double seaLevelTemp = 288.15; // Kelvin
         const double lapseRate = 0.0065; // K/m
         const double tropoPauseAlt = 11000.0; // meters
-        
+
         double temperature;
         if (altitudeMeters <= tropoPauseAlt)
         {
@@ -94,15 +94,15 @@ public static class AcmiHeightmapConverter
             // Stratosphere: constant temperature
             temperature = seaLevelTemp - lapseRate * tropoPauseAlt;
         }
-        
+
         // Speed of sound: a = sqrt(γ × R × T)
         // where γ = 1.4 (ratio of specific heats for air)
         //       R = 287.05 (specific gas constant for air, J/(kg·K))
         const double gamma = 1.4;
         const double R = 287.05;
-        
+
         double speedOfSound = Math.Sqrt(gamma * R * temperature);
-        
+
         // TAS = Mach × speed of sound
         return mach * speedOfSound;
     }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 namespace FalconBmsDataService.Models;
 
@@ -17,15 +17,15 @@ public enum RadioDeviceType
 [Flags]
 public enum ClientStatusFlags
 {
-    AllClear        = 0x00,
-    ClientActive    = 0x01,
-    Connected       = 0x02,
+    AllClear = 0x00,
+    ClientActive = 0x01,
+    Connected = 0x02,
     TryingToConnect = 0x04,
-    ExitReceived    = 0x08,
-    ConnectionFail  = 0x08000000,
-    HostUnknown     = 0x10000000,
-    BadPassword     = 0x20000000,
-    NoMicrophone    = 0x40000000,
-    NoSpeakers      = unchecked((int)0x80000000),
-    ErrorMask       = unchecked((int)0xF8000000)
+    ExitReceived = 0x08,
+    ConnectionFail = 0x08000000,
+    HostUnknown = 0x10000000,
+    BadPassword = 0x20000000,
+    NoMicrophone = 0x40000000,
+    NoSpeakers = unchecked((int)0x80000000),
+    ErrorMask = unchecked((int)0xF8000000)
 }

@@ -46,8 +46,8 @@ public class AudioTransmissionMessage
     [JsonPropertyName("frequency")] public int FrequencyKhz { get; set; }
 
     [JsonPropertyName("transmitting")] public bool Transmitting { get; set; }
-    
-    [JsonPropertyName("3d")] public bool Is3d { get; set; } 
+
+    [JsonPropertyName("3d")] public bool Is3d { get; set; }
 }
 
 /// <summary>
@@ -68,9 +68,9 @@ public class SuccessMessage
     [JsonPropertyName("peerId")] public string? PeerId { get; set; }
 
     [JsonPropertyName("audioPort")] public int? AudioPort { get; set; }
-    
+
     [JsonPropertyName("opusCompression")] public bool OpusCompressionEnabled { get; set; }
-    
+
     [JsonPropertyName("frequencies")] public SortedDictionary<int, List<PeerData>> FrequenciesPeers { get; set; } = [];
 
 }
@@ -135,7 +135,7 @@ public class ChannelStateMessage
 /// </summary>
 public class DisplayNameMessage
 {
-    [JsonPropertyName("displayname")] public string DisplayName { get; set; }  = string.Empty;
+    [JsonPropertyName("displayname")] public string DisplayName { get; set; } = string.Empty;
 }
 
 

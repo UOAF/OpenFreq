@@ -58,7 +58,7 @@ public static class StringDataParser
                     // Read the null-terminated string
                     byte[] stringBytes = new byte[strLength];
                     Marshal.Copy(baseAddress + offset, stringBytes, 0, (int)strLength);
-                    
+
                     // Convert to string (ASCII/UTF-8)
                     return Encoding.UTF8.GetString(stringBytes).TrimEnd('\0');
                 }
@@ -140,7 +140,7 @@ public static class StringDataParser
     public static Dictionary<uint, string> ParseAllStrings(IntPtr baseAddress)
     {
         var result = new Dictionary<uint, string>();
-        
+
         if (baseAddress == IntPtr.Zero)
             return result;
 
@@ -167,17 +167,20 @@ public static class StringDataParser
 
                 byte[] stringBytes = new byte[strLength];
                 Marshal.Copy(baseAddress + offset, stringBytes, 0, (int)strLength);
-                
+
                 string value = Encoding.UTF8.GetString(stringBytes).TrimEnd('\0');
                 result[strId] = value;
 
                 offset += (int)strLength + 1;
             }
         }
+
+#pragma warning disable RCS1075
         catch (Exception)
         {
             // Return partial results
         }
+#pragma warning restore RCS1075
 
         return result;
     }

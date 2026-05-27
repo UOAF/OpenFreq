@@ -1,4 +1,4 @@
-﻿/*
+/*
  * OpenFreq Server Test Client
  * Simple single-file client for testing OpenFreq Server with BASS audio
  *
@@ -19,13 +19,13 @@ using ErrorEventArgs = OpenFreq.Common.ErrorEventArgs;
 
 namespace OpenFreq.TestClient;
 
-public class TestClient
+public static class TestClient
 {
     public static async Task Main(string[] args)
     {
         string serverIp = args.Length > 0 ? args[0] : "127.0.0.1";
         string password = args.Length > 1 ? args[1] : "changeMe123";
-        
+
         // Parse frequencies from command line (in kHz) or use defaults
         List<int> frequencies = new();
         if (args.Length > 2)
@@ -38,7 +38,7 @@ public class TestClient
                 }
             }
         }
-        
+
         // Default frequencies if none provided
         if (frequencies.Count == 0)
         {
@@ -135,7 +135,7 @@ public class TestClientWrapper : IDisposable
     {
         _client = client;
         _frequencies = frequencies;
-        
+
         foreach (var freq in frequencies)
         {
             _isTransmitting[freq] = false;
@@ -216,12 +216,12 @@ public class TestClientWrapper : IDisposable
             if (!_isRunning) break;
 
             // Determine if space is "currently held" based on recent activity
-            bool spaceIsHeld = lastSpaceTime.HasValue && 
+            bool spaceIsHeld = lastSpaceTime.HasValue &&
                                (DateTime.UtcNow - lastSpaceTime.Value).TotalMilliseconds < SpaceReleaseDelayMs;
 
             // Handle transmission
             bool anyTransmitting = _isTransmitting.Values.Any(x => x);
-            
+
             if (spaceIsHeld && !anyTransmitting)
             {
                 await StartTransmissionAsync();
@@ -363,7 +363,7 @@ public class TestClientWrapper : IDisposable
             Bass.ChannelSetPosition(_playbackStream, 0);
             Console.WriteLine($"[BUFFER RESET] Was {bufferMs:F1}ms");
         }
-    
+
         Bass.StreamPutData(_playbackStream, e.AudioData.ToArray(), e.AudioData.Length);
     }
 

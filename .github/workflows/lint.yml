@@ -1,0 +1,47 @@
+name: Lint
+
+on:
+  pull_request:
+    branches: [develop, main]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Configure SSH for submodule
+        env:
+          SSH_KEY: ${{ secrets.OPENFREQAUDIO_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/openfreqaudio_key
+          chmod 600 ~/.ssh/openfreqaudio_key
+          printf 'Host github.com\n  IdentityFile ~/.ssh/openfreqaudio_key\n  StrictHostKeyChecking no\n' >> ~/.ssh/config
+
+      - name: Fetch submodules
+        run: git submodule update --init --recursive
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Lint (whitespace + style + analyzers)
+        run: dotnet format --verify-no-changes --no-restore --exclude libs/OpenFreqAudio
+
+      - name: Build (warnings as errors)
+        run: |
+          for proj in OpenFreq.Common/OpenFreq.Common.csproj \
+                      OpenFreq.Client/OpenFreq.Client.csproj \
+                      OpenFreq.Server/OpenFreq.Server.csproj \
+                      OpenFreq.Testclient/OpenFreq.Testclient.csproj; do
+            dotnet build "$proj" --no-restore -warnaserror
+          done

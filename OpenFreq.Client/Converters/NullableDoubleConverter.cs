@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Globalization;
 using Avalonia.Data.Converters;
 
@@ -10,7 +10,7 @@ public class NullableDoubleConverter : IValueConverter
     {
         if (value is double d)
             return d.ToString(CultureInfo.InvariantCulture);
-        
+
         return string.Empty;
     }
 
@@ -19,7 +19,7 @@ public class NullableDoubleConverter : IValueConverter
         if (value is not string str) return null;
         if (string.IsNullOrWhiteSpace(str))
             return null;
-            
+
         if (double.TryParse(str, NumberStyles.Any, CultureInfo.InvariantCulture, out var result))
             return result;
 

@@ -105,7 +105,7 @@ public class IvcMonitorService : IIvcMonitorService
 #pragma warning restore CS0067
     public bool IsIvcRunning => false;
 
-    public void Start() 
+    public void Start()
     { }
 
     public void Stop() { }

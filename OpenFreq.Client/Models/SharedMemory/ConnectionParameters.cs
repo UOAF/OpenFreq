@@ -1,4 +1,4 @@
-﻿namespace FalconRadioService.Models;
+namespace FalconRadioService.Models;
 
 public class ConnectionParameters
 {

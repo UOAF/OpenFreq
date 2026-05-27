@@ -9,9 +9,9 @@ namespace OpenFreqClient.Services;
 
 public class ConfigurationService(ILogger<ConfigurationService> logger) : IConfigurationService
 {
-    private static readonly string ConfigFilePath = 
+    private static readonly string ConfigFilePath =
         Path.Combine(AppContext.BaseDirectory, "OpenFreq.Client.json");
-    
+
     public async Task<AppConfiguration> LoadConfigurationAsync()
     {
         try
@@ -22,7 +22,7 @@ public class ConfigurationService(ILogger<ConfigurationService> logger) : IConfi
             }
 
             var json = await File.ReadAllTextAsync(ConfigFilePath);
-            return Json.Json.Instance.Deserialize<AppConfiguration>(json) 
+            return Json.Json.Instance.Deserialize<AppConfiguration>(json)
                    ?? new AppConfiguration();
         }
         catch (Exception ex)

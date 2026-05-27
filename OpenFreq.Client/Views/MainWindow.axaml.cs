@@ -11,9 +11,9 @@ namespace OpenFreqClient.Views;
 public partial class MainWindow : Window
 {
     private MainWindowViewModel? _viewModel;
-    
+
     // For confirmation dialog if BMS mode set and connected
-    private bool _forceClose ;
+    private bool _forceClose;
 
     public MainWindow()
     {

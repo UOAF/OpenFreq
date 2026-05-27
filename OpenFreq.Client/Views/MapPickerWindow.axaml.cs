@@ -1,4 +1,4 @@
-﻿using Avalonia.Controls;
+using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Mapsui.Extensions;
@@ -11,13 +11,13 @@ public partial class MapPickerWindow : Window
     private readonly string _selectedTheaterName = null!;
     private readonly MapPickerViewModel _viewModel;
     public (double lat, double lon)? SelectedPosition { get; private set; }
-    
+
     public MapPickerWindow()
     {
         InitializeComponent();
         _viewModel = null!; // Will be set in other constructors
     }
-    
+
     /// <summary>
     /// Constructor for position picking mode
     /// </summary>
@@ -43,7 +43,7 @@ public partial class MapPickerWindow : Window
         _selectedTheaterName = selectedTheaterName;
         _viewModel = new MapPickerViewModel(initialLat, initialLon, initialHeading, selectedTheaterName, callsign);
         DataContext = _viewModel;
-        
+
         // Update window title for tracking mode
         Title = string.IsNullOrEmpty(callsign) ? "Aircraft Tracking" : $"Tracking: {callsign}";
     }
@@ -57,30 +57,30 @@ public partial class MapPickerWindow : Window
         if (callsign != null)
             Title = $"Tracking: {callsign}";
     }
-    
+
     private void OnMapPointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (!e.Properties.IsRightButtonPressed) return;
         if (DataContext is not MapPickerViewModel vm) return;
         if (MapControl.Map?.Navigator?.Viewport == null) return;
-        
+
         // Get pointer position relative to map control
         var screenPosition = e.GetPosition(MapControl);
-        
+
         // Convert screen position to world position
         var worldPosition = MapControl.Map.Navigator.Viewport.ScreenToWorld(
-            screenPosition.X, 
+            screenPosition.X,
             screenPosition.Y);
-        
+
         vm.OnMapClicked(worldPosition);
     }
-    
+
     private void OnPositionConfirmed(object? sender, (double lat, double lon) position)
     {
         SelectedPosition = position;
         Close(position);
     }
-    
+
     private void OnCancel(object? sender, RoutedEventArgs e)
     {
         Close(null);

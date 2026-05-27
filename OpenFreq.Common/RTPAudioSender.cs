@@ -1,14 +1,14 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using Concentus.Enums;
 using Concentus.Structs;
 using Microsoft.Extensions.Logging;
-using OpenFreqAudio;
 using OpenFreq.Common.Rtp;
-using System.Runtime.InteropServices;
+using OpenFreqAudio;
 
 namespace OpenFreq.Common;
 
@@ -125,10 +125,8 @@ public class RtpAudioSender : IDisposable
     /// Send audio packet with metadata
     /// </summary>
     /// <param name="audioData">Raw PCM audio data (16-bit, mono, 48kHz)</param>
-    /// <param name="clientId">Sender client ID</param>
-    /// <param name="position">Aircraft position</param>
     /// <param name="frequencyTransmissions">List of FrequencyTransmissions</param>
-    /// 
+    ///
     public void SendAudio(Memory<short> audioData, List<FrequencyTransmission> frequencyTransmissions)
     {
         _frequencies = frequencyTransmissions;

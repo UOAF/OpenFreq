@@ -258,7 +258,7 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
             {
                 _selectedPlaybackDeviceIndex = deviceIndex;
                 _selectedPlaybackDeviceName = deviceInfo.Name;
-                logger.LogInformation("Selected playback device: {DeviceIndex} - {DeviceName}", 
+                logger.LogInformation("Selected playback device: {DeviceIndex} - {DeviceName}",
                     deviceIndex, deviceInfo.Name);
             }
         }
@@ -273,7 +273,7 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
             {
                 _selectedRecordingDeviceIndex = deviceIndex;
                 _selectedRecordingDeviceName = deviceInfo.Name;
-                logger.LogInformation("Selected recording device: {DeviceIndex} - {DeviceName}", 
+                logger.LogInformation("Selected recording device: {DeviceIndex} - {DeviceName}",
                     deviceIndex, deviceInfo.Name);
             }
         }

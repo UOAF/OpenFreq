@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
@@ -187,7 +187,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
     {
         _logger.LogDebug("BMS Aircraft info changed: {nctr} to preset {name}", e.AcNCTR, e.AcName);
         // If we are in 3d, the SHMEM AcName and AcNCTR fields are now populated.
-        
+
         var preset = RadioStationPresets.GetPresetByBmsAircraftNctr(_falconSharedMemoryService.AcNCTR);
         foreach (var channelGroup in ChannelList.Locations)
         {
@@ -202,8 +202,8 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         // Sync _peerModes from the authoritative server snapshot so late-joining
         // clients get the correct lobby/game section for all existing peers.
         foreach (var (frequency, peers) in e.AllPeers)
-        foreach (var peer in peers)
-            _peerModes[(peer.Id, frequency)] = peer.Is3d;
+            foreach (var peer in peers)
+                _peerModes[(peer.Id, frequency)] = peer.Is3d;
         Dispatcher.UIThread.Post(RebuildPeerLists);
     }
 
@@ -641,7 +641,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
             PeerId = _openFreqService.PeerId ?? "";
             ClearError();
             SettingsDrawerOpened = false;
-            
+
             if (Settings is { ModeIsGci: false, MinimizeOnConnect: true })
             {
                 Dispatcher.UIThread.Post(() =>
@@ -969,7 +969,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         _falconRadioSharedMemoryService.LogbookNameChanged -= OnLogbookNameChanged;
         _falconSharedMemoryService.FlyingStateChanged -= OnFlyingStateChanged;
         _falconSharedMemoryService.AircraftInfoChanged -= OnAircraftInfoChanged;
-        
+
         await DisconnectAsync();
         ChannelList.Dispose();
         Settings.Dispose();

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace OpenFreqClient.Services.Interfaces;
 
-public interface IAudioService: IAsyncDisposable
+public interface IAudioService : IAsyncDisposable
 {
     public List<string> GetPlaybackDevices();
     public List<string> GetRecordingDevices();
