@@ -445,10 +445,9 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         if (channel == null || channel.ConnectionStatus == Channel.ChannelConnectionStatus.Disconnected) return;
         switch (e)
         {
-            // mute all incoming transmissions from this location which have the same channel type
+            // mute only the transmitting frequency
             case { OldPtt: false, NewPtt: true }:
-                var mutedFrequencies = FalconLocation.GetAllFrequenciesOfLocation(channel.Type);
-                mutedFrequencies.Remove(channel.FrequencyKhz);
+                var mutedFrequencies = new List<int> { channel.FrequencyKhz };
                 _openFreqService.StartTransmissionAsync(channel.FrequencyKhz, channel.Id, mutedFrequencies).Wait();
                 break;
             case { OldPtt: true, NewPtt: false }:
