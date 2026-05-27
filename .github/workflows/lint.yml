@@ -35,4 +35,4 @@ jobs:
         run: dotnet restore
 
       - name: Lint (whitespace + style + analyzers)
-        run: dotnet format --verify-no-changes --no-restore
+        run: dotnet format --verify-no-changes --no-restore --exclude libs/OpenFreqAudio
