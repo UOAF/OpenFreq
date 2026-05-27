@@ -36,6 +36,9 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty] public partial ObservableCollection<string> RecordingDeviceNames { get; set; } = [];
 
+    [ObservableProperty] public partial bool HasPlaybackDevices { get; set; }
+    [ObservableProperty] public partial bool HasRecordingDevices { get; set; }
+
     [ObservableProperty] public partial int RecordingDeviceIndex { get; set; }
     [ObservableProperty] public partial int PlaybackDeviceIndex { get; set; }
     [ObservableProperty] public partial string SelectedTheater { get; set; } = "Korea KTO";
@@ -204,10 +207,12 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
         var playbackDevices = _audioService.GetPlaybackDevices();
         PlaybackDeviceNames = new ObservableCollection<string>(playbackDevices);
         PlaybackDeviceIndex = _audioService.DefaultPlaybackDevice;
+        HasPlaybackDevices = playbackDevices.Count > 0;
 
         var recordingDevices = _audioService.GetRecordingDevices();
         RecordingDeviceNames = new ObservableCollection<string>(recordingDevices);
         RecordingDeviceIndex = _audioService.DefaultRecordingDevice;
+        HasRecordingDevices = recordingDevices.Count > 0;
 
         _audioService.PlaybackDevicesChanged += OnPlaybackDevicesChanged;
         _audioService.RecordingDevicesChanged += OnRecordingDevicesChanged;
@@ -242,6 +247,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
             RecordingDeviceNames.Clear();
             foreach (var device in e.Devices)
                 RecordingDeviceNames.Add(device);
+            HasRecordingDevices = e.Devices.Count > 0;
 
             // Update UI selection (may be same value — observable equality guard won't re-fire)
             RecordingDeviceIndex = e.NewDeviceIndex;
@@ -283,6 +289,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
             PlaybackDeviceNames.Clear();
             foreach (var device in e.Devices)
                 PlaybackDeviceNames.Add(device);
+            HasPlaybackDevices = e.Devices.Count > 0;
 
             // Update UI selection (may be same value — observable equality guard won't re-fire)
             PlaybackDeviceIndex = e.NewDeviceIndex;

@@ -20,6 +20,10 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
     private string? _selectedPlaybackDeviceName;
     private string? _selectedRecordingDeviceName;
 
+    // BASS initialization state — tracked separately so each can retry independently
+    private bool _playbackInitialized;
+    private bool _recordingInitialized;
+
     // Events to notify when devices change
     public event EventHandler<DeviceChangedEventArgs>? PlaybackDevicesChanged;
     public event EventHandler<DeviceChangedEventArgs>? RecordingDevicesChanged;
@@ -41,16 +45,19 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
 
     public void Init()
     {
-        if (!Bass.Init() || !Bass.RecordInit())
-        {
-            throw new Exception($"Failed to initialize BASS: {Bass.LastError}");
-        }
+        _playbackInitialized = Bass.Init();
+        if (!_playbackInitialized)
+            logger.LogWarning("BASS playback init failed ({Error}), will retry when devices appear", Bass.LastError);
 
-        // Get default devices
+        _recordingInitialized = Bass.RecordInit();
+        if (!_recordingInitialized)
+            logger.LogWarning("BASS recording init failed ({Error}), will retry when devices appear", Bass.LastError);
+
+        // Snapshot current device lists (may be empty when no devices present)
         _lastPlaybackDevices = GetPlaybackDevices();
         _lastRecordingDevices = GetRecordingDevices();
 
-        // Start monitoring for device changes
+        // Start monitoring for device changes (also retries failed inits)
         StartDeviceMonitoring();
     }
 
@@ -85,6 +92,28 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
 
     private void CheckForDeviceChanges()
     {
+        // Retry BASS init if it previously failed (e.g. no devices at startup)
+        if (!_playbackInitialized)
+        {
+            _playbackInitialized = Bass.Init();
+            if (_playbackInitialized)
+            {
+                logger.LogInformation("BASS playback init succeeded after retry");
+                // Treat all current devices as newly appeared
+                _lastPlaybackDevices = new List<string>();
+            }
+        }
+
+        if (!_recordingInitialized)
+        {
+            _recordingInitialized = Bass.RecordInit();
+            if (_recordingInitialized)
+            {
+                logger.LogInformation("BASS recording init succeeded after retry");
+                _lastRecordingDevices = new List<string>();
+            }
+        }
+
         // Check playback devices
         var currentPlaybackDevices = GetPlaybackDevices();
         if (!currentPlaybackDevices.SequenceEqual(_lastPlaybackDevices))
@@ -284,6 +313,12 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
 
     public List<string> GetPlaybackDevices()
     {
+        if (!_playbackInitialized)
+        {
+            lock (_deviceLock) { _playbackBassIndices = new List<int>(); DefaultPlaybackDevice = -1; }
+            return new List<string>();
+        }
+
         // Build into locals first, then swap atomically under lock.
         // This prevents GetPlaybackBassIndex (called from UI thread) from reading a
         // partially-populated list while the monitoring thread is rebuilding it.
@@ -312,6 +347,12 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
 
     public List<string> GetRecordingDevices()
     {
+        if (!_recordingInitialized)
+        {
+            lock (_deviceLock) { _recordingBassIndices = new List<int>(); DefaultRecordingDevice = -1; }
+            return new List<string>();
+        }
+
         var deviceList = new List<string>();
         var bassIndices = new List<int>();
         int defaultIndex = -1;

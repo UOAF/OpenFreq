@@ -193,12 +193,16 @@
                                         <TextBlock Text="Input" Classes="InputLabel" />
                                         <ComboBox ItemsSource="{Binding Settings.RecordingDeviceNames}"
                                                   SelectedIndex="{Binding Settings.RecordingDeviceIndex}"
+                                                  IsEnabled="{Binding Settings.HasRecordingDevices}"
+                                                  PlaceholderText="No input devices found"
                                                   HorizontalAlignment="Stretch"
                                                   Margin="0,0,0,12" />
 
                                         <TextBlock Text="Output" Classes="InputLabel" />
                                         <ComboBox ItemsSource="{Binding Settings.PlaybackDeviceNames}"
                                                   SelectedIndex="{Binding Settings.PlaybackDeviceIndex}"
+                                                  IsEnabled="{Binding Settings.HasPlaybackDevices}"
+                                                  PlaceholderText="No output devices found"
                                                   HorizontalAlignment="Stretch"
                                                   Margin="0,0,0,12" />
 
@@ -483,12 +487,16 @@
                                         <TextBlock Text="Input" Classes="InputLabel" />
                                         <ComboBox ItemsSource="{Binding Settings.RecordingDeviceNames}"
                                                   SelectedIndex="{Binding Settings.RecordingDeviceIndex}"
+                                                  IsEnabled="{Binding Settings.HasRecordingDevices}"
+                                                  PlaceholderText="No input devices found"
                                                   HorizontalAlignment="Stretch"
                                                   Margin="0,0,0,12" />
 
                                         <TextBlock Text="Output" Classes="InputLabel" />
                                         <ComboBox ItemsSource="{Binding Settings.PlaybackDeviceNames}"
                                                   SelectedIndex="{Binding Settings.PlaybackDeviceIndex}"
+                                                  IsEnabled="{Binding Settings.HasPlaybackDevices}"
+                                                  PlaceholderText="No output devices found"
                                                   HorizontalAlignment="Stretch"
                                                   Margin="0,0,0,12" />
 
@@ -716,15 +724,15 @@
                                 <Grid RowDefinitions="*,Auto">
                                     <!-- Vertical content area -->
                                     <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="{Binding DistinctPeers, StringFormat='{}{0} Peers'}" 
+                                        <TextBlock Text="{Binding DistinctPeers, StringFormat='{}{0} Peers'}"
                                                    VerticalAlignment="Center" />
                                     </StackPanel>
                                 </Grid>
                             </Button>
                         </Expander.Header>
 
-                                <!-- Vertical content area -->
-                        
+                        <!-- Vertical content area -->
+
                         <!-- Expanded Content -->
                         <DockPanel Width="280">
                             <!-- Peers List -->
