@@ -242,11 +242,21 @@ public class RtpJitterBuffer
         if (_buffer.ContainsKey(sp.SequenceNumber))
         {
             _packetsDuplicate++;
+#if DEBUG
+            _logger.LogDebug(
+                "[RTPTRACE 2/6] jitter-in  SSRC={Ssrc:X8} seq16={Seq16} seq64={Seq64} → duplicate, dropped",
+                packet.Ssrc, packet.SequenceNumber, sp.SequenceNumber);
+#endif
             return;
         }
 
         // Add to buffer
         _buffer[sp.SequenceNumber] = sp;
+#if DEBUG
+        _logger.LogDebug(
+            "[RTPTRACE 2/6] jitter-in  SSRC={Ssrc:X8} seq16={Seq16} seq64={Seq64} ts64={Ts64} buf={Buf}",
+            packet.Ssrc, packet.SequenceNumber, sp.SequenceNumber, sp.Timestamp, _buffer.Count);
+#endif
 
         var ticksDiff = now - _baseTimeTicks;
         var timestampDiff = sp.Timestamp - _baseTimestamp;

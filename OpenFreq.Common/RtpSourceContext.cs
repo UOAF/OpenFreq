@@ -92,6 +92,11 @@ public sealed class RtpSourceContext : IDisposable
             try
             {
                 var p = await chan.ReadAsync(ct);
+#if DEBUG
+                Logger.LogDebug(
+                    "[RTPTRACE 4/6] decode-in  SSRC={Ssrc:X8} seq={Seq} concealment={Conceal}",
+                    p.Ssrc, p.SequenceNumber, p.IsConcealment);
+#endif
 
                 // FEC/PLC — the drain thread detected a missing slot at  the correct clock position and injected this sentinel.
                 // p.Payload is non-empty when N+1 was already buffered and carries FEC bits; in that case use FEC recovery.
@@ -159,7 +164,9 @@ public sealed class RtpSourceContext : IDisposable
         }
 
 #if DEBUG
-        Logger.LogDebug($"Playing packet from {packet.Ssrc}: {packet.SequenceNumber}");
+        Logger.LogDebug(
+            "[RTPTRACE 5/6] decoded    SSRC={Ssrc:X8} seq={Seq} samples={Samples} → play chan",
+            packet.Ssrc, packet.SequenceNumber, decodedAudio.Length);
 #endif
 
         await ToPlay.WriteAsync(new AudioReceivedEventArgs

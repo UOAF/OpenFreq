@@ -1109,13 +1109,13 @@ public class OpenFreqService : IOpenFreqService
         {
             if (frequencyTransmission.In3d != Apply3dAudioEffects)
             {
-                _logger.LogTrace("Audio data received but not matching 3D settings - dropping");
+                _logger.LogDebug("Audio data received but not matching 3D settings - dropping");
                 continue;
             }
 
             if (Apply3dAudioEffects && _activeTransmissionsAndMutedFrequencies.ContainsKey(frequencyTransmission.Khz))
             {
-                _logger.LogTrace("Receiving transmission when we are sending - dropping");
+                _logger.LogDebug("Receiving transmission when we are sending - dropping");
                 continue;
             }
 

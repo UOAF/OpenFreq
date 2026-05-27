@@ -143,6 +143,12 @@ public class RtpAudioReceiver : IDisposable
                 _logger.LogWarning("Invalid RTP packet");
                 return;
             }
+#if DEBUG
+            _logger.LogDebug(
+                "[RTPTRACE 1/6] UDP→parse  SSRC={Ssrc:X8} seq={Seq} ts={Ts} payload={Bytes}b ext={Ext}b",
+                rtpPacket.Ssrc, rtpPacket.SequenceNumber, rtpPacket.Timestamp,
+                rtpPacket.Payload.Length, rtpPacket.ExtensionData?.Length ?? 0);
+#endif
             lock (_pool)
             {
                 _pool.AddPacket(rtpPacket);
@@ -181,8 +187,18 @@ public class RtpAudioReceiver : IDisposable
                         switch (rp)
                         {
                             case PacketsReady pr:
+#if DEBUG
+                                _logger.LogDebug(
+                                    "[RTPTRACE 3/6] drain      SSRC={Ssrc:X8} → {Count} packet(s) due",
+                                    context.Ssrc, pr.Packets.Count);
+#endif
                                 foreach (var p in pr.Packets)
                                 {
+#if DEBUG
+                                    _logger.LogDebug(
+                                        "[RTPTRACE 3/6] drain      SSRC={Ssrc:X8} seq={Seq} → decode chan",
+                                        p.Ssrc, p.SequenceNumber);
+#endif
                                     // Always succeeds; channel drops oldest on full.
                                     context.ToDecode.TryWrite(p);
                                 }
@@ -193,6 +209,11 @@ public class RtpAudioReceiver : IDisposable
                             // Inject an empty packet so the decoder fills the hole now, not one frame late.
                             // The payload carries N+1's Opus bytes when available so the decoder can do FEC recovery instead of falling back to PLC.
                             case ConcealmentNeeded cn:
+#if DEBUG
+                                _logger.LogDebug(
+                                    "[RTPTRACE 3/6] drain      SSRC={Ssrc:X8} → concealment ({Mode})",
+                                    context.Ssrc, cn.FecPayload != null ? "FEC" : "PLC");
+#endif
                                 context.ToDecode.TryWrite(new SequencedPacket
                                 {
                                     Ssrc = context.Ssrc,
@@ -257,6 +278,11 @@ public class RtpAudioReceiver : IDisposable
             try
             {
                 var e = await chan.ReadAsync(_cts.Token);
+#if DEBUG
+                _logger.LogDebug(
+                    "[RTPTRACE 6/6] play-out   clientId={ClientId} → AudioReceived fired",
+                    e.Metadata.ClientId);
+#endif
                 AudioReceived?.Invoke(this, e);
             }
             catch (OperationCanceledException)
