@@ -36,3 +36,12 @@ jobs:
 
       - name: Lint (whitespace + style + analyzers)
         run: dotnet format --verify-no-changes --no-restore --exclude libs/OpenFreqAudio
+
+      - name: Build (warnings as errors)
+        run: |
+          for proj in OpenFreq.Common/OpenFreq.Common.csproj \
+                      OpenFreq.Client/OpenFreq.Client.csproj \
+                      OpenFreq.Server/OpenFreq.Server.csproj \
+                      OpenFreq.Testclient/OpenFreq.Testclient.csproj; do
+            dotnet build "$proj" --no-restore -warnaserror
+          done
