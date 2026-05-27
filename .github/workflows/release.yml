@@ -37,6 +37,8 @@ jobs:
 
       - name: Publish all targets
         run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
           for RID in win-x64 linux-x64; do
             for SC in true false; do
               SUFFIX=$([[ "$SC" == "true" ]] && echo "selfcontained" || echo "framework")
@@ -46,9 +48,10 @@ jobs:
                 -c Release -r "$RID" --self-contained "$SC" \
                 $SC_FLAGS \
                 -p:DebugType=none -p:DebugSymbols=false \
+                -p:InformationalVersion="$VERSION" \
                 -o "$OUTDIR"
               pushd "$OUTDIR"
-              zip -r "$GITHUB_WORKSPACE/OpenFreq-Server-${RID}-${SUFFIX}.zip" . --exclude "*.pdb"
+              zip -r "$GITHUB_WORKSPACE/OpenFreq-Server-${VERSION}-${RID}-${SUFFIX}.zip" . --exclude "*.pdb"
               popd
             done
           done
@@ -84,6 +87,8 @@ jobs:
 
       - name: Publish all targets
         run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
           for RID in win-x64 linux-x64; do
             for SC in true false; do
               SUFFIX=$([[ "$SC" == "true" ]] && echo "selfcontained" || echo "framework")
@@ -93,6 +98,7 @@ jobs:
                 -c Release -r "$RID" --self-contained "$SC" \
                 $SC_FLAGS \
                 -p:DebugType=none -p:DebugSymbols=false \
+                -p:InformationalVersion="$VERSION" \
                 -o "$OUTDIR"
               if [[ "$RID" == "win-x64" ]]; then
                 cp libs/OpenFreqAudio/OpenFreqAudio/Assets/windows/*.dll "$OUTDIR/"
@@ -100,7 +106,7 @@ jobs:
                 cp libs/OpenFreqAudio/OpenFreqAudio/Assets/linux/*.so "$OUTDIR/"
               fi
               pushd "$OUTDIR"
-              zip -r "$GITHUB_WORKSPACE/OpenFreq-Client-${RID}-${SUFFIX}.zip" . --exclude "*.pdb"
+              zip -r "$GITHUB_WORKSPACE/OpenFreq-Client-${VERSION}-${RID}-${SUFFIX}.zip" . --exclude "*.pdb"
               popd
             done
           done

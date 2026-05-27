@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Reflection;
 using Microsoft.Extensions.Logging;
 using Serilog;
 using Serilog.Events;
@@ -46,9 +47,13 @@ class Program
             .CreateLogger();
 #endif
 
+        var version = Assembly.GetExecutingAssembly()
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion ?? "unknown";
+
         try
         {
-            Console.WriteLine("OpenFreq Server - Loading configuration...");
+            Console.WriteLine($"OpenFreq Server {version} - Loading configuration...");
 
             // Load configuration
             var config = LoadConfiguration();
@@ -59,6 +64,7 @@ class Program
                 return;
             }
 
+            Log.Information("OpenFreq Server {Version} starting", version);
             Log.Information("Server starting with configuration: Port={Port}, MaxClients={MaxClients}",
                 config.WebSocketPort, config.MaxClientsPerChannel);
 
@@ -79,7 +85,7 @@ class Program
 
             // Create stats tracker and Terminal.Gui TUI
             var stats = new ServerStats(server.Clients, server.ChannelManager, server.AudioServer);
-            using var tui = new TerminalGuiServer(config, stats, logMessages);
+            using var tui = new TerminalGuiServer(config, stats, logMessages, version);
 
             // Setup graceful shutdown
             var shutdownCts = new CancellationTokenSource();
