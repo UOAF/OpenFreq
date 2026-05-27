@@ -109,6 +109,7 @@ BMS mode is **Windows-only**. The client reads radio state and position data dir
 ### Connecting
 
 In BMS mode the client is launched and connected **by BMS itself** when you connect in BMS. BMS passes the server address, port, and password from its voice configuration.
+**Make sure that the IVC checkbox is selected in the BMS connection window. AGC currently has no effect.**
 
 The connection flow:
 

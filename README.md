@@ -27,7 +27,7 @@ Real-time network voice radio with real-time physics simulation for [Falcon BMS]
 1. Make sure IVC is not running
 2. Launch BMS and OpenFreq in any order
 3. Check that OpenFreq is set to BMS mode
-4. Connect via BMS UI and enter OpenFreq server address in the BMS IVC field
+4. Connect via BMS UI and enter OpenFreq server address in the BMS IVC field. Make sure the IVC checkbox is selected in BMS.
 
 ### GCI Mode
 *Note: BMS is not required for GCI Mode*
