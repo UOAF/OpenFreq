@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Reflection;
 using Avalonia;
 using Microsoft.Extensions.DependencyInjection;
 using OpenFreqClient.Services;
@@ -11,6 +12,7 @@ namespace OpenFreqClient;
 sealed class Program
 {
     public static IServiceProvider? ServiceProvider { get; private set; }
+    public static string Version { get; private set; } = "unknown";
     // Initialization code. Don't use any Avalonia, third-party APIs or any
     // SynchronizationContext-reliant code before AppMain is called: things aren't initialized
     // yet and stuff might break.
@@ -71,6 +73,11 @@ sealed class Program
                 shared: true)
             .CreateLogger();
 #endif
+
+        Version = Assembly.GetExecutingAssembly()
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion ?? "unknown";
+        Log.Information("OpenFreq Client {Version} starting", Version);
 
         // Set up dependency injection
         var services = new ServiceCollection();

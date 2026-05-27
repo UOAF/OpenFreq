@@ -86,14 +86,16 @@ public class TerminalGuiServer : IDisposable
     private readonly ColoredListSource _frequencySource = new();
     private readonly ColoredListSource _clientSource    = new();
     private readonly ObservableCollection<string> _logLines = new();
+    private readonly string _version;
 
     private IApplication? _app;
 
-    public TerminalGuiServer(ServerConfig config, ServerStats stats, ConcurrentQueue<TuiLogMessage> logMessages)
+    public TerminalGuiServer(ServerConfig config, ServerStats stats, ConcurrentQueue<TuiLogMessage> logMessages, string version = "unknown")
     {
         _config = config;
         _stats = stats;
         _logMessages = logMessages;
+        _version = version;
     }
 
     public void Start()
@@ -367,7 +369,7 @@ public class TerminalGuiServer : IDisposable
         _statusLabel.SetScheme(new Scheme { Normal = color });
 
         var info =
-            $"● OpenFreq Server | Up: {uptimeStr} | " +
+            $"● OpenFreq Server {_version} | Up: {uptimeStr} | " +
             $"Ports: {_config.WebSocketPort} (ws://) {_config.AudioPort} (Audio) | Clients: {_stats.AuthenticatedClients} | " +
             $"TX: {_stats.ActiveTransmissions} | " +
             $"Auth:{(!string.IsNullOrEmpty(_config.ServerPassword) ? " Yes" : " No")} | " +

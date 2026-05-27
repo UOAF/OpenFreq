@@ -36,6 +36,8 @@ jobs:
 
       - name: Publish all targets
         run: |
+          VERSION="0.0.0-nightly+$(echo '${{ github.sha }}' | cut -c1-7)"
+          FILENAME_VERSION="${VERSION//+/-}"
           for RID in win-x64 linux-x64; do
             for SC in true false; do
               SUFFIX=$([[ "$SC" == "true" ]] && echo "selfcontained" || echo "framework")
@@ -45,9 +47,10 @@ jobs:
                 -c Release -r "$RID" --self-contained "$SC" \
                 $SC_FLAGS \
                 -p:DebugType=none -p:DebugSymbols=false \
+                -p:InformationalVersion="$VERSION" \
                 -o "$OUTDIR"
               pushd "$OUTDIR"
-              zip -r "$GITHUB_WORKSPACE/OpenFreq-Server-${RID}-${SUFFIX}.zip" . --exclude "*.pdb"
+              zip -r "$GITHUB_WORKSPACE/OpenFreq-Server-${FILENAME_VERSION}-${RID}-${SUFFIX}.zip" . --exclude "*.pdb"
               popd
             done
           done
@@ -55,7 +58,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: server-builds
-          path: OpenFreq-Server-*.zip
+          path: OpenFreq-Server-*-*.zip
           retention-days: 1
 
   build-client:
@@ -83,6 +86,8 @@ jobs:
 
       - name: Publish all targets
         run: |
+          VERSION="0.0.0-nightly+$(echo '${{ github.sha }}' | cut -c1-7)"
+          FILENAME_VERSION="${VERSION//+/-}"
           for RID in win-x64 linux-x64; do
             for SC in true false; do
               SUFFIX=$([[ "$SC" == "true" ]] && echo "selfcontained" || echo "framework")
@@ -92,6 +97,7 @@ jobs:
                 -c Release -r "$RID" --self-contained "$SC" \
                 $SC_FLAGS \
                 -p:DebugType=none -p:DebugSymbols=false \
+                -p:InformationalVersion="$VERSION" \
                 -o "$OUTDIR"
               if [[ "$RID" == "win-x64" ]]; then
                 cp libs/OpenFreqAudio/OpenFreqAudio/Assets/windows/*.dll "$OUTDIR/"
@@ -99,7 +105,7 @@ jobs:
                 cp libs/OpenFreqAudio/OpenFreqAudio/Assets/linux/*.so "$OUTDIR/"
               fi
               pushd "$OUTDIR"
-              zip -r "$GITHUB_WORKSPACE/OpenFreq-Client-${RID}-${SUFFIX}.zip" . --exclude "*.pdb"
+              zip -r "$GITHUB_WORKSPACE/OpenFreq-Client-${FILENAME_VERSION}-${RID}-${SUFFIX}.zip" . --exclude "*.pdb"
               popd
             done
           done
@@ -107,7 +113,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: client-builds
-          path: OpenFreq-Client-*.zip
+          path: OpenFreq-Client-*-*.zip
           retention-days: 1
 
   release:
@@ -137,16 +143,16 @@ jobs:
             Commit: ${{ github.sha }}
             Built: ${{ github.event.head_commit.timestamp }}
 
-            | Archive | Platform | Mode |
+            | Component | Platform | Mode |
             |---|---|---|
-            | `OpenFreq-Server-win-x64-selfcontained.zip` | Windows | Self-contained (.NET bundled) |
-            | `OpenFreq-Server-win-x64-framework.zip` | Windows | Requires .NET 10 |
-            | `OpenFreq-Server-linux-x64-selfcontained.zip` | Linux | Self-contained (.NET bundled) |
-            | `OpenFreq-Server-linux-x64-framework.zip` | Linux | Requires .NET 10 |
-            | `OpenFreq-Client-win-x64-selfcontained.zip` | Windows | Self-contained (.NET bundled) |
-            | `OpenFreq-Client-win-x64-framework.zip` | Windows | Requires .NET 10 |
-            | `OpenFreq-Client-linux-x64-selfcontained.zip` | Linux | Self-contained (.NET bundled) |
-            | `OpenFreq-Client-linux-x64-framework.zip` | Linux | Requires .NET 10 |
+            | Server | Windows | Self-contained (.NET bundled) |
+            | Server | Windows | Requires .NET 10 |
+            | Server | Linux | Self-contained (.NET bundled) |
+            | Server | Linux | Requires .NET 10 |
+            | Client | Windows | Self-contained (.NET bundled) |
+            | Client | Windows | Requires .NET 10 |
+            | Client | Linux | Self-contained (.NET bundled) |
+            | Client | Linux | Requires .NET 10 |
           files: artifacts/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -102,6 +102,8 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
     [ObservableProperty] private partial ObservableCollection<string> ErrorLog { get; set; } = [];
     [ObservableProperty] public partial bool IvcWarning { get; set; }
 
+    public string AppVersion { get; } = Program.Version;
+
     public Color OpenFreqStatusColor => OpenFreqConnectionState switch
     {
         ConnectionState.Connected => Color.Parse("#4CAF50"), // Material Green 500
