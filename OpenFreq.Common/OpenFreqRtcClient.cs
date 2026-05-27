@@ -273,6 +273,9 @@ public class OpenFreqRtcClient : IDisposable
         await SendMessageAsync(SignalingMessageFactory.CreateSetDisplayName(displayName));
     }
 
+    /// <summary>
+    /// Marks the start time of a TX
+    /// </summary>
     /// <see cref="RtpAudioSender.MarkTransmitStartTime"/>
     public void MarkTransmitStartTime()
     {

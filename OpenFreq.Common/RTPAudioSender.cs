@@ -125,10 +125,8 @@ public class RtpAudioSender : IDisposable
     /// Send audio packet with metadata
     /// </summary>
     /// <param name="audioData">Raw PCM audio data (16-bit, mono, 48kHz)</param>
-    /// <param name="clientId">Sender client ID</param>
-    /// <param name="position">Aircraft position</param>
     /// <param name="frequencyTransmissions">List of FrequencyTransmissions</param>
-    /// 
+    ///
     public void SendAudio(Memory<short> audioData, List<FrequencyTransmission> frequencyTransmissions)
     {
         _frequencies = frequencyTransmissions;
