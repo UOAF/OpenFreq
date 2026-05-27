@@ -174,10 +174,13 @@ public static class StringDataParser
                 offset += (int)strLength + 1;
             }
         }
+
+#pragma warning disable RCS1075
         catch (Exception)
         {
             // Return partial results
         }
+#pragma warning restore RCS1075
 
         return result;
     }

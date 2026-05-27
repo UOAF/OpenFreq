@@ -348,10 +348,6 @@ public class TerminalGuiServer : IDisposable
             {
                 break;
             }
-            catch (Exception)
-            {
-                // Ignore update errors
-            }
         }
     }
 

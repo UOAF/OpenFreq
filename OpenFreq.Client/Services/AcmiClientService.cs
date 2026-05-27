@@ -168,10 +168,13 @@ public class AcmiClientService : IAcmiClientService
             {
                 _logger.LogWarning("Receive task did not complete within timeout during disconnect");
             }
+
+#pragma warning disable RCS1075
             catch (Exception)
             {
                 // Task may have thrown during cancellation, which is expected
             }
+#pragma warning restore RCS1075
         }
 
         // Now safe to dispose resources since background task has stopped

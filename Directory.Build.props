@@ -3,4 +3,8 @@
     <InformationalVersion>0.0.0-local</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
+  <!-- Exclude submodule under libs/ -->
+  <ItemGroup Condition="!$(MSBuildProjectDirectory.StartsWith('$(MSBuildThisFileDirectory)libs'))">
+    <PackageReference Include="Roslynator.Analyzers" Version="4.*" PrivateAssets="all" />
+  </ItemGroup>
 </Project>

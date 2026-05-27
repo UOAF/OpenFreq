@@ -6,7 +6,7 @@ using Serilog.Events;
 
 namespace OpenFreqServer;
 
-class Program
+static class Program
 {
     static async Task Main(string[] args)
     {

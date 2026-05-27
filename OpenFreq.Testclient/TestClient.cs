@@ -19,7 +19,7 @@ using ErrorEventArgs = OpenFreq.Common.ErrorEventArgs;
 
 namespace OpenFreq.TestClient;
 
-public class TestClient
+public static class TestClient
 {
     public static async Task Main(string[] args)
     {
