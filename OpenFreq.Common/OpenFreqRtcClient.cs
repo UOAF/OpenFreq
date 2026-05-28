@@ -149,7 +149,9 @@ public class OpenFreqRtcClient : IDisposable
         catch (Exception ex)
         {
             IsConnected = false;
-            IsConnected = false;
+            CleanupRtp();
+            if (_webSocket?.State == WebSocketState.Open)
+                await _webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Connection failed", CancellationToken.None);
             OnConnectionStateChanged(ConnectionState.Disconnected);
             OnError($"Connection failed: {ex.Message}");
             throw;
