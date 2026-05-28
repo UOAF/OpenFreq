@@ -127,7 +127,7 @@ public class SignalingServer
         // Configure WebSocket options
         _app.UseWebSockets(new WebSocketOptions
         {
-            KeepAliveInterval = TimeSpan.FromMinutes(1),
+            KeepAliveInterval = TimeSpan.FromSeconds(15),
         });
 
         // WebSocket signaling endpoint
