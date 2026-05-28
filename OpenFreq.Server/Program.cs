@@ -81,7 +81,20 @@ static class Program
                     .AddSerilog(Log.Logger);
             });
 
-            var server = new SignalingServer(config, loggerFactory);
+            SignalingServer server;
+            try
+            {
+                server = new SignalingServer(config, loggerFactory);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Can not start server, check your ports are not in use: {config.WebSocketPort}, {config.AudioPort}");
+                Console.WriteLine($"Error: {ex.Message}");
+                Log.Fatal(ex, "Failed to initialize server");
+                Console.WriteLine("Press any key to exit...");
+                Console.ReadKey(intercept: true);
+                return;
+            }
 
             // Create stats tracker and Terminal.Gui TUI
             var stats = new ServerStats(server.Clients, server.ChannelManager, server.AudioServer);
@@ -99,18 +112,20 @@ static class Program
                 }
             };
 
-            // Start server in background
-            var serverTask = Task.Run(async () =>
+            // Start server (binds ports — throws on failure)
+            try
             {
-                try
-                {
-                    await server.StartAsync();
-                }
-                catch (Exception ex)
-                {
-                    Log.Fatal(ex, "Fatal server error");
-                }
-            });
+                await server.StartAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Can not start server, check your ports are not in use: {config.WebSocketPort}, {config.AudioPort}");
+                Console.WriteLine($"Error: {ex.Message}");
+                Log.Fatal(ex, "Failed to start server");
+                Console.WriteLine("Press any key to exit...");
+                Console.ReadKey(intercept: true);
+                return;
+            }
 
             // Start TUI (blocks until quit or shutdown requested)
             var tuiTask = Task.Run(() => tui.Start());
@@ -120,11 +135,8 @@ static class Program
 
             // Now properly shut down
             Log.Information("Shutting down server...");
-            await server.StopAsync(); // Async all the way
+            await server.StopAsync();
             tui.Stop();
-
-            // Wait for server to finish
-            await serverTask;
         }
         catch (Exception ex)
         {
