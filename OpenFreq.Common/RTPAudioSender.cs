@@ -69,7 +69,7 @@ public class RtpAudioSender : IDisposable
         _clientId = clid;
 
         SendKeepalive();
-        _heartbeatTimer = new Timer(_ => SendKeepalive(), null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+        _heartbeatTimer = new Timer(_ => SendKeepalive(), null, TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(15));
 
         _opusEncoder.Bitrate = 24000;
         _opusEncoder.Complexity = 8;
