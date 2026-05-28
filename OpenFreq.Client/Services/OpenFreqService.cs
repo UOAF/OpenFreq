@@ -272,6 +272,8 @@ public class OpenFreqService : IOpenFreqService
         {
             // Same device, same instance — streams already stopped in Shutdown(). Just re-subscribe.
             _playbackService.UserFacingError += OnPlaybackUserFacingError;
+            // Guard against the master stream having been stopped during the previous session
+            _playbackService.EnsureMasterStreamRunning();
         }
 
         _playbackService.Apply3dEffects = Apply3dAudioEffects;
@@ -455,15 +457,16 @@ public class OpenFreqService : IOpenFreqService
 
         var isFirstSlot = !IsAnySlotTuned(frequencyKhz);
 
+        // Set up local audio state BEFORE sending the join to the server
+        _tunedSlots.TryAdd((frequencyKhz, slotId), new TunedFrequencyData(radioStationData, true));
+        _signalStrengthTracker.SetSquelchState(frequencyKhz, false);
+        _playbackService?.TuneFrequency(frequencyKhz, slotId);
+
         if (isFirstSlot)
         {
             await _client.JoinFrequencyAsync(frequencyKhz);
             OnStatusMessage($"Joined frequency {frequencyKhz / 1000.0:F3} MHz");
         }
-
-        _tunedSlots.TryAdd((frequencyKhz, slotId), new TunedFrequencyData(radioStationData, true));
-        _signalStrengthTracker.SetSquelchState(frequencyKhz, false);
-        _playbackService?.TuneFrequency(frequencyKhz, slotId);
 
         if (!isFirstSlot)
         {
@@ -593,11 +596,11 @@ public class OpenFreqService : IOpenFreqService
         if (_activeTransmissionsAndMutedFrequencies.IsEmpty && _recordHandle != 0)
         {
             if (!Bass.ChannelStop(_recordHandle))
+            {
                 _logger.LogWarning("ChannelStop on record handle {Handle} returned false: {Error}",
                     _recordHandle, Bass.LastError);
-            if (!Bass.StreamFree(_recordHandle))
-                _logger.LogWarning("StreamFree on record handle {Handle} returned false: {Error}",
-                    _recordHandle, Bass.LastError);
+            }
+
             _recordHandle = 0;
             if (_playbackService != null)
             {
