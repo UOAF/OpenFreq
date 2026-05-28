@@ -44,6 +44,20 @@ public class AudioStreamServer
     // Backpressure configuration
     private const int MaxPendingSendsPerClient = 3;
 
+    // Pre-built minimal RTP pong packet sent back on every client keepalive to maintain
+    // the server→client NAT mapping even during long silent periods.
+    private static readonly byte[] _keepalivePong = new RtpPacket
+    {
+        Version = 2,
+        PayloadType = 96,
+        SequenceNumber = 0,
+        Timestamp = 0,
+        Ssrc = 0,
+        ExtensionProfile = 0,
+        ExtensionData = null,
+        Payload = []
+    }.ToBytes();
+
     // High-performance logging delegates
     private static readonly Action<ILogger, string, string, Exception?> LogAudioSessionCreated =
         LoggerMessage.Define<string, string>(
@@ -209,7 +223,13 @@ public class AudioStreamServer
 
                 // Validate frequencies
                 if (metadata.Frequencies.Count == 0)
+                {
+                    // Keepalive from client — echo back a pong to keep the server→client
+                    // NAT path alive. Without this, NAT entries expire after ~5 min of
+                    // silence (no audio to relay) and the client stops hearing audio.
+                    SendPacket(_keepalivePong, remoteEndpoint);
                     continue;
+                }
 
                 if (!_clients.TryGetValue(clientId, out var clientSession))
                     continue;

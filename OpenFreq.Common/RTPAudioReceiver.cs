@@ -143,6 +143,10 @@ public class RtpAudioReceiver : IDisposable
                 _logger.LogWarning("Invalid RTP packet");
                 return;
             }
+
+            // Empty-payload packets are keepalive pongs from the server — discard silently.
+            if (rtpPacket.Payload.Length == 0)
+                return;
 #if DEBUG
             _logger.LogDebug(
                 "[RTPTRACE 1/6] UDP→parse  SSRC={Ssrc:X8} seq={Seq} ts={Ts} payload={Bytes}b ext={Ext}b",
