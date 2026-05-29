@@ -25,6 +25,7 @@ public class HotkeyService : IHotkeyService
     private Task? _hookTask;
     private readonly HashSet<KeyCode> _pressedKeys = [];
     private readonly Dictionary<KeyCode, HotkeyBinding> _activeKeyBindings = new();
+    private bool _isCapturing;
 
     // Unified binding storage with custom comparer
     private readonly Dictionary<HotkeyBinding, List<Guid>> _pttBindings = new(new HotkeyBindingComparer());
@@ -539,24 +540,49 @@ public class HotkeyService : IHotkeyService
     {
         var tcs = new TaskCompletionSource<HotkeyBinding?>();
 
-        void OnKeyCaptured(object? sender, KeyboardHookEventArgs e)
+        var currentlyDown = new HashSet<KeyCode>();
+        var pressOrder = new List<KeyCode>();
+
+        void OnCaptureKeyPressed(object? sender, KeyboardHookEventArgs e)
         {
-            if (e.Data.KeyCode == KeyCode.VcEscape)
+            var key = e.Data.KeyCode;
+
+            if (key == KeyCode.VcEscape)
             {
                 tcs.TrySetResult(null);
                 return;
             }
 
-            // Skip standalone modifier key presses — wait for the actual key
-            if (IsModifierKey(e.Data.KeyCode))
+            if (currentlyDown.Add(key) && !pressOrder.Contains(key))
+                pressOrder.Add(key);
+        }
+
+        void OnCaptureKeyReleased(object? sender, KeyboardHookEventArgs e)
+        {
+            currentlyDown.Remove(e.Data.KeyCode);
+
+            if (currentlyDown.Count != 0 || pressOrder.Count == 0)
                 return;
 
-            var mask = e.RawEvent.Mask;
-            tcs.TrySetResult(new KeyboardBinding(
-                e.Data.KeyCode,
-                shift: (mask & EventMask.Shift) != EventMask.None,
-                ctrl: (mask & EventMask.Ctrl) != EventMask.None,
-                alt: (mask & EventMask.Alt) != EventMask.None));
+            var nonModifiers = pressOrder.Where(k => !IsModifierKey(k)).ToList();
+            KeyboardBinding binding;
+
+            if (nonModifiers.Count > 0)
+            {
+                var primaryKey = nonModifiers.Last();
+                binding = new KeyboardBinding(
+                    primaryKey,
+                    shift: pressOrder.Any(k => k is KeyCode.VcLeftShift or KeyCode.VcRightShift),
+                    ctrl: pressOrder.Any(k => k is KeyCode.VcLeftControl or KeyCode.VcRightControl),
+                    alt: pressOrder.Any(k => k is KeyCode.VcLeftAlt or KeyCode.VcRightAlt));
+            }
+            else
+            {
+                // Modifier-only combo, last pressed modifier becomes the primary key
+                binding = new KeyboardBinding(pressOrder.Last());
+            }
+
+            tcs.TrySetResult(binding);
         }
 
 #if WINDOWS
@@ -609,7 +635,9 @@ public class HotkeyService : IHotkeyService
                 throw new InvalidOperationException("Hotkey service is not started");
             }
 
-            _hook.KeyPressed += OnKeyCaptured;
+            _isCapturing = true;
+            _hook.KeyPressed += OnCaptureKeyPressed;
+            _hook.KeyReleased += OnCaptureKeyReleased;
 
             using (cancellationToken.Register(() => tcs.TrySetCanceled()))
             {
@@ -618,9 +646,11 @@ public class HotkeyService : IHotkeyService
         }
         finally
         {
+            _isCapturing = false;
             if (_hook != null)
             {
-                _hook.KeyPressed -= OnKeyCaptured;
+                _hook.KeyPressed -= OnCaptureKeyPressed;
+                _hook.KeyReleased -= OnCaptureKeyReleased;
             }
 
 #if WINDOWS
@@ -644,16 +674,18 @@ public class HotkeyService : IHotkeyService
 
     private void OnKeyPressed(object? sender, KeyboardHookEventArgs e)
     {
+        if (_isCapturing) return;
         if (_pressedKeys.Contains(e.Data.KeyCode))
             return; // Already pressed
 
         _pressedKeys.Add(e.Data.KeyCode);
 
+        var key = e.Data.KeyCode;
         var mask = e.RawEvent.Mask;
-        var binding = new KeyboardBinding(e.Data.KeyCode,
-            shift: (mask & EventMask.Shift) != EventMask.None,
-            ctrl: (mask & EventMask.Ctrl) != EventMask.None,
-            alt: (mask & EventMask.Alt) != EventMask.None);
+        var binding = new KeyboardBinding(key,
+            shift: (mask & EventMask.Shift) != EventMask.None && key is not (KeyCode.VcLeftShift or KeyCode.VcRightShift),
+            ctrl: (mask & EventMask.Ctrl) != EventMask.None && key is not (KeyCode.VcLeftControl or KeyCode.VcRightControl),
+            alt: (mask & EventMask.Alt) != EventMask.None && key is not (KeyCode.VcLeftAlt or KeyCode.VcRightAlt));
 
         // Check PTT bindings
         if (_pttBindings.TryGetValue(binding, out var pttChannels))
@@ -677,6 +709,7 @@ public class HotkeyService : IHotkeyService
 
     private void OnKeyReleased(object? sender, KeyboardHookEventArgs e)
     {
+        if (_isCapturing) return;
         _pressedKeys.Remove(e.Data.KeyCode);
 
         // Use the binding recorded at press time so modifier release order doesn't matter
