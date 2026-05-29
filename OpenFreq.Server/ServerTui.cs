@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.Globalization;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Terminal.Gui;
@@ -399,7 +400,8 @@ public class TerminalGuiServer : IDisposable
             foreach (var freq in frequencies)
             {
                 var indicator = freq.IsTransmitting ? "● TX" : freq.ClientCount > 0 ? "● RX" : "○ Idle";
-                var text = $"{$"{freq.FrequencyKhz / 1000d:F3} MHz",-15} {freq.ClientCount,8} {indicator,10}";
+                var freqStr = (freq.FrequencyKhz / 1000d).ToString("F3", CultureInfo.InvariantCulture) + " MHz";
+                var text = $"{freqStr,-15} {freq.ClientCount,8} {indicator,10}";
                 rows.Add(new ColoredRow(text, freq.IsTransmitting));
             }
 
@@ -471,7 +473,7 @@ public class TerminalGuiServer : IDisposable
                     var firstTx = firstFreq.Value == ClientSession.FrequencyClientStatus.Transmitting;
                     var firstStatus = firstTx ? "● TX" : "● RX";
                     rows.Add(new ColoredRow(
-                        $"{shortDisplayName,-24} {shortId,-20} {firstFreq.Key / 1000d,-12:F3} {firstStatus,8} {wsStr,9} {rtpStr,9}",
+                        $"{shortDisplayName,-24} {shortId,-20} {(firstFreq.Key / 1000d).ToString("F3", CultureInfo.InvariantCulture),-12} {firstStatus,8} {wsStr,9} {rtpStr,9}",
                         anyTransmitting));
 
                     for (int i = 1; i < frequencies.Count; i++)
@@ -480,7 +482,7 @@ public class TerminalGuiServer : IDisposable
                         var tx = freq.Value == ClientSession.FrequencyClientStatus.Transmitting;
                         var status = tx ? "● TX" : "● RX";
                         rows.Add(new ColoredRow(
-                            $"{"",-24} {"",-20} {freq.Key / 1000d,-12:F3} {status,8} {"",9} {"",9}", anyTransmitting));
+                            $"{"",-24} {"",-20} {(freq.Key / 1000d).ToString("F3", CultureInfo.InvariantCulture),-12} {status,8} {"",9} {"",9}", anyTransmitting));
                     }
                 }
             }

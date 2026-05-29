@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -243,7 +244,7 @@ public class AudioStreamServer
                     var validKhz = validFrequencies.Select(f => f.Khz).ToHashSet();
                     var invalidMhz = metadata.Frequencies
                         .Where(f => !validKhz.Contains(f.Khz))
-                        .Select(f => $"{f.Khz / 1000d:F3} MHz")
+                        .Select(f => (f.Khz / 1000d).ToString("F3", CultureInfo.InvariantCulture) + " MHz")
                         .ToList();
 
                     if (_logger.IsEnabled(LogLevel.Warning))
