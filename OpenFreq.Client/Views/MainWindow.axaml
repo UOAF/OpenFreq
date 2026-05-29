@@ -20,6 +20,11 @@
     </Design.DataContext>
 
     <Window.Styles>
+        <!-- Peer section not matching current 3D mode -->
+        <Style Selector="StackPanel.dimmed">
+            <Setter Property="Opacity" Value="0.35" />
+        </Style>
+
         <!-- Card Style -->
         <Style Selector="controls|Card">
             <Setter Property="Margin" Value="0,0,0,16" />
@@ -829,7 +834,8 @@
                                 <StackPanel>
 
                                     <!-- Lobby Section -->
-                                    <StackPanel IsVisible="{Binding HasLobbyPeers}">
+                                    <StackPanel IsVisible="{Binding HasLobbyPeers}"
+                                                Classes.dimmed="{Binding Settings.Is3dMode}">
                                         <Border Padding="10,6,10,4"
                                                 BorderThickness="0,0,0,1">
                                             <TextBlock Text="{Binding LobbyPeerCount, StringFormat='LOBBY - {0}'}"
@@ -913,7 +919,8 @@
                                     </StackPanel>
 
                                     <!-- In Flight Section -->
-                                    <StackPanel IsVisible="{Binding HasGamePeers}">
+                                    <StackPanel IsVisible="{Binding HasGamePeers}"
+                                                Classes.dimmed="{Binding !Settings.Is3dMode}">
                                         <Border Padding="10,6,10,4"
                                                 BorderThickness="0,0,0,1">
                                             <TextBlock Text="{Binding GamePeerCount, StringFormat='IN FLIGHT · {0}'}"

@@ -68,6 +68,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
     public int LobbyPeerCount => LobbyPeerList.SelectMany(f => f.Peers).Select(p => p.Id).Distinct().Count();
     public int GamePeerCount => GamePeerList.SelectMany(f => f.Peers).Select(p => p.Id).Distinct().Count();
 
+
     private readonly Dictionary<(string peerId, int freqKhz), bool> _peerModes = new();
     private SortedDictionary<int, List<PeerData>> _latestAllPeers = new();
 
