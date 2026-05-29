@@ -24,7 +24,6 @@ public interface IOpenFreqService : IDisposable
     double SidetoneVolume { get; set; }
     double MasterVolume { get; set; }
     double AmbientNoiseVolume { get; set; }
-
     Mode OwnPositionMode { get; }
 
     // Events
