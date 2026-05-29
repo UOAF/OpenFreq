@@ -213,8 +213,20 @@
                                         <Slider Minimum="0" Maximum="2"
                                                 Value="{Binding Settings.MasterVolume}"
                                                 TickFrequency="0.05"
-                                                IsSnapToTickEnabled="True"
-                                                Margin="0,0,0,12" />
+                                                IsSnapToTickEnabled="True" />
+                                    </StackPanel>
+                                </controls:Card>
+
+                                <!-- SFX Card -->
+                                <controls:Card>
+                                    <StackPanel Margin="16">
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                            <avalonia:MaterialIcon Kind="DeathStarVariant"
+                                                                   Width="16" Height="16"
+                                                                   Margin="0,0,8,0"
+                                                                   Foreground="{DynamicResource PrimaryHueMidBrush}" />
+                                            <TextBlock Text="SFX" Classes="SectionHeader" Margin="0" />
+                                        </StackPanel>
 
                                         <TextBlock Classes="InputLabel" Margin="0,0,0,4">
                                             <Run Text="Ambient Noise: " />
@@ -517,8 +529,20 @@
                                         <Slider Minimum="0" Maximum="2"
                                                 Value="{Binding Settings.MasterVolume}"
                                                 TickFrequency="0.05"
-                                                IsSnapToTickEnabled="True"
-                                                Margin="0,0,0,12" />
+                                                IsSnapToTickEnabled="True" />
+                                    </StackPanel>
+                                </controls:Card>
+
+                                <!-- SFX Card -->
+                                <controls:Card>
+                                    <StackPanel Margin="16">
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                            <avalonia:MaterialIcon Kind="DeathStarVariant"
+                                                                   Width="16" Height="16"
+                                                                   Margin="0,0,8,0"
+                                                                   Foreground="{DynamicResource PrimaryHueMidBrush}" />
+                                            <TextBlock Text="SFX" Classes="SectionHeader" Margin="0" />
+                                        </StackPanel>
 
                                         <TextBlock Classes="InputLabel" Margin="0,0,0,4">
                                             <Run Text="Ambient Noise: " />
