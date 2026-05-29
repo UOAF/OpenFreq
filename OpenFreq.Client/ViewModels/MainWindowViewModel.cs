@@ -385,35 +385,46 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
                     return;
                 }
 
-                if (!await ConfirmationDialogService.ShowAsync(
-                        title: "IVC Client detected",
-                        message: "The BMS IVC Client seems to be running.\n" +
-                                 "OpenFreq will not work in BMS mode.\n" +
-                                 "\n" +
-                                 "Kill the IVC process?",
-                        cancelText: "Cancel",
-                        confirmText: "Kill IVC")) return;
-
-                // Disconnect from any server first, then ensure BMS mode is active
-                if (_openFreqService.IsConnected)
-                    await DisconnectAsync();
-
-                if (Settings.ConnectionMode != IOpenFreqService.Mode.BMS)
-                    Settings.ConnectionMode = IOpenFreqService.Mode.BMS;
-
-                try
-                {
-                    _ivcMonitorService.KillIvc();
-                }
-                catch (Exception exception)
-                {
-                    _logger.LogError("Failed to kill IVC: {Exception}", exception.ToString());
-                }
+                await PromptKillIvcAsync();
             });
         }
         catch (Exception e)
         {
             _logger.LogError("{ToString}", e.ToString());
+        }
+    }
+
+    [RelayCommand]
+    private async Task KillIvcAsync()
+    {
+        await Dispatcher.UIThread.InvokeAsync(PromptKillIvcAsync);
+    }
+
+    private async Task PromptKillIvcAsync()
+    {
+        if (!await ConfirmationDialogService.ShowAsync(
+                title: "IVC Client detected",
+                message: "The BMS IVC Client seems to be running.\n" +
+                         "OpenFreq will not work in BMS mode.\n" +
+                         "\n" +
+                         "Kill the IVC process?",
+                cancelText: "Cancel",
+                confirmText: "Kill IVC")) return;
+
+        // Disconnect from any server first, then ensure BMS mode is active
+        if (_openFreqService.IsConnected)
+            await DisconnectAsync();
+
+        if (Settings.ConnectionMode != IOpenFreqService.Mode.BMS)
+            Settings.ConnectionMode = IOpenFreqService.Mode.BMS;
+
+        try
+        {
+            _ivcMonitorService.KillIvc();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError("Failed to kill IVC: {Exception}", exception.ToString());
         }
     }
 

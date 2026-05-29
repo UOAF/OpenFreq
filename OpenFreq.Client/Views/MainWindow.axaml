@@ -699,30 +699,47 @@
                 </controls:Card>
 
                 <!-- IVC Warning Banner -->
-                <controls:Card DockPanel.Dock="Top"
-                               Margin="16,12,16,12"
-                               Background="#FFF3E0"
-                               Padding="16,12"
-                               IsVisible="{Binding IvcWarning}">
-                    <DockPanel Margin="0,0,12,0"
-                               VerticalAlignment="Top">
-                        <avalonia:MaterialIcon Kind="Warning"
-                                               Width="20"
-                                               Height="20"
-                                               Foreground="#FF9800" />
-
-                        <StackPanel Margin="15, 0, 0, 0">
-                            <TextBlock Text="IVC Conflict Detected"
-                                       Classes="Subtitle1"
-                                       Foreground="#E65100"
-                                       Margin="0,0,0,4" />
-                            <TextBlock Text="Falcon BMS IVC must be closed to use OpenFreq in BMS mode."
-                                       Classes="Caption"
-                                       Foreground="Black"
-                                       TextWrapping="Wrap" />
-                        </StackPanel>
-                    </DockPanel>
-                </controls:Card>
+                <Border DockPanel.Dock="Top"
+                        Margin="5,0,5,12"
+                        CornerRadius="8"
+                        Background="{DynamicResource MaterialBackgroundBrush}"
+                        BorderBrush="#F57C00"
+                        BorderThickness="3,0,0,0"
+                        IsVisible="{Binding IvcWarning}">
+                    <Button Classes="Flat"
+                            Command="{Binding KillIvcCommand}"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
+                            VerticalAlignment="Stretch"
+                            VerticalContentAlignment="Center"
+                            Padding="12,10"
+                            Background="Transparent"
+                            Cursor="Hand"
+                            ToolTip.Tip="Click to kill IVC process">
+                        <Grid ColumnDefinitions="Auto,*">
+                            <avalonia:MaterialIcon Grid.Column="0"
+                                                  Kind="AlertCircleOutline"
+                                                  Width="20"
+                                                  Height="20"
+                                                  Foreground="#F57C00"
+                                                  VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1"
+                                        Margin="12,0,0,0"
+                                        VerticalAlignment="Center">
+                                <TextBlock Text="IVC Conflict Detected"
+                                           FontSize="13"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource MaterialBodyBrush}"
+                                           Margin="0,0,0,2" />
+                                <TextBlock Text="Falcon BMS IVC must be closed to use OpenFreq in BMS mode."
+                                           FontSize="12"
+                                           Foreground="{DynamicResource MaterialBodyBrush}"
+                                           Opacity="0.65"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Grid>
+                    </Button>
+                </Border>
 
 
                 <!-- Status at bottom -->
