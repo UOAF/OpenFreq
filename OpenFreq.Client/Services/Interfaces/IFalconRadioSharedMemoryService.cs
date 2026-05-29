@@ -11,6 +11,12 @@ public interface IFalconRadioSharedMemoryService : IDisposable, ILifecycleServic
     ServiceState State { get; }
     double PollingFrequencyHz { get; set; }
 
+    /// <summary>
+    /// True when this instance owns the radio-client mutex and has created the RCS shared memory.
+    /// False in read-only mode (another client, e.g. IVC, grabbed the mutex first).
+    /// </summary>
+    bool IsOwner { get; }
+
     // Current data (thread-safe)
     string? LogbookName { get; }
     RadioChannel? GetRadioChannel(RadioType radioType);

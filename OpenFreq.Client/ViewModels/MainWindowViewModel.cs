@@ -362,7 +362,28 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
             {
                 IvcWarning = ivcStatusChangedEventArgs.IsRunning;
 
-                if (!IvcWarning) return;
+                if (!IvcWarning)
+                {
+                    // IVC died — take over mutex and RCS if we were in read-only mode
+                    if (Settings.ConnectionMode == IOpenFreqService.Mode.BMS &&
+                        !_falconRadioSharedMemoryService.IsOwner)
+                    {
+                        _ = Task.Run(() =>
+                        {
+                            try
+                            {
+                                _falconRadioSharedMemoryService.Stop();
+                                _falconRadioSharedMemoryService.Start();
+                                _logger.LogInformation("Re-acquired radio client mutex after IVC exit");
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, "Failed to restart FalconRadioSharedMemoryService after IVC exit");
+                            }
+                        });
+                    }
+                    return;
+                }
 
                 if (!await ConfirmationDialogService.ShowAsync(
                         title: "IVC Client detected",
@@ -372,6 +393,13 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
                                  "Kill the IVC process?",
                         cancelText: "Cancel",
                         confirmText: "Kill IVC")) return;
+
+                // Disconnect from any server first, then ensure BMS mode is active
+                if (_openFreqService.IsConnected)
+                    await DisconnectAsync();
+
+                if (Settings.ConnectionMode != IOpenFreqService.Mode.BMS)
+                    Settings.ConnectionMode = IOpenFreqService.Mode.BMS;
 
                 try
                 {

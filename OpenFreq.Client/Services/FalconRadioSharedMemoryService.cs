@@ -85,6 +85,8 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
         }
     }
 
+    public bool IsOwner => _hMutex != IntPtr.Zero;
+
     public string? LogbookName
     {
         get
@@ -157,13 +159,19 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
     public void AddClientStatus(ClientStatusFlags flags)
     {
         var current = GetClientStatus();
-        SetClientStatus(current | flags);
+        var next = current | flags;
+        SetClientStatus(next);
+        if (next != current)
+            _logger.LogInformation("RCS status: {Before} → {After}", current, next);
     }
 
     public void RemoveClientStatus(ClientStatusFlags flags)
     {
         var current = GetClientStatus();
-        SetClientStatus(current & ~flags);
+        var next = current & ~flags;
+        SetClientStatus(next);
+        if (next != current)
+            _logger.LogInformation("RCS status: {Before} → {After}", current, next);
     }
 
     public void Start()
@@ -200,6 +208,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
             }
             else
             {
+                _logger.LogInformation("Mutex acquired — RCS owner");
                 // We're the first/only instance - create RCS normally
                 if (!CreateRcsSharedMemory())
                 {
@@ -288,7 +297,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
 
             // Initialize RCS: clear all flags
             SetClientStatus(ClientStatusFlags.AllClear);
-            _logger.LogDebug("RCS cleared");
+            _logger.LogInformation("RCS shared memory created, flags cleared");
 
             // Set clientactive flag
             AddClientStatus(ClientStatusFlags.ClientActive);
@@ -325,7 +334,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
                         continue;
                     }
 
-                    _logger.LogDebug("Initial RCC data read successfully");
+                    _logger.LogInformation("RCC shared memory opened, initial data read");
 
                     // Now that we have data, change state to Connected
                     lock (_dataLock)
@@ -340,7 +349,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
                 // Regular polling: read RCC data
                 if (!TryReadRadioData())
                 {
-                    _logger.LogError("Failed to read RCC data");
+                    _logger.LogInformation("RCC shared memory read failed — BMS likely closed; will retry");
 
                     // If read fails, RCC might have been closed by BMS
                     // Close our handle and try to reopen on next iteration
@@ -654,6 +663,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
             return;
 
         _state = newState;
+        _logger.LogInformation("State: {OldState} → {NewState}", oldState, newState);
         StateChanged?.Invoke(this, new ServiceStateChangedEventArgs(oldState, newState));
     }
 
@@ -680,6 +690,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
 {
     public ServiceState State { get; }
     public double PollingFrequencyHz { get; set; }
+    public bool IsOwner => false;
     public string? LogbookName { get; }
     public RadioChannel? GetRadioChannel(RadioType radioType)
     {
