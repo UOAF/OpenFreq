@@ -230,11 +230,16 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
 
             // canJoin is always false for BMS mode - BMS controls our channels
             if (lobbyPeers.Count > 0)
+            {
                 newLobby.Add(new ChannelFrequencyPeerViewModel(frequency, lobbyPeers, JoinFrequencyFromPeerList, false,
                     Settings.ModeIsGci && !is3dMode && !IsFrequencyAlreadyConnected(frequency)));
+            }
+
             if (gamePeers.Count > 0)
+            {
                 newGame.Add(new ChannelFrequencyPeerViewModel(frequency, gamePeers, JoinFrequencyFromPeerList, true,
                     Settings.ModeIsGci && is3dMode && !IsFrequencyAlreadyConnected(frequency)));
+            }
         }
 
         LobbyPeerList.Clear();
