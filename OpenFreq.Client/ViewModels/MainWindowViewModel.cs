@@ -228,12 +228,13 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
                 else lobbyPeers.Add(vm);
             }
 
+            // canJoin is always false for BMS mode - BMS controls our channels
             if (lobbyPeers.Count > 0)
                 newLobby.Add(new ChannelFrequencyPeerViewModel(frequency, lobbyPeers, JoinFrequencyFromPeerList, false,
-                    !is3dMode && !IsFrequencyAlreadyConnected(frequency)));
+                    Settings.ModeIsGci && !is3dMode && !IsFrequencyAlreadyConnected(frequency)));
             if (gamePeers.Count > 0)
                 newGame.Add(new ChannelFrequencyPeerViewModel(frequency, gamePeers, JoinFrequencyFromPeerList, true,
-                    is3dMode && !IsFrequencyAlreadyConnected(frequency)));
+                    Settings.ModeIsGci && is3dMode && !IsFrequencyAlreadyConnected(frequency)));
         }
 
         LobbyPeerList.Clear();
@@ -268,11 +269,20 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
 
     private void UpdateCanJoin()
     {
-        bool is3dMode = Settings.Is3dMode;
+        // Joining in the list is only allowed: NOT in BMS mode AND...
         foreach (var entry in LobbyPeerList)
-            entry.CanJoin = !is3dMode && !IsFrequencyAlreadyConnected(entry.FrequencyKhz);
+        {
+            // ... for the lobby list if the GCI is not in 3d AND the freq is joinable
+            entry.CanJoin = Settings is { ModeIsGci: true, Is3dMode: false } &&
+                            !IsFrequencyAlreadyConnected(entry.FrequencyKhz);
+        }
+
         foreach (var entry in GamePeerList)
-            entry.CanJoin = is3dMode && !IsFrequencyAlreadyConnected(entry.FrequencyKhz);
+        {
+            // ... for the game list if the GCI is not in 3d AND the freq is joinable
+            entry.CanJoin = Settings is { ModeIsGci: true, Is3dMode: true } &&
+                            !IsFrequencyAlreadyConnected(entry.FrequencyKhz);
+        }
     }
 
     private void OnChannelListPropertyChanged(object? sender, PropertyChangedEventArgs e)
