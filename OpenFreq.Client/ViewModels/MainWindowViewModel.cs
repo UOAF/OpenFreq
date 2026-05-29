@@ -653,7 +653,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         _logger.LogError(message);
         HasError = true;
         ErrorMessage = message;
-        StatusMessage = $"⚠️ {message}";
+        StatusMessage = message;
 
         // Add to error log with timestamp
         var logEntry = $"[{DateTime.Now:HH:mm:ss}] {message}";
