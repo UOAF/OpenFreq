@@ -183,7 +183,13 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
         TheaterDefinitions = new ObservableCollection<TheaterDefinition>(theaters);
 
         foreach (var t in theaters)
+        {
             TheaterCoordinateConverter.RegisterTheater(t);
+            if (!AvailableTheaterNames.Contains(t.Name))
+                AvailableTheaterNames.Add(t.Name);
+        }
+
+        SelectedBmsTheater ??= TheaterDefinitions[0];
     }
 
     public SettingsViewModel(ILogger<SettingsViewModel> logger, IAudioService audioService, IFalconRadioSharedMemoryService falconRadioSharedMemoryService,
@@ -415,6 +421,10 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
                 SelectedBmsTheater = match;
             }
         }
+
+        // Sync HeightmapPath from already-selected theater if path was empty (e.g. clean state)
+        if (string.IsNullOrEmpty(HeightmapPath) && SelectedBmsTheater?.HeightmapPath != null)
+            HeightmapPath = SelectedBmsTheater.HeightmapPath;
     }
 
     private void RestoreWindowPosition(OpenFreqSettings settings)
