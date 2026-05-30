@@ -806,7 +806,7 @@ public class OpenFreqService : IOpenFreqService
                 else
                 {
                     frequenciesData.Add((frequencyKhz,
-                        radioStationData.RadioStation.Preset.TxPower_VHF_W, radioStationData.RadioStation.Ppm,
+                        radioStationData.RadioStation.Preset.TxPower_UHF_W, radioStationData.RadioStation.Ppm,
                         position, velocity, radioStationData.RadioStation.Preset.AmbientNoiseType));
                 }
             }
