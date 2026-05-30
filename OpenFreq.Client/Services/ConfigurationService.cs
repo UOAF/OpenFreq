@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.IO;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -10,7 +9,9 @@ namespace OpenFreqClient.Services;
 public class ConfigurationService(ILogger<ConfigurationService> logger) : IConfigurationService
 {
     private static readonly string ConfigFilePath =
-        Path.Combine(AppContext.BaseDirectory, "OpenFreq.Client.json");
+        Path.Combine(
+            Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory,
+            "OpenFreq.Client.json");
 
     public async Task<AppConfiguration> LoadConfigurationAsync()
     {
@@ -38,6 +39,7 @@ public class ConfigurationService(ILogger<ConfigurationService> logger) : IConfi
         {
             var json = Json.Json.Instance.Serialize(config);
             await File.WriteAllTextAsync(ConfigFilePath, json);
+            logger.LogInformation("Saved configuration: {ConfigFilePath}", ConfigFilePath);
         }
         catch (Exception ex)
         {

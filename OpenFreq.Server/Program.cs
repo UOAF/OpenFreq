@@ -11,7 +11,8 @@ static class Program
     static async Task Main(string[] args)
     {
         // Initialize Serilog for file logging
-        var logsDirectory = Path.Combine(AppContext.BaseDirectory, "logs");
+        var baseDirectory = Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory;
+        var logsDirectory = Path.Combine(baseDirectory, "logs");
         Directory.CreateDirectory(logsDirectory);
 
         var logFile = Path.Combine(logsDirectory, $"openfreq-{DateTime.Now:yyyy-MM-dd}.log");
@@ -153,7 +154,9 @@ static class Program
     {
         try
         {
-            var configPath = Path.Combine(AppContext.BaseDirectory, "OpenFreq.Server.json");
+            var configPath = Path.Combine(
+                Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory,
+                "OpenFreq.Server.json");
 
             if (!File.Exists(configPath))
             {
