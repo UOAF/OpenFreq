@@ -311,4 +311,82 @@ public class FrequencyChannelManagerTests
         var mgr = Create();
         mgr.UpdateIs3d(251000, "ghost", is3d: true); // should not throw
     }
+
+    [Fact]
+    public void GetAllChannelStates_PeersInChannel_SortedByName()
+    {
+        var mgr = Create();
+        mgr.JoinChannel(251000, "c1", "Zulu");
+        mgr.JoinChannel(251000, "c2", "Alpha");
+        mgr.JoinChannel(251000, "c3", "Mike");
+
+        var peers = mgr.GetAllChannelStates()[251000];
+
+        Assert.Equal(["Alpha", "Mike", "Zulu"], peers.Select(p => p.Name).ToList());
+    }
+
+    [Fact]
+    public void UpdateDisplayName_PreservesStatus()
+    {
+        var mgr = Create();
+        mgr.JoinChannel(251000, "client-1", "OldName");
+
+        mgr.UpdateDisplayName("client-1", "NewName");
+
+        Assert.Equal(PeerData.PeerStatus.Receiving, mgr.GetPeersInChannel(251000)[0].Status);
+    }
+
+    [Fact]
+    public void UpdateIs3d_PreservesName()
+    {
+        var mgr = Create();
+        mgr.JoinChannel(251000, "client-1", "Viper", is3d: false);
+
+        mgr.UpdateIs3d(251000, "client-1", is3d: true);
+
+        Assert.Equal("Viper", mgr.GetPeersInChannel(251000)[0].Name);
+    }
+
+    [Fact]
+    public void UpdateIs3d_PreservesStatus()
+    {
+        var mgr = Create();
+        mgr.JoinChannel(251000, "client-1", "Viper", is3d: false);
+
+        mgr.UpdateIs3d(251000, "client-1", is3d: true);
+
+        Assert.Equal(PeerData.PeerStatus.Receiving, mgr.GetPeersInChannel(251000)[0].Status);
+    }
+
+    [Fact]
+    public void JoinChannel_AfterLeave_CanRejoin()
+    {
+        var mgr = Create();
+        mgr.JoinChannel(251000, "client-1", "Viper");
+        mgr.LeaveChannel(251000, "client-1");
+
+        Assert.True(mgr.JoinChannel(251000, "client-1", "Viper"));
+    }
+
+    [Fact]
+    public void GetClientChannel_MultipleChannels_ReturnsValidFrequency()
+    {
+        var mgr = Create();
+        mgr.JoinChannel(251000, "client-1", "Viper");
+        mgr.JoinChannel(135100, "client-1", "Viper");
+
+        var channel = mgr.GetClientChannel("client-1");
+
+        Assert.True(channel == 251000.0 || channel == 135100.0);
+    }
+
+    [Fact]
+    public void LeaveChannel_AfterLeaveAllChannels_ReturnsFalse()
+    {
+        var mgr = Create();
+        mgr.JoinChannel(251000, "client-1", "Viper");
+        mgr.LeaveAllChannels("client-1");
+
+        Assert.False(mgr.LeaveChannel(251000, "client-1"));
+    }
 }
