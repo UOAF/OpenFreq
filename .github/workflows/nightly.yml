@@ -3,6 +3,11 @@ name: Nightly Build
 on:
   push:
     branches: [develop]
+    paths-ignore:
+      - '**/*.md'
+      - 'OpenFreq.Common.Tests/**'
+      - 'OpenFreq.Server.Tests/**'
+      - '.github/**'
 
 permissions:
   contents: write
