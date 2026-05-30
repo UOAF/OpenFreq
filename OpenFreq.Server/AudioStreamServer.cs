@@ -14,7 +14,7 @@ namespace OpenFreqServer;
 /// Audio stream server with RTP translation using a single shared UDP port.
 /// Demultiplexes incoming packets based on sender's remote endpoint.
 /// </summary>
-public class AudioStreamServer
+public class AudioStreamServer : IAudioStreamServer
 {
     // Static stop-flag
     private volatile bool _stopping;

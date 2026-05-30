@@ -4,6 +4,8 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
@@ -20,13 +22,13 @@ public class SignalingServer
     private readonly ServerConfig _config;
     private readonly ConcurrentDictionary<string, ClientSession> _clients = new();
     private readonly FrequencyChannelManager _channelManager = new();
-    private readonly AudioStreamServer _audioServer;
+    private readonly IAudioStreamServer _audioServer;
     private readonly ILogger<SignalingServer> _logger;
     private CancellationTokenSource _cts = new();
 
     private const double WebsocketTimeoutMillis = 1000;
-    private static readonly TimeSpan RtpTimeoutDuration = TimeSpan.FromMinutes(1);
-    private static readonly TimeSpan WatchdogInterval = TimeSpan.FromSeconds(30);
+    private readonly TimeSpan _rtpTimeoutDuration;
+    private readonly TimeSpan _watchdogInterval;
 
     // High-performance logging delegates
     private static readonly Action<ILogger, int, Exception?> LogServerStarted =
@@ -79,16 +81,42 @@ public class SignalingServer
 
     public ConcurrentDictionary<string, ClientSession> Clients => _clients;
     public FrequencyChannelManager ChannelManager => _channelManager;
-    public AudioStreamServer AudioServer => _audioServer;
+    public IAudioStreamServer AudioServer => _audioServer;
+
+    /// <summary>
+    /// The actual TCP port the WebSocket endpoint is bound to. Only meaningful after
+    /// <see cref="StartAsync"/> has completed. Useful when the configured port is 0
+    /// (let the OS pick a free port), e.g. in integration tests.
+    /// </summary>
+    public int? BoundWebSocketPort { get; private set; }
 
     private static string GetDisplayName(ClientSession session) =>
         !string.IsNullOrWhiteSpace(session.DisplayName) ? session.DisplayName : "Unnamed";
 
     public SignalingServer(ServerConfig config, ILoggerFactory loggerFactory)
+        : this(config, loggerFactory, null, null, null)
+    {
+    }
+
+    /// <summary>
+    /// Test-friendly constructor. Allows injecting a fake audio relay (avoids binding a
+    /// real UDP port) and shortening the idle-watchdog timings for deterministic tests.
+    /// </summary>
+    /// <param name="audioServer">Audio relay to use; null builds the real <see cref="AudioStreamServer"/>.</param>
+    /// <param name="rtpTimeout">Idle RTP timeout before cleanup; null uses the production default (60 s).</param>
+    /// <param name="watchdogInterval">How often the idle watchdog runs; null uses the production default (30 s).</param>
+    public SignalingServer(
+        ServerConfig config,
+        ILoggerFactory loggerFactory,
+        IAudioStreamServer? audioServer,
+        TimeSpan? rtpTimeout,
+        TimeSpan? watchdogInterval)
     {
         _config = config;
         _logger = loggerFactory.CreateLogger<SignalingServer>();
-        _audioServer = new AudioStreamServer(_channelManager, _clients, loggerFactory, config.AudioPort);
+        _rtpTimeoutDuration = rtpTimeout ?? TimeSpan.FromMinutes(1);
+        _watchdogInterval = watchdogInterval ?? TimeSpan.FromSeconds(30);
+        _audioServer = audioServer ?? new AudioStreamServer(_channelManager, _clients, loggerFactory, config.AudioPort);
 
         // Build Kestrel application
         var builder = WebApplication.CreateBuilder();
@@ -160,7 +188,30 @@ public class SignalingServer
             throw;
         }
 
+        BoundWebSocketPort = ResolveBoundPort();
+
         _ = IdleWatchdogAsync(_cts.Token);
+    }
+
+    private int? ResolveBoundPort()
+    {
+        if (_config.WebSocketPort != 0)
+            return _config.WebSocketPort;
+
+        // Configured port 0 → Kestrel picked a free port; read it back from the server's
+        // resolved addresses (e.g. "http://[::]:49321").
+        var addresses = _app?.Services.GetService<IServer>()?
+            .Features.Get<IServerAddressesFeature>()?.Addresses;
+
+        if (addresses == null) return null;
+
+        foreach (var address in addresses)
+        {
+            if (Uri.TryCreate(address, UriKind.Absolute, out var uri) && uri.Port > 0)
+                return uri.Port;
+        }
+
+        return null;
     }
 
     private async Task IdleWatchdogAsync(CancellationToken ct)
@@ -169,7 +220,7 @@ public class SignalingServer
         {
             while (!ct.IsCancellationRequested)
             {
-                await Task.Delay(WatchdogInterval, ct);
+                await Task.Delay(_watchdogInterval, ct);
 
                 var now = DateTime.UtcNow;
                 foreach (var (clientId, session) in _clients)
@@ -179,7 +230,7 @@ public class SignalingServer
                     var lastRtp = _audioServer.GetLastRtpReceived(clientId);
                     if (lastRtp == null) continue; // audio session not yet created
 
-                    if (now - lastRtp.Value <= RtpTimeoutDuration) continue; // timeout not reached
+                    if (now - lastRtp.Value <= _rtpTimeoutDuration) continue; // timeout not reached
 
                     LogClientRtpTimeout(_logger, GetDisplayName(session), clientId, null);
                     _ = CleanupClient(clientId);

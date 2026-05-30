@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 
 namespace OpenFreqServer;
 
-public class ServerStats(ConcurrentDictionary<string, ClientSession> clients, FrequencyChannelManager channelManager, AudioStreamServer audioServer)
+public class ServerStats(ConcurrentDictionary<string, ClientSession> clients, FrequencyChannelManager channelManager, IAudioStreamServer audioServer)
 {
     private readonly DateTime _startTime = DateTime.UtcNow;
 
