@@ -10,6 +10,8 @@ env:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,6 +44,29 @@ jobs:
           for proj in OpenFreq.Common/OpenFreq.Common.csproj \
                       OpenFreq.Client/OpenFreq.Client.csproj \
                       OpenFreq.Server/OpenFreq.Server.csproj \
-                      OpenFreq.Testclient/OpenFreq.Testclient.csproj; do
+                      OpenFreq.Testclient/OpenFreq.Testclient.csproj \
+                      OpenFreq.Common.Tests/OpenFreq.Common.Tests.csproj \
+                      OpenFreq.Server.Tests/OpenFreq.Server.Tests.csproj; do
             dotnet build "$proj" --no-restore -warnaserror
           done
+
+      - name: Test
+        run: dotnet test OpenFreq.sln --no-build --no-restore --collect:"XPlat Code Coverage" --results-directory ./coverage
+
+      - name: Coverage Summary
+        uses: irongut/CodeCoverageSummary@v1.3.0
+        with:
+          filename: coverage/**/coverage.cobertura.xml
+          badge: true
+          format: markdown
+          hide_complexity: true
+          indicators: true
+          output: both
+          thresholds: '60 80'
+
+      - name: Post Coverage Comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        if: github.event_name == 'pull_request'
+        with:
+          recreate: true
+          path: code-coverage-results.md

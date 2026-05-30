@@ -12,7 +12,37 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Configure SSH for submodule
+        env:
+          SSH_KEY: ${{ secrets.OPENFREQAUDIO_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/openfreqaudio_key
+          chmod 600 ~/.ssh/openfreqaudio_key
+          printf 'Host github.com\n  IdentityFile ~/.ssh/openfreqaudio_key\n  StrictHostKeyChecking no\n' >> ~/.ssh/config
+
+      - name: Fetch submodules
+        run: git submodule update --init --recursive
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Test
+        run: dotnet test OpenFreq.sln --no-restore
+
   build-server:
+    needs: [test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -63,6 +93,7 @@ jobs:
           retention-days: 1
 
   build-client:
+    needs: [test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
