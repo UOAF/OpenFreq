@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text;
 using Microsoft.Extensions.Logging;
@@ -16,11 +17,13 @@ using Attribute = Terminal.Gui.Drawing.Attribute;
 namespace OpenFreqServer;
 
 /// <summary>Row model for colored list views.</summary>
+[ExcludeFromCodeCoverage] // Terminal.Gui rendering — not unit tested
 internal record ColoredRow(string Text, bool IsTransmitting);
 
 /// <summary>
 /// Reusable IListDataSource that renders transmitting rows in red.
 /// </summary>
+[ExcludeFromCodeCoverage] // Terminal.Gui rendering — not unit tested
 internal class ColoredListSource : IListDataSource
 {
     private static readonly Attribute _normalAttr = new(ColorName16.BrightYellow, ColorName16.Black);
@@ -70,6 +73,7 @@ internal class ColoredListSource : IListDataSource
 
 }
 
+[ExcludeFromCodeCoverage] // Terminal.Gui rendering — not unit tested
 public class TerminalGuiServer : IDisposable
 {
     private readonly ServerConfig _config;

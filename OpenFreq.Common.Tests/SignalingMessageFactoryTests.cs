@@ -193,4 +193,55 @@ public class SignalingMessageFactoryTests
         var result = SignalingMessageFactory.DeserializePayload<AuthenticateMessage>(null);
         Assert.Null(result);
     }
+
+    [Fact]
+    public void CreateChannelState_AllFieldsPreserved()
+    {
+        var peers = new List<ChannelStateMessage.Peer>
+        {
+            new("peer-1", "Viper"),
+            new("peer-2", "Maverick")
+        };
+
+        var msg = SignalingMessageFactory.CreateChannelState(251000, peers);
+
+        Assert.Equal(SignalingMessageTypes.ChannelState, msg.Type);
+        var payload = SignalingMessageFactory.DeserializePayload<ChannelStateMessage>(msg.Payload);
+        Assert.NotNull(payload);
+        Assert.Equal(251000, payload.FrequencyKhz);
+        Assert.Equal(2, payload.Peers.Count);
+        Assert.Equal("peer-1", payload.Peers[0].Id);
+        Assert.Equal("Viper", payload.Peers[0].DisplayName);
+    }
+
+    [Fact]
+    public void CreateSuccess_NullablesOmitted_StillDeserializes()
+    {
+        var peers = new SortedDictionary<int, List<PeerData>>();
+        var msg = SignalingMessageFactory.CreateSuccess("ok", peers);
+
+        var payload = SignalingMessageFactory.DeserializePayload<SuccessMessage>(msg.Payload);
+        Assert.NotNull(payload);
+        Assert.Equal("ok", payload.Message);
+        Assert.Null(payload.PeerId);
+        Assert.Null(payload.AudioPort);
+    }
+
+    [Fact]
+    public void CreateAllPeersStatus_WithEntries_RoundTrips()
+    {
+        var allPeers = new SortedDictionary<int, List<PeerData>>
+        {
+            [251000] = [new PeerData("p1", "Viper", PeerData.PeerStatus.Transmitting)]
+        };
+
+        var msg = SignalingMessageFactory.CreateAllPeersStatusMessage(allPeers);
+        var payload = SignalingMessageFactory.DeserializePayload<AllPeersStatusMessage>(msg.Payload);
+
+        Assert.NotNull(payload);
+        var entry = Assert.Single(payload.FrequenciesPeers);
+        Assert.Equal(251000, entry.Key);
+        Assert.Equal("Viper", entry.Value[0].Name);
+        Assert.Equal(PeerData.PeerStatus.Transmitting, entry.Value[0].Status);
+    }
 }
