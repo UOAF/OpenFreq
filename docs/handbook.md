@@ -97,7 +97,7 @@ BMS mode requires **Windows or WINE**. The client reads radio state and position
 
 ### Linux Prerequisites
 
-> *Note:* These prerequistes are only necessary for BMS mode. If you want to run GCI mode in Linux, just use the native OpenFreq Linux Client.
+> **Note:** These prerequistes are only necessary for BMS mode. If you want to run GCI mode in Linux, just use the native OpenFreq Linux Client.
 
 Make sure you installed BMS with the bms-helper script (https://github.com/BenchmarkSims/bms-helper/).
 WINE works best with the portable version of the BMS clients as this supplies its own .NET environment.
