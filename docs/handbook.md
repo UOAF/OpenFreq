@@ -115,6 +115,8 @@ export STEAM_COMPAT_DATA_PATH="$WINEPREFIX"
 Either run those commands in your terminal or even better create a shell script.
 
 > **Warning:** The current version of the bms-launcher kills all WINE applications in the same prefix. **You must first launch Falcon BMS (via the bms-launcher) and then the OpenFreq.Client.exe**
+
+
 > **Info:** The BMS WINE prefix seems to override the window manager. It is suggested to disable the version "Minimize on connect" in the OpenFreq Client to avoid a corrupted UI.
 
 ### First-Time Setup
