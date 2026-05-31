@@ -221,32 +221,40 @@ public partial class LocationViewModel : ViewModelBase, IDisposable
 
     private void OnFrequencyConnectionStatusChanged(object? sender, FrequencyConnectionStatusEventArgs e)
     {
-        // If a slotId is specified, update only that channel; otherwise update all channels on the frequency.
-        var targets = e.SlotId.HasValue
-            ? Channels.Where(c => c.Id == e.SlotId.Value)
-            : Channels.Where(c => c.FrequencyKhz == e.FrequencyKhz);
-
-        foreach (var channel in targets)
+        // Marshal to the UI thread so we don't modify the Channels collection while ImportBmsRadioChannels
+        // is rebuilding it.
+        Dispatcher.UIThread.Post(() =>
         {
-            channel.ConnectionStatus = e.FrequencyKhz == IFalconRadioSharedMemoryService.BmsRadioOffFrequency
-                ? Channel.ChannelConnectionStatus.Disconnected
-                : e.ConnectionStatus;
-        }
+            // If a slotId is specified, update only that channel; otherwise update all channels on the frequency.
+            var targets = (e.SlotId.HasValue
+                ? Channels.Where(c => c.Id == e.SlotId.Value)
+                : Channels.Where(c => c.FrequencyKhz == e.FrequencyKhz)).ToList();
+
+            foreach (var channel in targets)
+            {
+                channel.ConnectionStatus = e.FrequencyKhz == IFalconRadioSharedMemoryService.BmsRadioOffFrequency
+                    ? Channel.ChannelConnectionStatus.Disconnected
+                    : e.ConnectionStatus;
+            }
+        });
     }
 
     private void OnFrequencyTransmissionStatusChanged(object? sender, FrequencyTransmissionStatusEventArgs e)
     {
-        var modeMatches = e.Is3d == Settings.Is3dMode;
-
-        foreach (var channel in Channels.Where(c => c.FrequencyKhz == e.FrequencyKhz))
+        Dispatcher.UIThread.Post(() =>
         {
-            if (e.TransmissionStatus == Channel.ChannelTransmissionStatus.Idle || modeMatches)
-                channel.TransmissionStatus = e.TransmissionStatus;
-        }
+            var modeMatches = e.Is3d == Settings.Is3dMode;
 
-        AnyChannelTransmitting =
-            Channels.Any(c => c.TransmissionStatus == Channel.ChannelTransmissionStatus.Transmitting);
-        AnyChannelReceiving = Channels.Any(c => c.TransmissionStatus == Channel.ChannelTransmissionStatus.Receiving);
+            foreach (var channel in Channels.Where(c => c.FrequencyKhz == e.FrequencyKhz).ToList())
+            {
+                if (e.TransmissionStatus == Channel.ChannelTransmissionStatus.Idle || modeMatches)
+                    channel.TransmissionStatus = e.TransmissionStatus;
+            }
+
+            AnyChannelTransmitting =
+                Channels.Any(c => c.TransmissionStatus == Channel.ChannelTransmissionStatus.Transmitting);
+            AnyChannelReceiving = Channels.Any(c => c.TransmissionStatus == Channel.ChannelTransmissionStatus.Receiving);
+        });
     }
 
 

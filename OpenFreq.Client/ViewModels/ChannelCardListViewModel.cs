@@ -43,6 +43,10 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
 
     private readonly Lock _channelImportLock = new();
 
+    // Last-logged BMS volume signature — dedupes the volume diagnostic so it only
+    // logs when raw/gain values actually change (no per-poll spam).
+    private string? _lastVolumeDiagSignature;
+
     public SettingsViewModel Settings => _settings;
 
     [ObservableProperty]
@@ -225,11 +229,11 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
 
     private static float ComputeGainFromBmsVolume(int rawVolume)
     {
-        // BMS knob: 1000 = loudest, 10000 = mute (inverted scale)
-        const float dxMin = 1000f;
+        // BMS knob (measured): ~600 = loudest, 10000 = mute (inverted scale).
+        // Floor set slightly below the loudest reading (600) so the very top of the knob reliably hits max gain
+        const float dxMin = 600f;
         const float dxMax = 10000f;
-        // dB range calibrated so mid-knob (~5500) gives -17 dB (14%) rather than
-        // the former -37 dB (1.4%), which made any knob asymmetry catastrophic.
+        // dB range calibrated so mid-knob (~5500) gives -17 dB (14%)
         const float dbMin = -40f;
         const float dbMax = 6f;
 
@@ -248,6 +252,9 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
 
         var gain = ComputeGainFromBmsVolume(e.NewVolume);
 
+        // REMOVE ME WHEN UHF/VHF LOUDNESS BUG FIXED
+        LogBmsVolumeDiagnostics("knob change");
+        // *****************************************
         var channels = FalconLocation?.Channels.Where(c => c.BmsRadioType == e.RadioType).ToList();
         if (channels == null) return;
         foreach (var channel in channels)
@@ -333,6 +340,31 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                 _openFreqService.SetVolume(channel.FrequencyKhz, channel.Id, gain);
             }
         }
+
+        LogBmsVolumeDiagnostics("sync");
+    }
+
+    /// <summary>
+    /// Diagnostic for the COM1/COM2 volume-mismatch issue: logs every BMS radio's raw RxVolume and the gain it maps to
+    /// </summary>
+    private void LogBmsVolumeDiagnostics(string trigger)
+    {
+        if (_settings.ModeIsGci) return;
+
+        var parts = new List<string>();
+        foreach (var type in Enum.GetValues<RadioType>())
+        {
+            var radioChannel = _falconRadioSharedMemoryService.GetRadioChannel(type);
+            if (radioChannel == null) continue;
+            var gain = ComputeGainFromBmsVolume(radioChannel.RxVolume);
+            parts.Add($"{type} raw={radioChannel.RxVolume} gain={gain:F3}");
+        }
+
+        var signature = string.Join(" | ", parts);
+        if (signature == _lastVolumeDiagSignature) return;
+        _lastVolumeDiagSignature = signature;
+
+        _logger.LogInformation("BMS volume map ({Trigger}): {Volumes}", trigger, signature);
     }
 
     private void OnFlyingStateChanged(object? sender, FlyingStateChangedEventArgs e)
