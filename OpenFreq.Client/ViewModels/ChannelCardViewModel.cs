@@ -36,12 +36,25 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         get => (FrequencyKhz / 1000d).ToString("F3", CultureInfo.InvariantCulture);
         set
         {
-            if (double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var mhz))
-            {
-                FrequencyKhz = (int)(mhz * 1000d);
-            }
+            const NumberStyles styles = NumberStyles.AllowDecimalPoint
+                                        | NumberStyles.AllowLeadingWhite
+                                        | NumberStyles.AllowTrailingWhite;
+
+            // Accept either '.' or ',' as the decimal separator; normalize to '.'.
+            var normalized = (value ?? string.Empty).Replace(',', '.');
+
+            if (!double.TryParse(normalized, styles, CultureInfo.InvariantCulture, out var mhz))
+                throw new ArgumentException("Enter a frequency in MHz, e.g. 251.000");
+
+            if (mhz <= 0 || mhz > MaxFrequencyMhz)
+                throw new ArgumentException($"Frequency must be between 0 and {MaxFrequencyMhz:F0} MHz");
+
+            FrequencyKhz = (int)Math.Round(mhz * 1000d);
         }
     }
+
+    /// <summary>Upper bound for a tunable frequency in MHz (UHF military band ceiling).</summary>
+    private const double MaxFrequencyMhz = 400d;
 
     [ObservableProperty] public partial string? Name { get; set; }
 
