@@ -1175,6 +1175,8 @@ public class OpenFreqService : IOpenFreqService
 
     private AudioParams CalculateAudioParamsSync(FrequencyTransmission frequencyTransmission, string peerId)
     {
+        var cacheKey = (peerId, frequencyTransmission.Khz);
+
         // All slots on the same frequency share the same RadioStationData (position/velocity).
         // Pick any tuned slot's key for position lookup.
         var anySlotKey = _tunedSlots.Keys.FirstOrDefault(k => k.FreqKhz == frequencyTransmission.Khz);
@@ -1183,11 +1185,13 @@ public class OpenFreqService : IOpenFreqService
 
         if (frequencyTransmission.Position == null || ownPosition == null || _audioSim == null)
         {
-            return FastPathAudioSim.GetDefaultAudioParams(frequencyTransmission.Khz);
+            // Inputs missing (e.g. a concealed frame without position).
+            // Reuse the last physics result for this source+freq, even if expired.
+            // Stale RF params beat full-volume no-physics audio.
+            return LastKnownOrDefaultAudioParams(cacheKey, frequencyTransmission.Khz);
         }
 
         // Check cache
-        var cacheKey = (peerId, frequencyTransmission.Khz);
         var now = DateTime.UtcNow;
 
         if (_audioParamsCache.TryGetValue(cacheKey, out var cached) &&
@@ -1200,7 +1204,7 @@ public class OpenFreqService : IOpenFreqService
         var receiverData = GetAnyTunedSlot(frequencyTransmission.Khz);
         if (receiverData == null)
         {
-            return FastPathAudioSim.GetDefaultAudioParams(frequencyTransmission.Khz);
+            return LastKnownOrDefaultAudioParams(cacheKey, frequencyTransmission.Khz);
         }
 
         var receiverSensitivityDb = RadioStationPreset.IsVHF(frequencyTransmission.Khz)
@@ -1229,6 +1233,13 @@ public class OpenFreqService : IOpenFreqService
 
         return audioParams;
     }
+
+    // Last computed physics params for this source+freq, ignoring the cache freshness.
+    // Fallback to flat default only when nothing was ever calculated.
+    private AudioParams LastKnownOrDefaultAudioParams((string PeerId, int FrequencyKhz) cacheKey, int khz)
+        => _audioParamsCache.TryGetValue(cacheKey, out var cached)
+            ? cached.Params
+            : FastPathAudioSim.GetDefaultAudioParams(khz);
 
 
     // Periodical Cache cleanup
