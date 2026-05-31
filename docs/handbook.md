@@ -29,7 +29,7 @@ In any case, extract the files of the archive into a directory of your choice. A
 ### Requirements
 
 - Windows or Linux
-- .NET 10 runtime (or use the self-contained publish)
+- .NET 10 runtime (or use the portable version)
 - Ports **9987** (WebSocket/TCP) and **9988** (UDP) open and forwarded if hosting publicly
 
 > **Note:** The Server does not require a BMS installation. It can run on any machine, as long as the ports are open.
@@ -87,13 +87,35 @@ UDP 9988  (audio relay)
 
 ![](handbook_screens/client_bms_mode.png)
 
-BMS mode is **Windows-only**. The client reads radio state and position data directly from Falcon BMS shared memory - no manual frequency configuration needed.
+BMS mode requires **Windows or WINE**. The client reads radio state and position data directly from Falcon BMS shared memory - no manual frequency configuration needed.
 
 ### Prerequisites
 
-- Windows only
+- Windows native or WINE (tested with wine-11.0 staging)
 - Falcon BMS 4.38 or later
 - IVC client **not** running - OpenFreq detects IVC and will offer to kill it automatically
+
+### Linux Prerequisites
+Make sure you installed BMS with the bms-helper script (https://github.com/BenchmarkSims/bms-helper/).
+WINE works best with the portable version of the BMS clients as this supplies its own .NET environment.
+
+In order for the BMS client to work in BMS mode, it must be launched in the same wineprefix as your BMS installation:
+
+```
+# Adapt this to your BMS root path
+export WINEPREFIX="/home/my-user/Games/falcon-bms"
+
+# Adapt this to your path and your runners
+export STEAM_COMPAT_CLIENT_INSTALL_PATH="/home/my-user/Games/falcon-bms/runners/GE-Proton10-32"
+
+export STEAM_COMPAT_DATA_PATH="$WINEPREFIX"
+"/home/my-user/Games/falcon-bms/runners/GE-Proton10-32/proton" run "OpenFreq.Client.exe"
+```
+
+Either run those commands in your terminal or even better create a shell script.
+
+> **Warning:** The current version of the bms-launcher kills all WINE applications in the same prefix. **You must first launch Falcon BMS (via the bms-launcher) and then the OpenFreq.Client.exe**
+> **Info:** The BMS WINE prefix seems to override the window manager. It is suggested to disable the version "Minimize on connect" in the OpenFreq Client to avoid a corrupted UI.
 
 ### First-Time Setup
 

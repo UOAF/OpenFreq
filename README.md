@@ -20,7 +20,7 @@ Real-time network voice radio with real-time physics simulation for [Falcon BMS]
 - Peer list
 - Experimental: sidetone (microphone monitoring)
 - Server: Native Windows & Linux support
-- Client: Native Windows & Linux support (GCI mode only)
+- Client: Native Windows & Linux support (GCI mode only), BMS mode tested in WINE (see the [Handbook](docs/handbook.md "Handbook") for detailed WINE info)
 
 ## Quick Start
 ### BMS Mode
