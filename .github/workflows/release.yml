@@ -71,7 +71,7 @@ jobs:
           VERSION="${VERSION#v}"
           for RID in win-x64 linux-x64; do
             for SC in true false; do
-              SUFFIX=$([[ "$SC" == "true" ]] && echo "selfcontained" || echo "framework")
+              SUFFIX=$([[ "$SC" == "true" ]] && echo "portable" || echo "framework")
               OUTDIR="publish/OpenFreq-Server-${RID}-${SUFFIX}"
               SC_FLAGS=$([[ "$SC" == "true" ]] && echo "-p:PublishSingleFile=true -p:PublishTrimmed=true" || echo "")
               dotnet publish OpenFreq.Server/OpenFreq.Server.csproj \
@@ -81,7 +81,7 @@ jobs:
                 -p:InformationalVersion="$VERSION" \
                 -o "$OUTDIR"
               pushd "$OUTDIR"
-              zip -r "$GITHUB_WORKSPACE/OpenFreq-Server-${VERSION}-${RID}-${SUFFIX}.zip" . --exclude "*.pdb"
+              zip -r "$GITHUB_WORKSPACE/OpenFreq-Server-${{ github.ref_name }}-${RID}-${SUFFIX}.zip" . --exclude "*.pdb"
               popd
             done
           done
@@ -122,7 +122,7 @@ jobs:
           VERSION="${VERSION#v}"
           for RID in win-x64 linux-x64; do
             for SC in true false; do
-              SUFFIX=$([[ "$SC" == "true" ]] && echo "selfcontained" || echo "framework")
+              SUFFIX=$([[ "$SC" == "true" ]] && echo "portable" || echo "framework")
               OUTDIR="publish/OpenFreq-Client-${RID}-${SUFFIX}"
               SC_FLAGS=$([[ "$SC" == "true" ]] && echo "-p:PublishSingleFile=true -p:PublishTrimmed=true -p:PublishReadyToRun=true -p:IncludeNativeLibrariesForSelfExtract=true -p:IncludeAllContentForSelfExtract=true" || echo "")
               dotnet publish OpenFreq.Client/OpenFreq.Client.csproj \
@@ -137,7 +137,7 @@ jobs:
                 cp libs/OpenFreqAudio/OpenFreqAudio/Assets/linux/*.so "$OUTDIR/"
               fi
               pushd "$OUTDIR"
-              zip -r "$GITHUB_WORKSPACE/OpenFreq-Client-${VERSION}-${RID}-${SUFFIX}.zip" . --exclude "*.pdb"
+              zip -r "$GITHUB_WORKSPACE/OpenFreq-Client-${{ github.ref_name }}-${RID}-${SUFFIX}.zip" . --exclude "*.pdb"
               popd
             done
           done
@@ -165,18 +165,23 @@ jobs:
           make_latest: true
           generate_release_notes: true
           body: |
-            ## Downloads
+            ## 📦 Portable
 
-            | Archive | Platform | Mode |
+            No .NET install needed, unzip and run. Larger files.
+
+            |  | 🪟 Windows | 🐧 Linux |
             |---|---|---|
-            | `OpenFreq-Server-win-x64-selfcontained.zip` | Windows | Self-contained (.NET bundled) |
-            | `OpenFreq-Server-win-x64-framework.zip` | Windows | Requires .NET 10 |
-            | `OpenFreq-Server-linux-x64-selfcontained.zip` | Linux | Self-contained (.NET bundled) |
-            | `OpenFreq-Server-linux-x64-framework.zip` | Linux | Requires .NET 10 |
-            | `OpenFreq-Client-win-x64-selfcontained.zip` | Windows | Self-contained (.NET bundled) |
-            | `OpenFreq-Client-win-x64-framework.zip` | Windows | Requires .NET 10 |
-            | `OpenFreq-Client-linux-x64-selfcontained.zip` | Linux | Self-contained (.NET bundled) |
-            | `OpenFreq-Client-linux-x64-framework.zip` | Linux | Requires .NET 10 |
+            | **Client** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/OpenFreq-Client-${{ github.ref_name }}-win-x64-portable.zip) | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/OpenFreq-Client-${{ github.ref_name }}-linux-x64-portable.zip) |
+            | **Server** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/OpenFreq-Server-${{ github.ref_name }}-win-x64-portable.zip) | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/OpenFreq-Server-${{ github.ref_name }}-linux-x64-portable.zip) |
+
+            ## ⚙️ .NET 10 Required
+
+            Smaller download, needs the [.NET 10 runtime](https://dotnet.microsoft.com/download/dotnet/10.0) installed.
+
+            |  | 🪟 Windows | 🐧 Linux |
+            |---|---|---|
+            | **Client** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/OpenFreq-Client-${{ github.ref_name }}-win-x64-framework.zip) | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/OpenFreq-Client-${{ github.ref_name }}-linux-x64-framework.zip) |
+            | **Server** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/OpenFreq-Server-${{ github.ref_name }}-win-x64-framework.zip) | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/OpenFreq-Server-${{ github.ref_name }}-linux-x64-framework.zip) |
           files: artifacts/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
