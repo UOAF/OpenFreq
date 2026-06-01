@@ -5,6 +5,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -105,3 +106,37 @@ jobs:
           name: client-builds
           path: OpenFreq-Client-*-portable.zip
           retention-days: 5
+
+  comment:
+    needs: [build-server, build-client]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Find PR for this branch
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NUM=$(gh pr list --repo "${{ github.repository }}" \
+            --head "${{ github.ref_name }}" --state open \
+            --json number --jq '.[0].number // empty')
+          echo "number=$NUM" >> "$GITHUB_OUTPUT"
+
+      - name: Post artifact links to PR
+        if: steps.pr.outputs.number != ''
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          number: ${{ steps.pr.outputs.number }}
+          recreate: true
+          message: |
+            ### 📦 Portable builds ready
+
+            Self-contained (no .NET runtime needed). Download from the run's **Artifacts** section — expires in 5 days.
+
+            **[⬇️ Download artifacts](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})**
+
+            | | 🪟 win-x64 | 🐧 linux-x64 |
+            |---|---|---|
+            | **Client** | `OpenFreq-Client-win-x64-portable.zip` | `OpenFreq-Client-linux-x64-portable.zip` |
+            | **Server** | `OpenFreq-Server-win-x64-portable.zip` | `OpenFreq-Server-linux-x64-portable.zip` |
+
+            Built from `${{ github.sha }}`.
