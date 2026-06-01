@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia;
@@ -86,6 +87,21 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
     [ObservableProperty] public partial bool SidetoneEnabled { get; set; } = false;
     [ObservableProperty] public partial double SidetoneVolume { get; set; } = 0.4;
     [ObservableProperty] public partial double AmbientNoiseVolume { get; set; } = 1.0;
+    [ObservableProperty] public partial bool AutoRecordInGameMode { get; set; } = false;
+    [ObservableProperty] public partial string RecordingPath { get; set; } = Path.Combine(Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory, "recordings");
+    /// <summary>False = capture to file, True = stream the capture mix to a playback device.</summary>
+    [ObservableProperty] public partial bool StreamToDevice { get; set; } = false;
+    /// <summary>Inverse of <see cref="StreamToDevice"/>, for the "Record to file" radio button.</summary>
+    public bool RecordToFile
+    {
+        get => !StreamToDevice;
+        set { if (value) StreamToDevice = false; }
+    }
+    /// <summary>When true, own voice in the capture gets the full radio FX; when false it stays clean.</summary>
+    [ObservableProperty] public partial bool ApplyOwnVoiceSfx { get; set; } = true;
+    /// <summary>List index into <see cref="PlaybackDeviceNames"/> for the monitor/stream output device.</summary>
+    [ObservableProperty] public partial int MonitorDeviceIndex { get; set; }
+    [ObservableProperty] public partial string MonitorDeviceName { get; set; } = string.Empty;
     [ObservableProperty] public partial bool IsDarkMode { get; set; }
     [ObservableProperty] public partial bool MinimizeOnConnect { get; set; } = true;
 
@@ -335,6 +351,27 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
 
     partial void OnAmbientNoiseVolumeChanged(double value) => _openFreqService.AmbientNoiseVolume = value;
 
+    partial void OnAutoRecordInGameModeChanged(bool value) => _openFreqService.AutoRecordInGameMode = value;
+
+    partial void OnRecordingPathChanged(string value) => _openFreqService.RecordingPath = value;
+
+    partial void OnStreamToDeviceChanged(bool value)
+    {
+        _openFreqService.Sink = value
+            ? IOpenFreqService.CaptureSink.Device
+            : IOpenFreqService.CaptureSink.File;
+        OnPropertyChanged(nameof(RecordToFile));
+    }
+
+    partial void OnApplyOwnVoiceSfxChanged(bool value) => _openFreqService.ApplyOwnVoiceSfx = value;
+
+    partial void OnMonitorDeviceIndexChanged(int value)
+    {
+        if (value < 0 || value >= PlaybackDeviceNames.Count) return;
+        MonitorDeviceName = PlaybackDeviceNames[value];
+        _openFreqService.MonitorDeviceIndex = _audioService.GetPlaybackBassIndex(value);
+    }
+
     partial void OnIsDarkModeChanged(bool value)
     {
         Application.Current!.RequestedThemeVariant = value ? ThemeVariant.Dark : ThemeVariant.Light;
@@ -377,6 +414,12 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
         SidetoneVolume = settings.SidetoneVolume;
         MinimizeOnConnect = settings.MinimizeOnConnect;
         AmbientNoiseVolume = settings.AmbientNoiseVolume;
+        AutoRecordInGameMode = settings.AutoRecordInGameMode;
+        // Keep the computed default ("recordings" next to the exe) when no path was saved.
+        if (!string.IsNullOrWhiteSpace(settings.RecordingPath))
+            RecordingPath = settings.RecordingPath;
+        StreamToDevice = settings.CaptureSink == IOpenFreqService.CaptureSink.Device;
+        ApplyOwnVoiceSfx = settings.ApplyOwnVoiceSfx;
         if (settings.DarkMode.HasValue)
         {
             IsDarkMode = settings.DarkMode.Value;
@@ -408,6 +451,14 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
             if (PlaybackDeviceIndex < 0)
                 PlaybackDeviceIndex = _audioService.DefaultPlaybackDevice;
         }
+
+        // Monitor/stream output device (reuses the playback device list).
+        MonitorDeviceName = settings.MonitorDeviceName;
+        MonitorDeviceIndex = !string.IsNullOrEmpty(MonitorDeviceName)
+            ? PlaybackDeviceNames.ToList().IndexOf(MonitorDeviceName)
+            : _audioService.DefaultPlaybackDevice;
+        if (MonitorDeviceIndex < 0)
+            MonitorDeviceIndex = _audioService.DefaultPlaybackDevice;
 
         RestoreWindowPosition(settings);
 
@@ -492,7 +543,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
     private Screen? FindScreenContainingPositionInWorkingArea(PixelPoint position)
     {
         return (
-            // All active screens, not just any screens overlapping the window! 
+            // All active screens, not just any screens overlapping the window!
             from screen in ((IClassicDesktopStyleApplicationLifetime)Application.Current!.ApplicationLifetime!)
                 .MainWindow!.Screens.All
             where screen.WorkingArea.Contains(position)
@@ -534,6 +585,13 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
             SidetoneVolume = SidetoneVolume,
             MinimizeOnConnect = MinimizeOnConnect,
             AmbientNoiseVolume = AmbientNoiseVolume,
+            AutoRecordInGameMode = AutoRecordInGameMode,
+            RecordingPath = RecordingPath,
+            CaptureSink = StreamToDevice
+                ? IOpenFreqService.CaptureSink.Device
+                : IOpenFreqService.CaptureSink.File,
+            MonitorDeviceName = MonitorDeviceName,
+            ApplyOwnVoiceSfx = ApplyOwnVoiceSfx,
             DarkMode = IsDarkMode,
             Left = _left,
             Top = _top,

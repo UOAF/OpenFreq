@@ -146,8 +146,18 @@ public class OpenFreqService : IOpenFreqService
         get;
         set
         {
+            bool was = field;
             field = value;
             _playbackService?.Apply3dEffects = value;
+
+            // "Game mode" = 3D effects on. This is the unified signal for both BMS (driven by
+            // flying state) and GCI (toggled manually), so auto-record keys off it rather than
+            // the BMS-only flying state. Only react to real transitions.
+            if (AutoRecordInGameMode && was != value)
+            {
+                if (value && IsConnected) StartRecording();
+                else if (!value) StopRecording();
+            }
         }
     }
 
@@ -190,6 +200,35 @@ public class OpenFreqService : IOpenFreqService
             if (_playbackService != null) _playbackService.AmbientNoiseVolume = (float)value;
         }
     } = 1.0;
+
+    /// <summary>When true, capture auto-starts on entering game mode (flight) and auto-stops on leaving it.</summary>
+    public bool AutoRecordInGameMode { get; set; }
+
+    /// <summary>When true, own voice in the capture gets the full radio FX (AGC/squelch/SFX); when false it stays clean.</summary>
+    public bool ApplyOwnVoiceSfx
+    {
+        get => field;
+        set
+        {
+            field = value;
+            if (_playbackService != null) _playbackService.OwnVoiceSfxEnabled = value;
+        }
+    } = true;
+
+    /// <summary>Selects the capture output: file or playback device.</summary>
+    public IOpenFreqService.CaptureSink Sink { get; set; } = IOpenFreqService.CaptureSink.File;
+
+    /// <summary>BASS device index the capture mix is streamed to when <see cref="Sink"/> is Device.</summary>
+    public int MonitorDeviceIndex { get; set; }
+
+    /// <summary>Directory recordings are written to. Created if missing. Blank → "recordings" next to the executable.</summary>
+    public string RecordingPath { get; set; } = "";
+
+    /// <summary>True while a capture (file or device) is in progress.</summary>
+    public bool IsRecording => _playbackService?.IsCapturing ?? false;
+
+    /// <summary>Raised when recording starts (true) or stops (false).</summary>
+    public event EventHandler<bool>? RecordingStateChanged;
 
     private bool _isInitialized;
 
@@ -290,6 +329,7 @@ public class OpenFreqService : IOpenFreqService
         _playbackService.SidetoneEnabled = SidetoneEnabled;
         _playbackService.SidetoneVolume = (float)SidetoneVolume;
         _playbackService.AmbientNoiseVolume = (float)AmbientNoiseVolume;
+        _playbackService.OwnVoiceSfxEnabled = ApplyOwnVoiceSfx;
         _isInitialized = true;
 
         _falconSharedMemoryService.FlyingStateChanged += OnFlyingStateChanged;
@@ -320,6 +360,8 @@ public class OpenFreqService : IOpenFreqService
 
     private void OnFlyingStateChanged(object? sender, FlyingStateChangedEventArgs e)
     {
+        // Auto-record keys off Apply3dAudioEffects ("game mode"), which BMS flying state drives,
+        // so it is handled there — not here. This handler only loads the heightmap on takeoff.
         if (e is not { OldFlyingState: false, NewFlyingState: true }) return;
         var heightmapPath = Path.Join(_falconSharedMemoryService.TheaterTerrainDir, "NewTerrain", "HeightMaps",
             "HeightMap.raw");
@@ -341,6 +383,8 @@ public class OpenFreqService : IOpenFreqService
         {
             if (_playbackService != null)
             {
+                // Always stop recording before tearing streams down.
+                StopRecording();
                 _playbackService.UserFacingError -= OnPlaybackUserFacingError;
                 // Stop individual streams without freeing the BASS device — RadioPlayback is
                 // kept alive so the next Initialize() can reuse it without Bass.Free()+Bass.Init().
@@ -404,11 +448,62 @@ public class OpenFreqService : IOpenFreqService
     }
 
     /// <summary>
+    /// Start a combined session recording (incoming as heard + own voice rendered as if heard
+    /// from the same position) to a timestamped .ogg. No-op if already recording or the
+    /// playback subsystem is not initialized.
+    /// </summary>
+    public void StartRecording()
+    {
+        if (_playbackService == null || _playbackService.IsCapturing) return;
+
+        try
+        {
+            if (Sink == IOpenFreqService.CaptureSink.Device)
+            {
+                _playbackService.StartMonitor(MonitorDeviceIndex);
+                if (!_playbackService.IsMonitoring) return; // start failed; error already surfaced
+                OnStatusMessage("Streaming audio to monitor device");
+            }
+            else
+            {
+                var dir = string.IsNullOrWhiteSpace(RecordingPath)
+                    ? Path.Combine(AppContext.BaseDirectory, "recordings")
+                    : RecordingPath;
+                Directory.CreateDirectory(dir);
+                var file = Path.Combine(dir, $"OpenFreq_{DateTime.Now:yyyyMMdd_HHmmss}.ogg");
+                _playbackService.StartRecording(file);
+                if (!_playbackService.IsRecording) return; // start failed; error already surfaced
+                OnStatusMessage($"Recording to {file}");
+            }
+
+            RecordingStateChanged?.Invoke(this, true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to start capture");
+            OnStatusMessage($"Failed to start capture: {ex.Message}");
+        }
+    }
+
+    /// <summary>Stop the current capture. Always honoured (manual stop overrides auto). No-op if idle.</summary>
+    public void StopRecording()
+    {
+        if (_playbackService is not { IsCapturing: true }) return;
+        _playbackService.StopRecording();
+        _playbackService.StopMonitor();
+        OnStatusMessage("Recording stopped");
+        RecordingStateChanged?.Invoke(this, false);
+    }
+
+    /// <summary>
     /// Disconnect from the server
     /// </summary>
     public async Task DisconnectAsync()
     {
         if (_client == null) return;
+
+        // Always stop recording when disconnecting.
+        StopRecording();
 
         // Stop all transmissions
         foreach (var frequencyKhz in _activeTransmissionsAndMutedFrequencies.Keys)
@@ -757,16 +852,21 @@ public class OpenFreqService : IOpenFreqService
             short[] audioData = new short[length / 2];
             Marshal.Copy(buffer, audioData, 0, audioData.Length);
 
-            // Sidetone: feed mic back to speaker with no extra buffering.
-            // Use pre-allocated buffer to avoid GC allocation on the hot audio path.
-            if (_playbackService is { SidetoneEnabled: true })
+            // Convert mic to float once and fan out to sidetone (speaker loopback) and/or the
+            // session recording (own voice, rendered through radio FX downstream).
+            // Pre-allocated buffer avoids GC allocation on the hot audio path.
+            bool wantSidetone = _playbackService is { SidetoneEnabled: true };
+            bool wantRecord = _playbackService is { IsCapturing: true };
+            if (wantSidetone || wantRecord)
             {
                 int n = audioData.Length;
                 if (n > _sidetonePushBuffer.Length)
                     _sidetonePushBuffer = new float[n * 2];
                 for (int i = 0; i < n; i++)
                     _sidetonePushBuffer[i] = audioData[i] / (float)short.MaxValue;
-                _playbackService.PushSidetone(_sidetonePushBuffer.AsSpan()[..n]);
+                var span = _sidetonePushBuffer.AsSpan()[..n];
+                if (wantSidetone) _playbackService!.PushSidetone(span);
+                if (wantRecord) _playbackService!.PushOwnVoiceForRecording(span);
             }
 
             // Send to ALL active frequencies
@@ -809,6 +909,16 @@ public class OpenFreqService : IOpenFreqService
                         radioStationData.RadioStation.Preset.TxPower_UHF_W, radioStationData.RadioStation.Ppm,
                         position, velocity, radioStationData.RadioStation.Preset.AmbientNoiseType));
                 }
+            }
+
+            // Tell the recorder how to render our own voice "as if heard from the same position":
+            // default (zero-distance) params for the transmitting radio + its ambient SFX.
+            if (wantRecord && frequenciesData.Count > 0)
+            {
+                var first = frequenciesData[0];
+                _playbackService!.SetOwnVoiceRecordParams(
+                    FastPathAudioSim.GetDefaultAudioParams(first.frequencyKhz, (float)first.ppm),
+                    first.ambientNoiseType);
             }
 
             _client?.SendAudio(audioData, frequenciesData, Apply3dAudioEffects);

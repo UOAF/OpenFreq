@@ -1,0 +1,107 @@
+name: Feature Branch Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build-server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Configure SSH for submodule
+        env:
+          SSH_KEY: ${{ secrets.OPENFREQAUDIO_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/openfreqaudio_key
+          chmod 600 ~/.ssh/openfreqaudio_key
+          printf 'Host github.com\n  IdentityFile ~/.ssh/openfreqaudio_key\n  StrictHostKeyChecking no\n' >> ~/.ssh/config
+
+      - name: Fetch submodules
+        run: git submodule update --init --recursive
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish portable targets
+        run: |
+          VERSION="0.0.0-feature+$(echo '${{ github.sha }}' | cut -c1-7)"
+          for RID in win-x64 linux-x64; do
+            OUTDIR="publish/OpenFreq-Server-${RID}-portable"
+            dotnet publish OpenFreq.Server/OpenFreq.Server.csproj \
+              -c Release -r "$RID" --self-contained true \
+              -p:PublishSingleFile=true -p:PublishTrimmed=true \
+              -p:DebugType=none -p:DebugSymbols=false \
+              -p:InformationalVersion="$VERSION" \
+              -o "$OUTDIR"
+            pushd "$OUTDIR"
+            zip -r "$GITHUB_WORKSPACE/OpenFreq-Server-${RID}-portable.zip" . --exclude "*.pdb"
+            popd
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-builds
+          path: OpenFreq-Server-*-portable.zip
+          retention-days: 5
+
+  build-client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Configure SSH for submodule
+        env:
+          SSH_KEY: ${{ secrets.OPENFREQAUDIO_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/openfreqaudio_key
+          chmod 600 ~/.ssh/openfreqaudio_key
+          printf 'Host github.com\n  IdentityFile ~/.ssh/openfreqaudio_key\n  StrictHostKeyChecking no\n' >> ~/.ssh/config
+
+      - name: Fetch submodules
+        run: git submodule update --init --recursive
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish portable targets
+        run: |
+          VERSION="0.0.0-feature+$(echo '${{ github.sha }}' | cut -c1-7)"
+          for RID in win-x64 linux-x64; do
+            OUTDIR="publish/OpenFreq-Client-${RID}-portable"
+            dotnet publish OpenFreq.Client/OpenFreq.Client.csproj \
+              -c Release -r "$RID" --self-contained true \
+              -p:PublishSingleFile=true -p:PublishTrimmed=true -p:PublishReadyToRun=true \
+              -p:IncludeNativeLibrariesForSelfExtract=true -p:IncludeAllContentForSelfExtract=true \
+              -p:DebugType=none -p:DebugSymbols=false \
+              -p:InformationalVersion="$VERSION" \
+              -o "$OUTDIR"
+            if [[ "$RID" == "win-x64" ]]; then
+              cp libs/OpenFreqAudio/OpenFreqAudio/Assets/windows/*.dll "$OUTDIR/"
+            else
+              cp libs/OpenFreqAudio/OpenFreqAudio/Assets/linux/*.so "$OUTDIR/"
+            fi
+            pushd "$OUTDIR"
+            zip -r "$GITHUB_WORKSPACE/OpenFreq-Client-${RID}-portable.zip" . --exclude "*.pdb"
+            popd
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-builds
+          path: OpenFreq-Client-*-portable.zip
+          retention-days: 5

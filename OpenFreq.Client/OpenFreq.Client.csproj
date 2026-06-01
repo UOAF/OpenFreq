@@ -96,5 +96,9 @@
         <DependentUpon>AudioChannelSelector.axaml</DependentUpon>
         <SubType>Code</SubType>
       </Compile>
+      <Compile Update="Controls\RecordingSettingsCard.axaml.cs">
+        <DependentUpon>RecordingSettingsCard.axaml</DependentUpon>
+        <SubType>Code</SubType>
+      </Compile>
     </ItemGroup>
 </Project>

@@ -24,6 +24,35 @@ public interface IOpenFreqService : IDisposable
     double SidetoneVolume { get; set; }
     double MasterVolume { get; set; }
     double AmbientNoiseVolume { get; set; }
+
+    /// <summary>Where the combined capture mix goes when recording.</summary>
+    enum CaptureSink
+    {
+        /// <summary>Write to an Ogg/Vorbis file.</summary>
+        File,
+        /// <summary>Stream to a separate playback device (e.g. a virtual audio cable).</summary>
+        Device
+    }
+
+    /// <summary>Selects the capture output: file or playback device.</summary>
+    CaptureSink Sink { get; set; }
+    /// <summary>BASS device index the capture mix is streamed to when <see cref="Sink"/> is Device.</summary>
+    int MonitorDeviceIndex { get; set; }
+    /// <summary>When true, capture auto-starts on entering game mode (flight) and auto-stops on leaving it.</summary>
+    bool AutoRecordInGameMode { get; set; }
+    /// <summary>When true, own voice in the capture gets the full radio FX (AGC/squelch/SFX); when false it stays clean.</summary>
+    bool ApplyOwnVoiceSfx { get; set; }
+    /// <summary>Directory recordings are written to. Created if missing. Blank → "recordings" next to the executable.</summary>
+    string RecordingPath { get; set; }
+    /// <summary>True while a capture (file or device) is in progress.</summary>
+    bool IsRecording { get; }
+    /// <summary>Start a capture now (manual or auto) using the selected sink. No-op if already capturing or not initialized.</summary>
+    void StartRecording();
+    /// <summary>Stop the current capture now. No-op if idle. Always honoured (manual override).</summary>
+    void StopRecording();
+    /// <summary>Raised when capture starts (true) or stops (false).</summary>
+    event EventHandler<bool>? RecordingStateChanged;
+
     Mode OwnPositionMode { get; }
 
     // Events

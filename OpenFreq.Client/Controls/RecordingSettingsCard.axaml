@@ -1,0 +1,65 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:Material.Styles.Controls;assembly=Material.Styles"
+             xmlns:avalonia="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             xmlns:vm="using:OpenFreqClient.ViewModels"
+             x:Class="OpenFreq.Client.Controls.RecordingSettingsCard"
+             x:DataType="vm:MainWindowViewModel">
+
+  <controls:Card>
+    <StackPanel Margin="16">
+      <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+        <avalonia:MaterialIcon Kind="FileDownloadOutline"
+                               Width="16" Height="16"
+                               Margin="0,0,8,0"
+                               Foreground="{DynamicResource PrimaryHueMidBrush}" />
+        <TextBlock Text="Recording/Streaming" Classes="SectionHeader" Margin="0" />
+      </StackPanel>
+
+      <RadioButton Content="Record to file"
+                   IsChecked="{Binding Settings.RecordToFile}"
+                   Margin="0,0,0,2" />
+
+
+      <!-- File sink: output folder -->
+      <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding Settings.RecordToFile}">
+        <Border Grid.Column="0"
+                Background="{DynamicResource MaterialBackgroundBrush}"
+                BorderBrush="{DynamicResource MaterialDividerBrush}"
+                BorderThickness="1"
+                CornerRadius="4"
+                Padding="12,8"
+                ToolTip.Tip="{Binding Settings.RecordingPath}">
+          <TextBlock Text="{Binding Settings.RecordingPath}"
+                     FontSize="11"
+                     TextTrimming="CharacterEllipsis"
+                     IsVisible="{Binding Settings.HeightmapPath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </Border>
+        <Button Grid.Column="1"
+                Click="BrowseFolder_OnClick"
+                Padding="12,8"
+                Margin="8,0,0,0">
+          <avalonia:MaterialIcon Kind="FolderOpen" Width="16" Height="16" />
+        </Button>
+      </Grid>
+      <RadioButton Content="Stream to device"
+                   IsChecked="{Binding Settings.StreamToDevice}"
+                   Margin="0,0,0,8" />
+      <!-- Device sink: monitor/stream output device -->
+
+      <ComboBox IsVisible="{Binding Settings.StreamToDevice}"
+                ItemsSource="{Binding Settings.PlaybackDeviceNames}"
+                SelectedIndex="{Binding Settings.MonitorDeviceIndex}"
+                HorizontalAlignment="Stretch" />
+
+      <CheckBox Content="Apply SFX to my voice"
+                IsChecked="{Binding Settings.ApplyOwnVoiceSfx}"
+                Margin="0,12,0,4" />
+
+      <CheckBox Content="Auto-record in game mode"
+                IsChecked="{Binding Settings.AutoRecordInGameMode}"
+                Margin="0,0,0,4" />
+    </StackPanel>
+  </controls:Card>
+
+</UserControl>

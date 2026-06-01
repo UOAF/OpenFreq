@@ -77,6 +77,9 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
 
     [ObservableProperty] public partial bool OpenFreqConnected { get; set; }
 
+    /// <summary>True while a session recording is in progress. Drives the REC indicator + button label.</summary>
+    [ObservableProperty] public partial bool IsRecording { get; set; }
+
     [ObservableProperty] public partial bool TacviewConnected { get; set; }
 
     [ObservableProperty] public partial bool IsPeersPanelExpanded { get; set; } = true;
@@ -157,6 +160,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         _openFreqService.AllPeersStatusChanged += OnAllPeersChanged;
         _openFreqService.FrequencyTransmissionStatusChanged += OnFrequencyTransmissionStatusChanged;
         _openFreqService.AudioPlaybackErrorOccurred += OnAudioErrorOccurred;
+        _openFreqService.RecordingStateChanged += OnRecordingStateChanged;
         _audioService.AudioDeviceErrorOccurred += OnAudioErrorOccurred;
 
         // Falcon Radio Shared Memory
@@ -636,6 +640,22 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Manually start or stop recording. Always available while connected — overrides the
+    /// auto-record-in-game-mode behaviour (e.g. stop a recording that auto-started).
+    /// </summary>
+    [RelayCommand]
+    private void ToggleRecording()
+    {
+        if (_openFreqService.IsRecording)
+            _openFreqService.StopRecording();
+        else
+            _openFreqService.StartRecording();
+    }
+
+    private void OnRecordingStateChanged(object? sender, bool recording)
+        => Dispatcher.UIThread.Post(() => IsRecording = recording);
+
     private void OnTacviewConnectionStatusChanged(object? sender, AcmiConnectionEventArgs e)
     {
         AcmiConnectionStatus = e.Status;
@@ -1004,6 +1024,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         _openFreqService.AllPeersStatusChanged -= OnAllPeersChanged;
         _openFreqService.FrequencyTransmissionStatusChanged -= OnFrequencyTransmissionStatusChanged;
         _openFreqService.AudioPlaybackErrorOccurred -= OnAudioErrorOccurred;
+        _openFreqService.RecordingStateChanged -= OnRecordingStateChanged;
         _audioService.AudioDeviceErrorOccurred -= OnAudioErrorOccurred;
         _ivcMonitorService.IvcStatusChanged -= OnIvcStatusChanged;
         _falconSharedMemoryService.StateChanged -= OnFalconSharedMemoryStateChanged;
