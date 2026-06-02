@@ -1216,6 +1216,7 @@ public class OpenFreqService : IOpenFreqService
             ownPosition.X, ownPosition.Y, ownPosition.Z,
             frequencyTransmission.Khz, (float)frequencyTransmission.Ppm,
             frequencyTransmission.TxPowerWatts, receiverSensitivityDb,
+            txAltitudeIsMSL: true, rxAltitudeIsMSL: true,
             txVelocity: frequencyTransmission.Velocity?.ToTuple(),
             rxVelocity: ownVelocity?.ToTuple()
         );
