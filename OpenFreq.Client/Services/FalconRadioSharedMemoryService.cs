@@ -181,42 +181,62 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
             if (_state != ServiceState.Stopped)
                 throw new InvalidOperationException($"Service already running (state: {_state})");
 
-            // Create mutex for single instance
-            _hMutex = Win32RadioMemory.CreateMutex(
-                IntPtr.Zero,
-                true,
-                Win32RadioMemory.RADIO_CLIENT_SEMAPHORE);
-
-            // Check if we actually got ownership (i.e., we're the first instance)
-            int error = Marshal.GetLastWin32Error();
-            const int ERROR_ALREADY_EXISTS = 183;
-
-            if (error == ERROR_ALREADY_EXISTS)
+            // Security descriptor so the mutex and RCS mapping can be opened R/W by
+            // BMS and this client regardless of which side is running elevated. Falls
+            // back to default security (IntPtr.Zero) if it can't be built.
+            IntPtr pSecurityAttributes = Win32RadioMemory.CreateSharedMemorySecurityAttributes();
+            try
             {
-                // Another radio client is already running
-                _logger.LogWarning("Another radio client is already active. This instance will run in READ-ONLY mode.");
+                // Create mutex for single instance
+                _hMutex = Win32RadioMemory.CreateMutex(
+                    pSecurityAttributes,
+                    true,
+                    Win32RadioMemory.RADIO_CLIENT_SEMAPHORE);
 
-                // Clean up the mutex handle we got
-                if (_hMutex != IntPtr.Zero)
+                int error = Marshal.GetLastWin32Error();
+                const int ERROR_ALREADY_EXISTS = 183;
+
+                if (_hMutex == IntPtr.Zero)
                 {
+                    // CreateMutex failed outright - with the shared security descriptor
+                    // this should not happen for integrity/DACL reasons, so it's a hard
+                    // error (OpenFreq cannot operate without R/W access to the radio
+                    // shared memory).
+                    CleanupResources();
+                    throw new InvalidOperationException(
+                        $"Failed to create/open radio client mutex (Win32 error {error})");
+                }
+
+                if (error == ERROR_ALREADY_EXISTS)
+                {
+                    // The mutex already exists with a valid handle: another radio client
+                    // (IVC?) currently owns the RCS status channel. We attach as a non-owner — we keep reading RCC but must not
+                    // write RCS while someone else owns it. MainWindowViewModel takes over (Stop/Start) with OnIvcStatusChanged.
+                    _logger.LogWarning(
+                        "Radio client mutex already owned by another client (likely IVC); not writing RCS until it exits.");
+
                     Win32RadioMemory.CloseHandle(_hMutex);
                     _hMutex = IntPtr.Zero;
-                }
 
-                // Skip RCS creation - we won't write status
-                ChangeState(ServiceState.RcsCreated);
-            }
-            else
-            {
-                _logger.LogInformation("Mutex acquired — RCS owner");
-                // We're the first/only instance - create RCS normally
-                if (!CreateRcsSharedMemory())
+                    // Skip RCS creation - we won't write status
+                    ChangeState(ServiceState.RcsCreated);
+                }
+                else
                 {
-                    CleanupResources();
-                    throw new InvalidOperationException("Failed to create RCS shared memory");
-                }
+                    _logger.LogInformation("Mutex acquired — RCS owner");
+                    // We're the first/only instance - create RCS normally
+                    if (!CreateRcsSharedMemory(pSecurityAttributes))
+                    {
+                        CleanupResources();
+                        throw new InvalidOperationException("Failed to create RCS shared memory");
+                    }
 
-                ChangeState(ServiceState.RcsCreated);
+                    ChangeState(ServiceState.RcsCreated);
+                }
+            }
+            finally
+            {
+                Win32RadioMemory.FreeSharedMemorySecurityAttributes(pSecurityAttributes);
             }
         }
 
@@ -259,7 +279,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
         _logger.LogInformation("Stopped");
     }
 
-    private bool CreateRcsSharedMemory()
+    private bool CreateRcsSharedMemory(IntPtr pSecurityAttributes)
     {
         try
         {
@@ -267,7 +287,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
 
             _hRcsMemory = Win32RadioMemory.CreateFileMapping(
                 Win32RadioMemory.INVALID_HANDLE_VALUE,
-                IntPtr.Zero,
+                pSecurityAttributes,
                 Win32RadioMemory.PAGE_READWRITE,
                 0,
                 Win32RadioMemory.RCS_SIZE,
