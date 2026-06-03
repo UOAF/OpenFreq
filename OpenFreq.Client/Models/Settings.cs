@@ -36,6 +36,7 @@ public class OpenFreqSettings
     public int? MaximizedScreenHeight { get; set; }
     public string DisplayName { get; set; } = "Unnamed";
     public bool SidetoneEnabled { get; set; } = false;
+    public bool MicNormalizationEnabled { get; set; } = true;
     public double SidetoneVolume { get; set; } = 0.4;
     public double MasterVolume { get; set; } = 1.0;
     public double AmbientNoiseVolume { get; set; } = 1.0;

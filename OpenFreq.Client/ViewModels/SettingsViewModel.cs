@@ -84,6 +84,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty] public partial double MasterVolume { get; set; } = 1.0;
     [ObservableProperty] public partial bool SidetoneEnabled { get; set; } = false;
+    [ObservableProperty] public partial bool MicNormalizationEnabled { get; set; } = true;
     [ObservableProperty] public partial double SidetoneVolume { get; set; } = 0.4;
     [ObservableProperty] public partial double AmbientNoiseVolume { get; set; } = 1.0;
     [ObservableProperty] public partial bool IsDarkMode { get; set; }
@@ -331,6 +332,8 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
 
     partial void OnSidetoneEnabledChanged(bool value) => _openFreqService.SidetoneEnabled = value;
 
+    partial void OnMicNormalizationEnabledChanged(bool value) => _openFreqService.MicNormalizationEnabled = value;
+
     partial void OnSidetoneVolumeChanged(double value) => _openFreqService.SidetoneVolume = value;
 
     partial void OnAmbientNoiseVolumeChanged(double value) => _openFreqService.AmbientNoiseVolume = value;
@@ -374,6 +377,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
         BmsRadio2Pan = settings.BmsRadio2Pan;
         MasterVolume = settings.MasterVolume;
         SidetoneEnabled = settings.SidetoneEnabled;
+        MicNormalizationEnabled = settings.MicNormalizationEnabled;
         SidetoneVolume = settings.SidetoneVolume;
         MinimizeOnConnect = settings.MinimizeOnConnect;
         AmbientNoiseVolume = settings.AmbientNoiseVolume;
@@ -531,6 +535,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
             BmsSquelchVhfHotkey = BmsVhfSquelchHotkey,
             MasterVolume = MasterVolume,
             SidetoneEnabled = SidetoneEnabled,
+            MicNormalizationEnabled = MicNormalizationEnabled,
             SidetoneVolume = SidetoneVolume,
             MinimizeOnConnect = MinimizeOnConnect,
             AmbientNoiseVolume = AmbientNoiseVolume,

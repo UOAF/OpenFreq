@@ -201,7 +201,10 @@
                                                   IsEnabled="{Binding Settings.HasRecordingDevices}"
                                                   PlaceholderText="No input devices found"
                                                   HorizontalAlignment="Stretch"
-                                                  Margin="0,0,0,12" />
+                                                  Margin="0,0,0,4" />
+                                        <CheckBox Content="Normalize mic level"
+                                                  IsChecked="{Binding Settings.MicNormalizationEnabled}"
+                                                  Margin="0,4,0,12" />
 
                                         <TextBlock Text="Output" Classes="InputLabel" />
                                         <ComboBox ItemsSource="{Binding Settings.PlaybackDeviceNames}"
@@ -209,7 +212,7 @@
                                                   IsEnabled="{Binding Settings.HasPlaybackDevices}"
                                                   PlaceholderText="No output devices found"
                                                   HorizontalAlignment="Stretch"
-                                                  Margin="0,0,0,12" />
+                                                  Margin="0,0,0,4" />
 
                                         <TextBlock Classes="InputLabel" Margin="0,4,0,4">
                                             <Run Text="Master Volume: " />
@@ -517,6 +520,9 @@
                                                   IsEnabled="{Binding Settings.HasRecordingDevices}"
                                                   PlaceholderText="No input devices found"
                                                   HorizontalAlignment="Stretch"
+                                                  Margin="0,0,0,4" />
+                                        <CheckBox Content="Normalize mic level"
+                                                  IsChecked="{Binding Settings.MicNormalizationEnabled}"
                                                   Margin="0,0,0,12" />
 
                                         <TextBlock Text="Output" Classes="InputLabel" />
@@ -525,7 +531,7 @@
                                                   IsEnabled="{Binding Settings.HasPlaybackDevices}"
                                                   PlaceholderText="No output devices found"
                                                   HorizontalAlignment="Stretch"
-                                                  Margin="0,0,0,12" />
+                                                  Margin="0,0,0,4" />
 
                                         <TextBlock Classes="InputLabel" Margin="0,4,0,4">
                                             <Run Text="Master Volume: " />
@@ -534,7 +540,8 @@
                                         <Slider Minimum="0" Maximum="2"
                                                 Value="{Binding Settings.MasterVolume}"
                                                 TickFrequency="0.05"
-                                                IsSnapToTickEnabled="True" />
+                                                IsSnapToTickEnabled="True"
+                                                Margin="0,0,0,12"/>
                                     </StackPanel>
                                 </controls:Card>
 

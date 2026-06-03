@@ -21,6 +21,7 @@ public interface IOpenFreqService : IDisposable
     int AudioParamsUpdateFrequency { get; set; }
     bool Apply3dAudioEffects { get; set; }
     bool SidetoneEnabled { get; set; }
+    bool MicNormalizationEnabled { get; set; }
     double SidetoneVolume { get; set; }
     double MasterVolume { get; set; }
     double AmbientNoiseVolume { get; set; }

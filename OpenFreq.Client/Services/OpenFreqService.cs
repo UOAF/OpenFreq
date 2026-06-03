@@ -94,6 +94,7 @@ public class OpenFreqService : IOpenFreqService
 
     // Pre-allocated sidetone conversion buffer — reused every recording callback (single-threaded).
     private float[] _sidetonePushBuffer = new float[4800]; // 100ms @ 48kHz, grows if needed
+    private readonly MicLevelNormalizer _micNormalizer = new(OpenFreqRtcClient.SAMPLE_RATE);
 
     // Cache duration
     private readonly TimeSpan _audioParamsCacheDuration = TimeSpan.FromMilliseconds(100);
@@ -160,6 +161,8 @@ public class OpenFreqService : IOpenFreqService
             if (_playbackService != null) _playbackService.SidetoneEnabled = value;
         }
     }
+
+    public bool MicNormalizationEnabled { get; set; } = true;
 
     public double SidetoneVolume
     {
@@ -756,6 +759,12 @@ public class OpenFreqService : IOpenFreqService
             // Copy audio data once
             short[] audioData = new short[length / 2];
             Marshal.Copy(buffer, audioData, 0, audioData.Length);
+
+            // Normalize transmit level so loud/quiet mics land near a common
+            // reference. Applied before sidetone + send so the operator hears
+            // (and peers receive) the same normalized audio.
+            if (MicNormalizationEnabled)
+                _micNormalizer.Process(audioData, audioData.Length);
 
             // Sidetone: feed mic back to speaker with no extra buffering.
             // Use pre-allocated buffer to avoid GC allocation on the hot audio path.
