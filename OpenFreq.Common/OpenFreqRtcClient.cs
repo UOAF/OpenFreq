@@ -129,15 +129,9 @@ public class OpenFreqRtcClient : IDisposable
         }
 
         _webSocket = new ClientWebSocket();
-        // Detect a silently dead link (NIC disabled, cable pulled, server host vanished): without
-        // a keep-alive *timeout* a broken TCP connection never surfaces and ReceiveAsync blocks
-        // forever. Ping periodically; if no pong arrives within the timeout the socket is aborted
-        // and ReceiveAsync throws, which drives the reconnect/disconnect path below.
-        // Worst-case detection latency = interval + timeout (~10s). Kept low because this is a
-        // live voice channel; the timeout still dwarfs real RTT+jitter so transient congestion
-        // won't trip a false abort, and a false abort is recovered transparently by ReconnectAsync.
-        _webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(5);
-        _webSocket.Options.KeepAliveTimeout = TimeSpan.FromSeconds(5);
+        // Detect a silently dead link
+        _webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(3);
+        _webSocket.Options.KeepAliveTimeout = TimeSpan.FromSeconds(3);
         await _webSocket.ConnectAsync(new Uri($"ws://{ipPort.ipAddress}:{ipPort.port}"), connectCts.Token);
 
         // Start message receiver
