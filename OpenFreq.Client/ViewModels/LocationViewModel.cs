@@ -194,8 +194,9 @@ public partial class LocationViewModel : ViewModelBase, IDisposable
         // For BMS channels, the join will be handled by OnBmsFrequencyChanged after checking power state
     }
 
-    private void OnConnectionStateChanged(object? sender, ConnectionState state)
+    private void OnConnectionStateChanged(object? sender, ConnectionStateChangedEventArgs e)
     {
+        var state = e.State;
         // Auto connect is triggered from the ChannelCardListViewModel
         if (state == ConnectionState.Disconnected)
         {

@@ -26,7 +26,11 @@ public class SignalingServer
     private readonly ILogger<SignalingServer> _logger;
     private CancellationTokenSource _cts = new();
 
-    private const double WebsocketTimeoutMillis = 1000;
+    // Guards against a single wedged socket stalling a broadcast indefinitely. Kept well above
+    // the worst-case send latency seen during synchronized channel tune bursts (clients all jumping to 3D) so we
+    // don't disconnect slow clients. Dead clients are reaped by the RTP watchdog anyway
+
+    private const double WebsocketTimeoutMillis = 10000;
     private readonly TimeSpan _rtpTimeoutDuration;
     private readonly TimeSpan _watchdogInterval;
 
@@ -286,6 +290,11 @@ public class SignalingServer
 
                 if (result.MessageType == WebSocketMessageType.Close)
                 {
+                    _logger.LogInformation(
+                        "{DisplayName} ({ClientId}) sent close frame: {Status} \"{Description}\"",
+                        GetDisplayName(session), session.Id,
+                        result.CloseStatus, result.CloseStatusDescription ?? "");
+
                     if (session.WebSocket.State == WebSocketState.CloseReceived)
                     {
                         await session.WebSocket.CloseAsync(
@@ -307,8 +316,10 @@ public class SignalingServer
         }
         catch (WebSocketException ex) when (ex.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely)
         {
-            // Client disconnected abruptly - normal behavior
-            _logger.LogDebug("{DisplayName} ({ClientId}) disconnected abruptly", GetDisplayName(session), session.Id);
+            // Transport dropped without a close handshake (TCP reset / network loss)
+            _logger.LogInformation(
+                "{DisplayName} ({ClientId}) disconnected abruptly: {Error} (TCP reset / network loss)",
+                GetDisplayName(session), session.Id, ex.WebSocketErrorCode);
         }
         catch (OperationCanceledException)
         {

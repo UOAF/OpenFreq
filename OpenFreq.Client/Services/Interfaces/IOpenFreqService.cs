@@ -27,7 +27,7 @@ public interface IOpenFreqService : IDisposable
     Mode OwnPositionMode { get; }
 
     // Events
-    event EventHandler<ConnectionState>? ConnectionStateChanged;
+    event EventHandler<ConnectionStateChangedEventArgs>? ConnectionStateChanged;
     event EventHandler<string>? StatusMessageReceived;
     /// <summary>
     /// Fired when the audio playback subsystem (RadioPlayback/BASS) encounters a user-facing error

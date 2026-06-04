@@ -678,8 +678,9 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
     }
 
     // Service event handlers
-    private void OnConnectionStateChanged(object? sender, ConnectionState state)
+    private void OnConnectionStateChanged(object? sender, ConnectionStateChangedEventArgs e)
     {
+        var state = e.State;
         OpenFreqConnectionState = state;
         OpenFreqConnected = state == ConnectionState.Connected || state == ConnectionState.Authenticated;
         StatusMessage = state switch
@@ -709,17 +710,18 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         }
         else if (state == ConnectionState.Disconnected)
         {
+            // A deliberate disconnect is not an error
+            var wasUserInitiated = e.Reason == DisconnectReason.UserRequested;
+
             // This handler fires from the WebSocket receive background thread.
             // ShowError mutates ErrorLog (ObservableCollection) which must happen
             // on the UI thread — consolidate all UI work into one Post.
             Dispatcher.UIThread.Post(() =>
             {
-                // Only show the generic disconnect message when no more-specific error
-                // (e.g. bad password, auth failure) is already being displayed.
-                // Auth-failure errors are set via OnStatusMessageReceived before the
-                // WebSocket close event arrives (~100 ms earlier in practice), so
-                // HasError is already true when we get here and the overwrite is skipped.
-                if (!HasError)
+                // Only show the generic disconnect message for an unexpected drop, and only
+                // when no more-specific error (e.g. bad password, auth failure) is already
+                // displayed
+                if (!wasUserInitiated && !HasError)
                     ShowError("Lost connection to server");
                 SettingsDrawerOpened = true;
 
