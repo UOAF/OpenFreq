@@ -232,7 +232,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
                 return false;
             }
 
-            _logger.LogInformation("Mutex acquired — RCS owner");
+            _logger.LogInformation("Mutex acquired - RCS owner");
             // We're the first/only instance - create RCS normally
             if (!CreateRcsSharedMemory())
             {

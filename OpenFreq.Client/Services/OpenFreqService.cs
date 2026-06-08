@@ -469,8 +469,9 @@ public class OpenFreqService : IOpenFreqService
             }
             else
             {
+                var exeDir = Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory;
                 var dir = string.IsNullOrWhiteSpace(RecordingPath)
-                    ? Path.Combine(AppContext.BaseDirectory, "recordings")
+                    ? Path.Combine(exeDir, "recordings")
                     : RecordingPath;
                 Directory.CreateDirectory(dir);
                 var file = Path.Combine(dir, $"OpenFreq_{DateTime.Now:yyyyMMdd_HHmmss}.ogg");
