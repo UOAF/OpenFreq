@@ -727,7 +727,7 @@
                             Padding="12,10"
                             Background="Transparent"
                             Cursor="Hand"
-                            ToolTip.Tip="Click to kill IVC process">
+                            ToolTip.Tip="Click to kill the IVC process (close another OpenFreq instance manually)">
                         <Grid ColumnDefinitions="Auto,*">
                             <avalonia:MaterialIcon Grid.Column="0"
                                                   Kind="AlertCircleOutline"
@@ -738,12 +738,12 @@
                             <StackPanel Grid.Column="1"
                                         Margin="12,0,0,0"
                                         VerticalAlignment="Center">
-                                <TextBlock Text="IVC Conflict Detected"
+                                <TextBlock Text="Radio Client Conflict Detected"
                                            FontSize="13"
                                            FontWeight="SemiBold"
                                            Foreground="{DynamicResource MaterialBodyBrush}"
                                            Margin="0,0,0,2" />
-                                <TextBlock Text="Falcon BMS IVC must be closed to use OpenFreq in BMS mode."
+                                <TextBlock Text="Another radio client (Falcon BMS IVC or another OpenFreq instance) must be closed to use OpenFreq in BMS mode."
                                            FontSize="12"
                                            Foreground="{DynamicResource MaterialBodyBrush}"
                                            Opacity="0.65"

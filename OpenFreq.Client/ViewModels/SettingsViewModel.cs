@@ -137,12 +137,14 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
 
     partial void OnIs3dModeChanged(bool value)
     {
+        _logger.LogInformation("Game mode changed to {Mode}", value ? "In-game" : "Lobby");
         _openFreqService.Apply3dAudioEffects = value;
         _ = _openFreqService.NotifyModeAsync(value);
     }
 
     partial void OnConnectionModeChanged(IOpenFreqService.Mode value)
     {
+        _logger.LogInformation("Connection mode changed to {Mode}", value);
         switch (value)
         {
             case IOpenFreqService.Mode.BMS:
@@ -496,7 +498,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
     private Screen? FindScreenContainingPositionInWorkingArea(PixelPoint position)
     {
         return (
-            // All active screens, not just any screens overlapping the window! 
+            // All active screens, not just any screens overlapping the window!
             from screen in ((IClassicDesktopStyleApplicationLifetime)Application.Current!.ApplicationLifetime!)
                 .MainWindow!.Screens.All
             where screen.WorkingArea.Contains(position)
