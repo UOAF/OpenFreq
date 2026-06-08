@@ -43,6 +43,14 @@ public class OpenFreqRtcClient : IDisposable
     private CancellationTokenSource _cts = new();
     private volatile bool _authFailed;
 
+    // Set when the caller deliberately tears down the connection (DisconnectAsync/Dispose)
+    // so the receive loop does not try to auto-reconnect a connection we closed on purpose
+    private volatile bool _intentionalDisconnect;
+
+    // On an unexpected drop the client retries the full connect+auth+rejoin sequence until
+    // it succeeds or this total budget elapses, after which it gives up and reports Disconnected.
+    private static readonly TimeSpan ReconnectTotalBudget = TimeSpan.FromSeconds(60);
+
     // Transmission state
     private readonly Dictionary<int, bool> _frequencyTransmissionState = new();
     private readonly Dictionary<int, HashSet<string>> _frequencyPeers = new();
@@ -75,76 +83,10 @@ public class OpenFreqRtcClient : IDisposable
     /// </summary>
     public async Task ConnectAsync(TimeSpan? connectTimeout = null)
     {
+        _intentionalDisconnect = false;
         try
         {
-            _cts.Dispose();
-            _cts = new CancellationTokenSource();
-            _authFailed = false;
-
-            var timeout = connectTimeout ?? TimeSpan.FromSeconds(10);
-            using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
-            connectCts.CancelAfter(timeout);
-
-            // Connect WebSocket
-            var ipPort = Util.ResolveAddress(ServerIp, DEFAULT_PORT);
-
-            // we need to wrap IPv6 into [] for a valid URI
-            IPAddress? ip;
-            if (IPAddress.TryParse(ipPort.ipAddress, out ip))
-            {
-                if (ip.AddressFamily == AddressFamily.InterNetworkV6)
-                {
-                    ipPort.ipAddress = $"[{ipPort.ipAddress}]"; // Wrap IPv6 address in square brackets
-                }
-            }
-
-            _webSocket = new ClientWebSocket();
-            await _webSocket.ConnectAsync(new Uri($"ws://{ipPort.ipAddress}:{ipPort.port}"), connectCts.Token);
-
-            // Start message receiver
-            _ = Task.Run(ReceiveMessagesAsync, _cts.Token);
-
-            // Authenticate
-            await SendMessageAsync(SignalingMessageFactory.CreateAuthenticate(_password, MyDisplayName));
-
-            // Wait for authentication response with timeout
-            var startTime = DateTime.UtcNow;
-            while (!IsAuthenticated && !_authFailed && (DateTime.UtcNow - startTime) < timeout)
-            {
-                await Task.Delay(100, connectCts.Token);
-            }
-
-            if (_authFailed)
-                throw new System.Security.Authentication.AuthenticationException("Bad password");
-
-            if (!IsAuthenticated)
-                throw new TimeoutException("Authentication timeout");
-
-            if (string.IsNullOrEmpty(MyPeerId))
-            {
-                throw new Exception("No PeerId assigned by server, aborting");
-            }
-            // Create RTP sender
-            _rtpSender = new RtpAudioSender(
-                logger: _loggerFactory.CreateLogger<RtpAudioSender>(),
-                serverHost: ipPort.ipAddress,
-                serverPort: AudioPort,
-                clid: MyPeerId!,
-                opusEnabled: _opusCompressionEnabled
-            );
-
-            _rtpReceiver = new RtpAudioReceiver(_loggerFactory,
-                udpClient: _rtpSender.UdpClient,
-                opusEnabled: _opusCompressionEnabled,
-                initialBufferMs: 150
-            );
-
-            // Subscribe to clean audio events
-            _rtpReceiver.AudioReceived += OnRtpAudioReceived;
-            _rtpReceiver.ErrorOccurred += (_, error) => { _logger.LogError("RTP Error: {Error}", error); };
-
-            IsConnected = true;
-            OnConnectionStateChanged(ConnectionState.Connected);
+            await ConnectInternalAsync(connectTimeout);
         }
         catch (Exception ex)
         {
@@ -152,10 +94,158 @@ public class OpenFreqRtcClient : IDisposable
             CleanupRtp();
             if (_webSocket?.State == WebSocketState.Open)
                 await _webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Connection failed", CancellationToken.None);
-            OnConnectionStateChanged(ConnectionState.Disconnected);
+            OnConnectionStateChanged(ConnectionState.Disconnected, DisconnectReason.ConnectionFailed);
             OnError($"Connection failed: {ex.Message}");
             throw;
         }
+    }
+
+    /// <summary>
+    /// Establishes the WebSocket, authenticates and brings up the RTP pipeline.
+    /// Throws on any failure and leaves cleanup to the caller; used by both the initial
+    /// <see cref="ConnectAsync"/> and the auto-reconnect loop.
+    /// </summary>
+    private async Task ConnectInternalAsync(TimeSpan? connectTimeout = null)
+    {
+        _cts.Dispose();
+        _cts = new CancellationTokenSource();
+        _authFailed = false;
+
+        var timeout = connectTimeout ?? TimeSpan.FromSeconds(10);
+        using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
+        connectCts.CancelAfter(timeout);
+
+        // Connect WebSocket
+        var ipPort = Util.ResolveAddress(ServerIp, DEFAULT_PORT);
+
+        // we need to wrap IPv6 into [] for a valid URI
+        IPAddress? ip;
+        if (IPAddress.TryParse(ipPort.ipAddress, out ip))
+        {
+            if (ip.AddressFamily == AddressFamily.InterNetworkV6)
+            {
+                ipPort.ipAddress = $"[{ipPort.ipAddress}]"; // Wrap IPv6 address in square brackets
+            }
+        }
+
+        _webSocket = new ClientWebSocket();
+        // Detect a silently dead link
+        _webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(3);
+        _webSocket.Options.KeepAliveTimeout = TimeSpan.FromSeconds(3);
+        await _webSocket.ConnectAsync(new Uri($"ws://{ipPort.ipAddress}:{ipPort.port}"), connectCts.Token);
+
+        // Start message receiver
+        _ = Task.Run(ReceiveMessagesAsync, _cts.Token);
+
+        // Authenticate
+        await SendMessageAsync(SignalingMessageFactory.CreateAuthenticate(_password, MyDisplayName));
+
+        // Wait for authentication response with timeout
+        var startTime = DateTime.UtcNow;
+        while (!IsAuthenticated && !_authFailed && (DateTime.UtcNow - startTime) < timeout)
+        {
+            await Task.Delay(100, connectCts.Token);
+        }
+
+        if (_authFailed)
+            throw new System.Security.Authentication.AuthenticationException("Bad password");
+
+        if (!IsAuthenticated)
+            throw new TimeoutException("Authentication timeout");
+
+        if (string.IsNullOrEmpty(MyPeerId))
+        {
+            throw new Exception("No PeerId assigned by server, aborting");
+        }
+        // Create RTP sender
+        _rtpSender = new RtpAudioSender(
+            logger: _loggerFactory.CreateLogger<RtpAudioSender>(),
+            serverHost: ipPort.ipAddress,
+            serverPort: AudioPort,
+            clid: MyPeerId!,
+            opusEnabled: _opusCompressionEnabled
+        );
+
+        _rtpReceiver = new RtpAudioReceiver(_loggerFactory,
+            udpClient: _rtpSender.UdpClient,
+            opusEnabled: _opusCompressionEnabled,
+            initialBufferMs: 150
+        );
+
+        // Subscribe to clean audio events
+        _rtpReceiver.AudioReceived += OnRtpAudioReceived;
+        _rtpReceiver.ErrorOccurred += (_, error) => { _logger.LogError("RTP Error: {Error}", error); };
+
+        IsConnected = true;
+        OnConnectionStateChanged(ConnectionState.Connected);
+    }
+
+    /// <summary>
+    /// Attempts to transparently re-establish a connection that dropped unexpectedly.
+    /// Retries connect+auth+rejoin until it succeeds or <see cref="ReconnectTotalBudget"/>
+    /// elapses; reports <see cref="ConnectionState.Connecting"/> while trying and falls back
+    /// to <see cref="ConnectionState.Disconnected"/> if the budget runs out.
+    /// </summary>
+    private async Task ReconnectAsync()
+    {
+        var deadline = DateTime.UtcNow + ReconnectTotalBudget;
+        var joinedFrequencies = _frequencyTransmissionState.Keys.ToList();
+        var attempt = 0;
+
+        OnConnectionStateChanged(ConnectionState.Connecting);
+
+        // Initial jitter: a server-side drop knocks the whole flight offline at once. Without
+        // this they all retry on the same tick and stampede the server back down. Spread the
+        // first attempt over a few seconds so reconnects fan out.
+        var initialJitter = TimeSpan.FromMilliseconds(Random.Shared.Next(0, 3000));
+        if (initialJitter < deadline - DateTime.UtcNow)
+        {
+            try { await Task.Delay(initialJitter); }
+            catch (OperationCanceledException) { }
+        }
+
+        while (!_intentionalDisconnect && DateTime.UtcNow < deadline)
+        {
+            attempt++;
+            var remaining = deadline - DateTime.UtcNow;
+            var connectTimeout = remaining < TimeSpan.FromSeconds(10) ? remaining : TimeSpan.FromSeconds(10);
+
+            try
+            {
+                await ConnectInternalAsync(connectTimeout);
+
+                // Channel membership lives on the server and is dropped when the socket dies,
+                // so re-send a join for every frequency we were on before the drop.
+                foreach (var frequencyKhz in joinedFrequencies)
+                    await SendMessageAsync(SignalingMessageFactory.CreateJoin(frequencyKhz));
+
+                _logger.LogInformation(
+                    "Reconnected after {Attempts} attempt(s); rejoined {Count} frequency(ies)",
+                    attempt, joinedFrequencies.Count);
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Reconnect attempt {Attempt} failed", attempt);
+                CleanupRtp();
+            }
+
+            // Linear backoff capped at 5s, jittered +/-50% so retries stay de-synchronized
+            // across clients, never sleeping past the overall deadline.
+            var timeLeft = deadline - DateTime.UtcNow;
+            if (timeLeft <= TimeSpan.Zero || _intentionalDisconnect) break;
+            var baseBackoff = Math.Min(5.0, attempt);
+            var backoff = TimeSpan.FromSeconds(baseBackoff * (0.5 + Random.Shared.NextDouble()));
+            try { await Task.Delay(backoff < timeLeft ? backoff : timeLeft); }
+            catch (OperationCanceledException) { break; }
+        }
+
+        IsConnected = false;
+        IsAuthenticated = false;
+        CleanupRtp();
+        SafeNotifyDisconnected(_intentionalDisconnect ? DisconnectReason.UserRequested : DisconnectReason.ConnectionLost);
+        if (!_intentionalDisconnect)
+            OnError($"Lost connection to server — reconnect failed after {ReconnectTotalBudget.TotalSeconds:F0}s");
     }
 
     private void CleanupRtp()
@@ -309,6 +399,7 @@ public class OpenFreqRtcClient : IDisposable
     /// </summary>
     public async Task DisconnectAsync()
     {
+        _intentionalDisconnect = true;
         CleanupRtp();
         _cts.Cancel();
 
@@ -320,7 +411,7 @@ public class OpenFreqRtcClient : IDisposable
 
         IsConnected = false;
         IsAuthenticated = false;
-        OnConnectionStateChanged(ConnectionState.Disconnected);
+        OnConnectionStateChanged(ConnectionState.Disconnected, DisconnectReason.UserRequested);
     }
 
     private async Task TransmissionHeartbeatAsync(int frequencyKhz, bool is3d)
@@ -362,7 +453,10 @@ public class OpenFreqRtcClient : IDisposable
                     CleanupRtp();
                     IsConnected = false;
                     IsAuthenticated = false;
-                    OnConnectionStateChanged(ConnectionState.Disconnected);
+                    // Server closed the socket on us — treat as a lost connection unless we
+                    // were already tearing down deliberately.
+                    OnConnectionStateChanged(ConnectionState.Disconnected,
+                        _intentionalDisconnect ? DisconnectReason.UserRequested : DisconnectReason.ConnectionLost);
                     break;
                 }
 
@@ -379,25 +473,43 @@ public class OpenFreqRtcClient : IDisposable
                 }
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (_cts.IsCancellationRequested || _intentionalDisconnect)
         {
-            // Expected during shutdown
+            // Expected: we cancelled the receive loop during a deliberate shutdown/disconnect.
+            // A cancellation NOT originating from us (e.g. a keep-alive timeout abort surfacing
+            // as OperationCanceledException) deliberately falls through to the handler below.
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "WebSocket receive loop terminated unexpectedly");
-            OnError($"WebSocket error: {ex.Message}");
             CleanupRtp();
             IsConnected = false;
             IsAuthenticated = false;
-            try
+
+            if (_intentionalDisconnect || _cts.IsCancellationRequested)
             {
-                OnConnectionStateChanged(ConnectionState.Disconnected);
+                SafeNotifyDisconnected(DisconnectReason.UserRequested);
+                return;
             }
-            catch (Exception notifyEx)
-            {
-                _logger.LogError(notifyEx, "Failed to notify disconnected state — client may appear stuck");
-            }
+
+            // Unexpected drop — try to recover transparently rather than dumping the user
+            // back to a disconnected state. Run on a detached task: this receive loop is
+            // ending and ReconnectAsync replaces _cts / starts a fresh receive loop.
+            _logger.LogInformation("Connection lost unexpectedly — reconnecting for up to {Seconds:F0}s",
+                ReconnectTotalBudget.TotalSeconds);
+            _ = Task.Run(ReconnectAsync);
+        }
+    }
+
+    private void SafeNotifyDisconnected(DisconnectReason reason)
+    {
+        try
+        {
+            OnConnectionStateChanged(ConnectionState.Disconnected, reason);
+        }
+        catch (Exception notifyEx)
+        {
+            _logger.LogError(notifyEx, "Failed to notify disconnected state — client may appear stuck");
         }
     }
 
@@ -522,8 +634,8 @@ public class OpenFreqRtcClient : IDisposable
     }
 
     // Event raising methods
-    private void OnConnectionStateChanged(ConnectionState state) =>
-        ConnectionStateChanged?.Invoke(this, new ConnectionStateChangedEventArgs(state));
+    private void OnConnectionStateChanged(ConnectionState state, DisconnectReason reason = DisconnectReason.None) =>
+        ConnectionStateChanged?.Invoke(this, new ConnectionStateChangedEventArgs(state, reason));
 
     private void OnAuthenticated(string peerId, SortedDictionary<int, List<PeerData>> peers, int audioPort) =>
         Authenticated?.Invoke(this, new AuthenticationEventArgs(peerId, peers, audioPort));
@@ -560,6 +672,7 @@ public class OpenFreqRtcClient : IDisposable
 
     public void Dispose()
     {
+        _intentionalDisconnect = true;
         CleanupRtp();
         _cts.Cancel();
         _cts.Dispose();
@@ -582,10 +695,33 @@ public enum ConnectionState
     Authenticated
 }
 
+/// <summary>
+/// Why a transition to <see cref="ConnectionState.Disconnected"/> happened. Only meaningful
+/// for the Disconnected state; other states report <see cref="DisconnectReason.None"/>.
+/// </summary>
+public enum DisconnectReason
+{
+    None,
+
+    /// <summary>The caller deliberately disconnected (DisconnectAsync/Dispose). Not an error.</summary>
+    UserRequested,
+
+    /// <summary>An established connection dropped and could not be recovered.</summary>
+    ConnectionLost,
+
+    /// <summary>The initial connect/authentication attempt failed.</summary>
+    ConnectionFailed
+}
+
 public class ConnectionStateChangedEventArgs : EventArgs
 {
     public ConnectionState State { get; }
-    public ConnectionStateChangedEventArgs(ConnectionState state) => State = state;
+    public DisconnectReason Reason { get; }
+    public ConnectionStateChangedEventArgs(ConnectionState state, DisconnectReason reason = DisconnectReason.None)
+    {
+        State = state;
+        Reason = reason;
+    }
 }
 
 public class AuthenticationEventArgs : EventArgs

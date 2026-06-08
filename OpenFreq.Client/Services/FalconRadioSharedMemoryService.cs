@@ -28,6 +28,10 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
     private Task? _rcsPollingTask;
     private CancellationTokenSource? _cts;
 
+    // Retry loop that takes over the mutex once a conflicting client releases it
+    private CancellationTokenSource? _conflictRetryCts;
+    private Task? _conflictRetryTask;
+
     // RCS (Status) - we CREATE this
     private IntPtr _hRcsMemory = IntPtr.Zero;
     private IntPtr _lpRcsBaseAddress = IntPtr.Zero;
@@ -60,6 +64,8 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
     public event EventHandler<RadioPowerChangedEventArgs>? PowerChanged;
     public event EventHandler<ConnectionParametersChangedEventArgs>? ConnectionParametersChanged;
     public event EventHandler<LogbookNameChangedEventArgs>? LogbookNameChanged;
+    public event EventHandler? RadioClientConflict;
+    public event EventHandler? RadioClientConflictResolved;
 
     public FalconRadioSharedMemoryService(ILogger<FalconRadioSharedMemoryService> logger)
     {
@@ -85,7 +91,9 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
         }
     }
 
-    public bool IsOwner => _hMutex != IntPtr.Zero;
+    // Latched so the UI can surface the conflict even if Start() ran (and fired RadioClientConflict)
+    // before the view model subscribed — e.g. during startup config load.
+    public bool HasConflict { get; private set; }
 
     public string? LogbookName
     {
@@ -176,6 +184,27 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
 
     public void Start()
     {
+        if (TryAcquireOwnership())
+        {
+            StartPollingLoops();
+            return;
+        }
+
+        // Another radio client (e.g. BMS IVC, or a second OpenFreq instance) already owns the mutex.
+        // We MUST own RCS to function — never fall back to read-only. Surface the IVC-active banner and
+        // keep retrying so we automatically take over the moment the other client releases the mutex.
+        _logger.LogError("Another radio client already owns the radio-client mutex. Retrying until released.");
+        HasConflict = true;
+        RadioClientConflict?.Invoke(this, EventArgs.Empty);
+        StartConflictRetryLoop();
+    }
+
+    /// <summary>
+    /// Attempts to grab the single-instance mutex and create the RCS shared memory.
+    /// Returns true on success (we own RCS), false if another client already owns the mutex.
+    /// </summary>
+    private bool TryAcquireOwnership()
+    {
         lock (_dataLock)
         {
             if (_state != ServiceState.Stopped)
@@ -193,33 +222,31 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
 
             if (error == ERROR_ALREADY_EXISTS)
             {
-                // Another radio client is already running
-                _logger.LogWarning("Another radio client is already active. This instance will run in READ-ONLY mode.");
-
-                // Clean up the mutex handle we got
+                // Clean up the mutex handle we got (we don't own it)
                 if (_hMutex != IntPtr.Zero)
                 {
                     Win32RadioMemory.CloseHandle(_hMutex);
                     _hMutex = IntPtr.Zero;
                 }
 
-                // Skip RCS creation - we won't write status
-                ChangeState(ServiceState.RcsCreated);
+                return false;
             }
-            else
+
+            _logger.LogInformation("Mutex acquired — RCS owner");
+            // We're the first/only instance - create RCS normally
+            if (!CreateRcsSharedMemory())
             {
-                _logger.LogInformation("Mutex acquired — RCS owner");
-                // We're the first/only instance - create RCS normally
-                if (!CreateRcsSharedMemory())
-                {
-                    CleanupResources();
-                    throw new InvalidOperationException("Failed to create RCS shared memory");
-                }
-
-                ChangeState(ServiceState.RcsCreated);
+                CleanupResources();
+                throw new InvalidOperationException("Failed to create RCS shared memory");
             }
-        }
 
+            ChangeState(ServiceState.RcsCreated);
+            return true;
+        }
+    }
+
+    private void StartPollingLoops()
+    {
         _cts = new CancellationTokenSource();
 
         var rccInterval = TimeSpan.FromSeconds(1.0 / _pollingFrequencyHz);
@@ -233,14 +260,52 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
         _logger.LogInformation("Started");
     }
 
+    /// <summary>
+    /// Polls for the mutex once per second while another client holds it. As soon as we acquire it,
+    /// finishes startup and raises <see cref="RadioClientConflictResolved"/> so the UI clears the banner.
+    /// </summary>
+    private void StartConflictRetryLoop()
+    {
+        _conflictRetryCts = new CancellationTokenSource();
+        var token = _conflictRetryCts.Token;
+
+        _conflictRetryTask = Task.Run(async () =>
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+            try
+            {
+                while (await timer.WaitForNextTickAsync(token))
+                {
+                    if (!TryAcquireOwnership()) continue;
+
+                    HasConflict = false;
+                    StartPollingLoops();
+                    _logger.LogInformation("Acquired radio-client mutex after the conflict cleared");
+                    RadioClientConflictResolved?.Invoke(this, EventArgs.Empty);
+                    return;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Cancelled by Stop()
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error while retrying radio-client mutex acquisition");
+            }
+        }, token);
+    }
+
     public void Stop()
     {
+        _conflictRetryCts?.Cancel();
         _cts?.Cancel();
         _rccTimer?.Dispose();
         _rcsTimer?.Dispose();
 
         try
         {
+            _conflictRetryTask?.Wait(TimeSpan.FromSeconds(2));
             _rccPollingTask?.Wait(TimeSpan.FromSeconds(5));
             _rcsPollingTask?.Wait(TimeSpan.FromSeconds(5));
         }
@@ -248,6 +313,10 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
         {
             // dont care
         }
+
+        _conflictRetryCts?.Dispose();
+        _conflictRetryCts = null;
+        HasConflict = false;
 
         CleanupResources();
 
@@ -690,7 +759,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
 {
     public ServiceState State { get; }
     public double PollingFrequencyHz { get; set; }
-    public bool IsOwner => false;
+    public bool HasConflict => false;
     public string? LogbookName { get; }
     public RadioChannel? GetRadioChannel(RadioType radioType)
     {
@@ -731,6 +800,8 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
     public event EventHandler<RadioPowerChangedEventArgs>? PowerChanged;
     public event EventHandler<ConnectionParametersChangedEventArgs>? ConnectionParametersChanged;
     public event EventHandler<LogbookNameChangedEventArgs>? LogbookNameChanged;
+    public event EventHandler? RadioClientConflict;
+    public event EventHandler? RadioClientConflictResolved;
 #pragma warning restore CS0067
 
     public void Start()

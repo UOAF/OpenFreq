@@ -197,8 +197,9 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
     }
 
 
-    private void OnOpenFreqConnectionStateChanged(object? sender, ConnectionState e)
+    private void OnOpenFreqConnectionStateChanged(object? sender, ConnectionStateChangedEventArgs args)
     {
+        var e = args.State;
         if (e == ConnectionState.Authenticated && !_settings.ModeIsGci)
         {
             _logger.LogDebug("OpenFreq authenticated, importing and joining BMS channels");

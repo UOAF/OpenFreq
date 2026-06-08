@@ -11,11 +11,8 @@ public interface IFalconRadioSharedMemoryService : IDisposable, ILifecycleServic
     ServiceState State { get; }
     double PollingFrequencyHz { get; set; }
 
-    /// <summary>
-    /// True when this instance owns the radio-client mutex and has created the RCS shared memory.
-    /// False in read-only mode (another client, e.g. IVC, grabbed the mutex first).
-    /// </summary>
-    bool IsOwner { get; }
+    // True while another client (IVC or another OpenFreq instance) owns the radio mutex, so we don't.
+    bool HasConflict { get; }
 
     // Current data (thread-safe)
     string? LogbookName { get; }
@@ -43,6 +40,10 @@ public interface IFalconRadioSharedMemoryService : IDisposable, ILifecycleServic
 
     // Logbook name change (mPlayerMap[0].LogBookName — populated once in-game)
     event EventHandler<LogbookNameChangedEventArgs>? LogbookNameChanged;
+
+    // Raised when another radio client owns the mutex on Start()
+    event EventHandler? RadioClientConflict;
+    event EventHandler? RadioClientConflictResolved;
 
     // Constant
     public const int BmsRadioOffFrequency = 9999;

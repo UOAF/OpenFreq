@@ -94,6 +94,7 @@ public class OpenFreqService : IOpenFreqService
 
     // Pre-allocated sidetone conversion buffer — reused every recording callback (single-threaded).
     private float[] _sidetonePushBuffer = new float[4800]; // 100ms @ 48kHz, grows if needed
+    private readonly MicLevelNormalizer _micNormalizer = new(OpenFreqRtcClient.SAMPLE_RATE);
 
     // Cache duration
     private readonly TimeSpan _audioParamsCacheDuration = TimeSpan.FromMilliseconds(100);
@@ -171,6 +172,8 @@ public class OpenFreqService : IOpenFreqService
         }
     }
 
+    public bool MicNormalizationEnabled { get; set; } = true;
+
     public double SidetoneVolume
     {
         get => field;
@@ -239,7 +242,7 @@ public class OpenFreqService : IOpenFreqService
 
     // Events for UI updates
     public IOpenFreqService.Mode OwnPositionMode { get; private set; }
-    public event EventHandler<ConnectionState>? ConnectionStateChanged;
+    public event EventHandler<ConnectionStateChangedEventArgs>? ConnectionStateChanged;
     public event EventHandler<string>? StatusMessageReceived;
     public event EventHandler<string>? AudioPlaybackErrorOccurred;
     public event EventHandler<FrequencyConnectionStatusEventArgs>? FrequencyConnectionStatusChanged;
@@ -852,6 +855,12 @@ public class OpenFreqService : IOpenFreqService
             short[] audioData = new short[length / 2];
             Marshal.Copy(buffer, audioData, 0, audioData.Length);
 
+            // Normalize transmit level so loud/quiet mics land near a common
+            // reference. Applied before sidetone + send so the operator hears
+            // (and peers receive) the same normalized audio.
+            if (MicNormalizationEnabled)
+                _micNormalizer.Process(audioData, audioData.Length);
+
             // Convert mic to float once and fan out to sidetone (speaker loopback) and/or the
             // session recording (own voice, rendered through radio FX downstream).
             // Pre-allocated buffer avoids GC allocation on the hot audio path.
@@ -943,6 +952,7 @@ public class OpenFreqService : IOpenFreqService
         _tunedSlots.TryGetValue((frequencyKhz, slotId), out var tunedFrequencyData);
         if (tunedFrequencyData == null)
         {
+            _logger.LogWarning("No frequency data found, assuming own position of (0,0,0)");
             return null;
         }
 
@@ -957,10 +967,8 @@ public class OpenFreqService : IOpenFreqService
 
             case RadioStationData.RadioStationType.STATIONARY:
                 var position = tunedFrequencyData.RadioStation.Vector3;
-                return position == null
-                    ? null
-                    : new Vector3(position.X, position.Y,
-                        position.Z + tunedFrequencyData.RadioStation.Preset.AntennaElevation_m);
+                return new Vector3(position.X, position.Y,
+                    position.Z + tunedFrequencyData.RadioStation.Preset.AntennaElevation_m);
 
             case RadioStationData.RadioStationType.ACMI:
                 var acmiAircraftId = tunedFrequencyData.RadioStation.AcmiAircraftId;
@@ -1097,7 +1105,7 @@ public class OpenFreqService : IOpenFreqService
             _activeTransmissionSlots.Clear();
         }
 
-        ConnectionStateChanged?.Invoke(this, e.State);
+        ConnectionStateChanged?.Invoke(this, e);
     }
 
     private void OnClientAuthenticated(object? sender, AuthenticationEventArgs e)
@@ -1326,6 +1334,7 @@ public class OpenFreqService : IOpenFreqService
             ownPosition.X, ownPosition.Y, ownPosition.Z,
             frequencyTransmission.Khz, (float)frequencyTransmission.Ppm,
             frequencyTransmission.TxPowerWatts, receiverSensitivityDb,
+            txAltitudeIsMSL: true, rxAltitudeIsMSL: true,
             txVelocity: frequencyTransmission.Velocity?.ToTuple(),
             rxVelocity: ownVelocity?.ToTuple()
         );
