@@ -34,6 +34,10 @@ public class SignalingServer
     private readonly TimeSpan _rtpTimeoutDuration;
     private readonly TimeSpan _watchdogInterval;
 
+    // Collect peer-list updates are collected so we don't send them out all at once
+    private readonly SemaphoreSlim _peerUpdateSignal = new(0, 1);
+    private static readonly TimeSpan PeerUpdateDebounce = TimeSpan.FromMilliseconds(250);
+
     // High-performance logging delegates
     private static readonly Action<ILogger, int, Exception?> LogServerStarted =
         LoggerMessage.Define<int>(
@@ -182,6 +186,11 @@ public class SignalingServer
     {
         LogServerStarted(_logger, _config.WebSocketPort, null);
 
+        // Raise the thread-pool floor so a synchronized reconnect/tune burst (a whole flight
+        // jumping to 3D at once) doesn't starve on the pool's growth
+        ThreadPool.GetMinThreads(out var minWorker, out var minIo);
+        ThreadPool.SetMinThreads(Math.Max(minWorker, 200), Math.Max(minIo, 200));
+
         try
         {
             await _app!.StartAsync(_cts.Token);
@@ -195,6 +204,7 @@ public class SignalingServer
         BoundWebSocketPort = ResolveBoundPort();
 
         _ = IdleWatchdogAsync(_cts.Token);
+        _ = PeerUpdateBroadcastLoopAsync(_cts.Token);
     }
 
     private int? ResolveBoundPort()
@@ -475,10 +485,7 @@ public class SignalingServer
         LogClientJoinedFrequency(_logger, GetDisplayName(session), session.Id, joinMsg.FrequencyKhz / 1000d, null);
 
         if (_config.BroadcastPeerUpdates)
-        {
-            await BroadcastToAllChannels(
-                SignalingMessageFactory.CreateAllPeersStatusMessage(_channelManager.GetAllChannelStates()));
-        }
+            RequestPeerUpdateBroadcast();
     }
 
     private async Task HandleLeaveChannel(ClientSession session, SignalingMessage message)
@@ -505,10 +512,7 @@ public class SignalingServer
         LogClientLeftFrequency(_logger, GetDisplayName(session), session.Id, frequencyKhz / 1000d, null);
 
         if (_config.BroadcastPeerUpdates)
-        {
-            await BroadcastToAllChannels(
-                SignalingMessageFactory.CreateAllPeersStatusMessage(_channelManager.GetAllChannelStates()));
-        }
+            RequestPeerUpdateBroadcast();
     }
 
     private async Task LeaveAllChannels(ClientSession session)
@@ -529,10 +533,7 @@ public class SignalingServer
         }
 
         if (_config.BroadcastPeerUpdates)
-        {
-            await BroadcastToAllChannels(
-                SignalingMessageFactory.CreateAllPeersStatusMessage(_channelManager.GetAllChannelStates()));
-        }
+            RequestPeerUpdateBroadcast();
     }
 
     private async Task HandleTransmission(ClientSession session, SignalingMessage message)
@@ -574,19 +575,19 @@ public class SignalingServer
                 transmissionMsg.Is3d));
     }
 
-    private async Task HandleModeUpdate(ClientSession session, SignalingMessage message)
+    private Task HandleModeUpdate(ClientSession session, SignalingMessage message)
     {
-        if (!session.IsAuthenticated) return;
+        if (!session.IsAuthenticated) return Task.CompletedTask;
 
         var modeMsg = SignalingMessageFactory.DeserializePayload<ModeUpdateMessage>(message.Payload);
-        if (modeMsg == null) return;
+        if (modeMsg == null) return Task.CompletedTask;
 
         session.Is3d = modeMsg.Is3d;
         foreach (var frequencyKhz in session.CurrentFrequencies.Keys)
             _channelManager.UpdateIs3d(frequencyKhz, session.Id, modeMsg.Is3d);
 
-        await BroadcastToAllChannels(
-            SignalingMessageFactory.CreateAllPeersStatusMessage(_channelManager.GetAllChannelStates()));
+        RequestPeerUpdateBroadcast();
+        return Task.CompletedTask;
     }
 
     private async Task SetDisplayName(ClientSession session, SignalingMessage message)
@@ -603,9 +604,34 @@ public class SignalingServer
         _channelManager.UpdateDisplayName(session.Id, setDisplayNameMsg.DisplayName);
 
         if (_config.BroadcastPeerUpdates)
+            RequestPeerUpdateBroadcast();
+    }
+
+    /// <summary>
+    /// Schedules a non-blocking coalesced full-peer-state broadcast.
+    /// </summary>
+    private void RequestPeerUpdateBroadcast()
+    {
+        try { _peerUpdateSignal.Release(); }
+        catch (SemaphoreFullException) { /* a broadcast is already queued */ }
+    }
+
+    private async Task PeerUpdateBroadcastLoopAsync(CancellationToken ct)
+    {
+        try
         {
-            await BroadcastToAllChannels(
-                SignalingMessageFactory.CreateAllPeersStatusMessage(_channelManager.GetAllChannelStates()));
+            while (!ct.IsCancellationRequested)
+            {
+                await _peerUpdateSignal.WaitAsync(ct);
+                // Let a burst settle so a flight jumping to 3d together yields one broadcast.
+                await Task.Delay(PeerUpdateDebounce, ct);
+                await BroadcastToAllChannels(
+                    SignalingMessageFactory.CreateAllPeersStatusMessage(_channelManager.GetAllChannelStates()));
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Server shutting down — expected
         }
     }
 

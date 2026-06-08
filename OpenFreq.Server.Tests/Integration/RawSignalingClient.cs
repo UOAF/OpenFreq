@@ -86,6 +86,30 @@ public sealed class RawSignalingClient : IAsyncDisposable
         }
     }
 
+    /// <summary>Collect every payload of <paramref name="type"/> that arrives within <paramref name="window"/>.</summary>
+    public async Task<List<TPayload>> CollectAsync<TPayload>(string type, TimeSpan window) where TPayload : class
+    {
+        var result = new List<TPayload>();
+        var deadline = DateTime.UtcNow + window;
+
+        while (true)
+        {
+            var remaining = deadline - DateTime.UtcNow;
+            if (remaining <= TimeSpan.Zero) break;
+
+            SignalingMessage message;
+            try { message = await ReceiveAsync(remaining); }
+            catch (TimeoutException) { break; }
+
+            if (message.Type != type) continue;
+
+            var payload = SignalingMessageFactory.DeserializePayload<TPayload>(message.Payload);
+            if (payload != null) result.Add(payload);
+        }
+
+        return result;
+    }
+
     /// <summary>Assert no message arrives within <paramref name="window"/>.</summary>
     public async Task AssertNoMessageAsync(TimeSpan? window = null)
     {

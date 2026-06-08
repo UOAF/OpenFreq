@@ -194,6 +194,16 @@ public class OpenFreqRtcClient : IDisposable
 
         OnConnectionStateChanged(ConnectionState.Connecting);
 
+        // Initial jitter: a server-side drop knocks the whole flight offline at once. Without
+        // this they all retry on the same tick and stampede the server back down. Spread the
+        // first attempt over a few seconds so reconnects fan out.
+        var initialJitter = TimeSpan.FromMilliseconds(Random.Shared.Next(0, 3000));
+        if (initialJitter < deadline - DateTime.UtcNow)
+        {
+            try { await Task.Delay(initialJitter); }
+            catch (OperationCanceledException) { }
+        }
+
         while (!_intentionalDisconnect && DateTime.UtcNow < deadline)
         {
             attempt++;
@@ -220,10 +230,12 @@ public class OpenFreqRtcClient : IDisposable
                 CleanupRtp();
             }
 
-            // Linear backoff capped at 5s, never sleeping past the overall deadline.
+            // Linear backoff capped at 5s, jittered +/-50% so retries stay de-synchronized
+            // across clients, never sleeping past the overall deadline.
             var timeLeft = deadline - DateTime.UtcNow;
             if (timeLeft <= TimeSpan.Zero || _intentionalDisconnect) break;
-            var backoff = TimeSpan.FromSeconds(Math.Min(5, attempt));
+            var baseBackoff = Math.Min(5.0, attempt);
+            var backoff = TimeSpan.FromSeconds(baseBackoff * (0.5 + Random.Shared.NextDouble()));
             try { await Task.Delay(backoff < timeLeft ? backoff : timeLeft); }
             catch (OperationCanceledException) { break; }
         }
