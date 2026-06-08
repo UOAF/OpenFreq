@@ -347,6 +347,29 @@ public class OpenFreqService : IOpenFreqService
 
     private void OnFalconStateChanged(object? sender, ServiceStateChangedEventArgs e)
     {
+        // BMS process died: the shared-memory service goes Connected -> Disconnected.
+        // In BMS mode, tear down our session cleanly (stop recording, drop transmissions, clear tuned slots/streams, disconnect from the server)
+        if (e is { OldState: ServiceState.Connected, NewState: ServiceState.Disconnected } &&
+            OwnPositionMode == IOpenFreqService.Mode.BMS)
+        {
+            _logger.LogInformation("BMS process gone - disconnecting and resetting OpenFreq state");
+            OnStatusMessage("BMS closed - disconnecting");
+            // Fire-and-forget: StateChanged is raised from the polling thread, so we must  not block it on the async disconnect
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await DisconnectAsync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error disconnecting after BMS process exit");
+                }
+            });
+
+            return;
+        }
+
         if (e.NewState == ServiceState.Connected && _falconSharedMemoryService.TheaterTerrainDir != null)
         {
             var heightmapPath = Path.Join(_falconSharedMemoryService.TheaterTerrainDir, "NewTerrain", "HeightMaps",
