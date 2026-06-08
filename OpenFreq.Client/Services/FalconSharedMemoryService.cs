@@ -21,7 +21,7 @@ namespace OpenFreq.Client.Services;
 public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger) : IFalconSharedMemoryService
 {
     private System.Diagnostics.Process? _bmsProcess;
-    
+
     // Shared memory area names
     private const string PRIMARY_SHARED_MEMORY = "FalconSharedMemoryArea";
     private const string STRING_SHARED_MEMORY = "FalconSharedMemoryAreaString";
@@ -33,11 +33,11 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
     private const int OFFSET_X = 0; // float at byte 0
     private const int OFFSET_Y = 4; // float at byte 4
     private const int OFFSET_Z = 8; // float at byte 8
-    
+
     private const int OFFSET_X_DOT = 12; // float at byte 0
     private const int OFFSET_Y_DOT = 16; // float at byte 4
     private const int OFFSET_Z_DOT = 20; // float at byte 8
-    
+
     private const int OFFSET_HSIBITS = 232; // hsiBits (uint) at byte 232
 
     private ServiceState _state = ServiceState.Stopped;
@@ -84,7 +84,7 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
                 return _position;
         }
     }
-    
+
     public FlightVelocity? Velocity
     {
         get
@@ -172,6 +172,8 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
 
         lock (_dataLock)
         {
+            // Reset so the next Start() re-signals a false -> true transition
+            _wasFlying = false;
             ChangeState(ServiceState.Stopped);
         }
 
@@ -213,7 +215,7 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
                         }
                         continue;
                     }
-                    
+
                     // Read data
                     if (!TryReadFlightData())
                     {
@@ -311,7 +313,7 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
             return false;
         }
     }
-    
+
     private System.Diagnostics.Process? FindBmsProcess()
     {
         try
@@ -332,15 +334,15 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
         {
             _logger.LogWarning(ex, "Failed to find BMS process");
         }
-    
+
         return null;
     }
-    
+
     private bool IsBmsProcessRunning()
     {
         if (_bmsProcess == null)
             return true; // Don't know, so assume it's running
-    
+
         try
         {
             // HasExited throws if process handle is invalid
@@ -398,11 +400,11 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
 
             // For some reason, the BMS altitude is inverted
             float z = BitConverter.ToSingle(ReadBytes(_lpPrimaryBaseAddress, OFFSET_Z, 4), 0) * -1;
-            
+
             // Read the velocity
             float xDot = BitConverter.ToSingle(ReadBytes(_lpPrimaryBaseAddress, OFFSET_X_DOT, 4), 0);
             float yDot = BitConverter.ToSingle(ReadBytes(_lpPrimaryBaseAddress, OFFSET_Y_DOT, 4), 0);
-            
+
             // Inverted
             float zDot = BitConverter.ToSingle(ReadBytes(_lpPrimaryBaseAddress, OFFSET_Z_DOT, 4), 0) * -1;
 

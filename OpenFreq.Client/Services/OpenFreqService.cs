@@ -842,6 +842,7 @@ public class OpenFreqService : IOpenFreqService
         _tunedSlots.TryGetValue((frequencyKhz, slotId), out var tunedFrequencyData);
         if (tunedFrequencyData == null)
         {
+            _logger.LogWarning("No frequency data found, assuming own position of (0,0,0)");
             return null;
         }
 
@@ -856,10 +857,8 @@ public class OpenFreqService : IOpenFreqService
 
             case RadioStationData.RadioStationType.STATIONARY:
                 var position = tunedFrequencyData.RadioStation.Vector3;
-                return position == null
-                    ? null
-                    : new Vector3(position.X, position.Y,
-                        position.Z + tunedFrequencyData.RadioStation.Preset.AntennaElevation_m);
+                return new Vector3(position.X, position.Y,
+                    position.Z + tunedFrequencyData.RadioStation.Preset.AntennaElevation_m);
 
             case RadioStationData.RadioStationType.ACMI:
                 var acmiAircraftId = tunedFrequencyData.RadioStation.AcmiAircraftId;

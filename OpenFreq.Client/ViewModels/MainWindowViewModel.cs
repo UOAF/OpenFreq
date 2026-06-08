@@ -6,6 +6,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Net.Sockets;
 using System.Security.Authentication;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
@@ -354,10 +355,43 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         _channelHandlers.Remove(ch);
     }
 
+    // Add grace period for failed Shmem polling - should never happen IRL but let's keep safe
+    private static readonly TimeSpan ShmemLossGracePeriod = TimeSpan.FromSeconds(2);
+    private CancellationTokenSource? _shmemLossGraceCts;
+
     private async void OnFalconSharedMemoryStateChanged(object? sender, ServiceStateChangedEventArgs e)
     {
-        if (e.OldState != ServiceState.Connected) return;
         if (Settings.ConnectionMode != IOpenFreqService.Mode.BMS) return;
+
+        // Recovered within the grace window — cancel the pending disconnect.
+        if (e.NewState == ServiceState.Connected)
+        {
+            _shmemLossGraceCts?.Cancel();
+            _shmemLossGraceCts = null;
+            return;
+        }
+
+        if (e.OldState != ServiceState.Connected) return;
+
+        _shmemLossGraceCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _shmemLossGraceCts = cts;
+        try
+        {
+            await Task.Delay(ShmemLossGracePeriod, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return; // shmem recovered — keep the WS connection
+        }
+        finally
+        {
+            if (ReferenceEquals(_shmemLossGraceCts, cts))
+                _shmemLossGraceCts = null;
+            cts.Dispose();
+        }
+
+        // Still not Connected after the grace window — treat as a real BMS exit.
         Settings.Is3dMode = _falconSharedMemoryService.IsFlying ?? false;
         await DisconnectAsync();
     }
@@ -742,6 +776,11 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
             PeerId = _openFreqService.PeerId ?? "";
             ClearError();
             SettingsDrawerOpened = false;
+
+            // Re-read live BMS flight state on connect to rule out stale local Is3dMode
+            if (Settings.ConnectionMode == IOpenFreqService.Mode.BMS &&
+                _falconSharedMemoryService.IsFlying is { } isFlying)
+                Dispatcher.UIThread.Post(() => Settings.Is3dMode = isFlying);
 
             if (Settings is { ModeIsGci: false, MinimizeOnConnect: true })
             {
