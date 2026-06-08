@@ -817,7 +817,9 @@ public class OpenFreqService : IOpenFreqService
     {
         _demReader?.Dispose();
         _demReader = new DEMReader(path, width, height, bytesPerSample);
-        _audioSim = new FastPathAudioSim(_demReader, 0, 0, 20, _loggerFactory.CreateLogger<FastPathAudioSim>());
+        // Cell size = theater world size / DEM resolution
+        var cellSizeMeters = BmsHeightmapConverter.HEIGHTMAP_SIZE_METERS / width;
+        _audioSim = new FastPathAudioSim(_demReader, 0, 0, cellSizeMeters, _loggerFactory.CreateLogger<FastPathAudioSim>());
         OnStatusMessage($"Heightmap loaded: {path}");
         _logger.LogDebug($"Heightmap loaded: {path}");
     }

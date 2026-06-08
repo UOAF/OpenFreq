@@ -3,7 +3,7 @@
 /// </summary>
 public static class BmsHeightmapConverter
 {
-    private const double HEIGHTMAP_SIZE_METERS = 1_024_000.0;
+    public const double HEIGHTMAP_SIZE_METERS = 1_024_000.0;
     private const double FEET_PER_METER = 3.28084;
 
     /// <summary>
