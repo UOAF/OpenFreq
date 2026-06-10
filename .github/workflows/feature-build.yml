@@ -11,7 +11,58 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    outputs:
+      coverage: ${{ steps.cov.outputs.coverage }}
+      covlines: ${{ steps.cov.outputs.covlines }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Configure SSH for submodule
+        env:
+          SSH_KEY: ${{ secrets.OPENFREQAUDIO_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/openfreqaudio_key
+          chmod 600 ~/.ssh/openfreqaudio_key
+          printf 'Host github.com\n  IdentityFile ~/.ssh/openfreqaudio_key\n  StrictHostKeyChecking no\n' >> ~/.ssh/config
+
+      - name: Fetch submodules
+        run: git submodule update --init --recursive
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Test with coverage
+        run: |
+          dotnet test OpenFreq.sln \
+            --collect:"XPlat Code Coverage" \
+            --settings coverage.client.runsettings
+
+      - name: Summarize client coverage (views excluded)
+        id: cov
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import xml.etree.ElementTree as ET, glob
+          tot = cov = 0
+          for f in glob.glob("**/coverage.cobertura.xml", recursive=True):
+              for pkg in ET.parse(f).getroot().iter('package'):
+                  if pkg.get('name') != 'OpenFreq.Client':
+                      continue
+                  for ln in pkg.iter('line'):
+                      tot += 1
+                      cov += 1 if int(ln.get('hits')) > 0 else 0
+          pct = round(cov / tot * 100, 1) if tot else 0
+          print(f"coverage={pct}")
+          print(f"covlines={cov}/{tot}")
+          PY
+
   build-server:
+    needs: [test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -57,6 +108,7 @@ jobs:
           retention-days: 5
 
   build-client:
+    needs: [test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -108,7 +160,7 @@ jobs:
           retention-days: 5
 
   comment:
-    needs: [build-server, build-client]
+    needs: [test, build-server, build-client]
     runs-on: ubuntu-latest
     steps:
       - name: Find PR for this branch
@@ -138,5 +190,9 @@ jobs:
             |---|---|---|
             | **Client** | `OpenFreq-Client-win-x64-portable.zip` | `OpenFreq-Client-linux-x64-portable.zip` |
             | **Server** | `OpenFreq-Server-win-x64-portable.zip` | `OpenFreq-Server-linux-x64-portable.zip` |
+
+            ### 🧪 Tests
+
+            Client coverage (views excluded): **${{ needs.test.outputs.coverage }}%** (${{ needs.test.outputs.covlines }} lines)
 
             Built from `${{ github.sha }}`.

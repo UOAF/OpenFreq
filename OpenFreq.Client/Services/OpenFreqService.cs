@@ -18,6 +18,7 @@ using OpenFreq.Common;
 using OpenFreq.Services.Acmi;
 using OpenFreqAudio;
 using OpenFreqClient.Models;
+using OpenFreqClient.Services.Audio;
 using OpenFreqClient.Services.Interfaces;
 using ErrorEventArgs = OpenFreq.Common.ErrorEventArgs;
 
@@ -30,7 +31,7 @@ public class OpenFreqService : IOpenFreqService
 {
     public IOpenFreqService.OpenFreqStatus Status { get; set; } = IOpenFreqService.OpenFreqStatus.Disconnected;
 
-    private OpenFreqRtcClient? _client;
+    private IRtcClient? _client;
     private int _recordHandle;
     private readonly ConcurrentDictionary<int, List<int>> _activeTransmissionsAndMutedFrequencies = new();
 
@@ -53,11 +54,10 @@ public class OpenFreqService : IOpenFreqService
         _tunedSlots.FirstOrDefault(kvp => kvp.Key.FreqKhz == frequencyKhz).Value;
 
 
-    private RadioPlayback? _playbackService;
+    private IPlaybackService? _playbackService;
     private readonly Lock _streamCreationLock = new();
 
-    private DEMReader? _demReader;
-    private FastPathAudioSim? _audioSim;
+    private ISignalCalculator? _signalCalculator;
     private readonly IAcmiClientService _acmiClientService;
     private readonly SignalStrengthTracker _signalStrengthTracker;
 
@@ -107,15 +107,24 @@ public class OpenFreqService : IOpenFreqService
 
 
 
+    private readonly IRtcClientFactory _rtcClientFactory;
+    private readonly IPlaybackServiceFactory _playbackServiceFactory;
+    private readonly ISignalCalculatorFactory _signalCalculatorFactory;
+
     public OpenFreqService(IFalconSharedMemoryService falconSharedMemoryService,
         IFalconRadioSharedMemoryService falconRadioSharedMemoryService, ILogger<OpenFreqService> logger,
-        ILoggerFactory loggerFactory, IAcmiClientService acmiClientService)
+        ILoggerFactory loggerFactory, IAcmiClientService acmiClientService,
+        IRtcClientFactory rtcClientFactory, IPlaybackServiceFactory playbackServiceFactory,
+        ISignalCalculatorFactory signalCalculatorFactory)
     {
         _falconSharedMemoryService = falconSharedMemoryService;
         _falconRadioSharedMemoryService = falconRadioSharedMemoryService;
         _logger = logger;
         _loggerFactory = loggerFactory;
         _acmiClientService = acmiClientService;
+        _rtcClientFactory = rtcClientFactory;
+        _playbackServiceFactory = playbackServiceFactory;
+        _signalCalculatorFactory = signalCalculatorFactory;
 
         // Initialize signal strength tracker with callback
         _signalStrengthTracker = new SignalStrengthTracker(
@@ -282,7 +291,7 @@ public class OpenFreqService : IOpenFreqService
 
         // Create client with server settings
         _logger.LogDebug("Creating new client");
-        _client = new OpenFreqRtcClient(_loggerFactory,
+        _client = _rtcClientFactory.Create(_loggerFactory,
             settings.OpenFreqServerAddress, settings.OpenFreqPassword, myDisplayName);
         _logger.LogDebug("Client created: {ClientHashCode}", _client.GetHashCode());
 
@@ -306,7 +315,7 @@ public class OpenFreqService : IOpenFreqService
         if (_playbackService == null)
         {
             // First initialization: create RadioPlayback and init BASS device.
-            _playbackService = new RadioPlayback(_loggerFactory, playbackDeviceIndex);
+            _playbackService = _playbackServiceFactory.Create(_loggerFactory, playbackDeviceIndex);
             _playbackService.UserFacingError += OnPlaybackUserFacingError;
             _playbackService.Initialize();
             _logger.LogInformation("Playback Service initialized");
@@ -816,7 +825,6 @@ public class OpenFreqService : IOpenFreqService
                 }
             case IOpenFreqService.Mode.GCI:
                 _falconSharedMemoryService.Stop();
-                // TODO
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(newMode), newMode, null);
@@ -838,11 +846,11 @@ public class OpenFreqService : IOpenFreqService
     /// </summary>
     public void LoadHeightmap(string path, int width = 32768, int height = 32768, int bytesPerSample = 2)
     {
-        _demReader?.Dispose();
-        _demReader = new DEMReader(path, width, height, bytesPerSample);
+        _signalCalculator?.Dispose();
         // Cell size = theater world size / DEM resolution
         var cellSizeMeters = BmsHeightmapConverter.HEIGHTMAP_SIZE_METERS / width;
-        _audioSim = new FastPathAudioSim(_demReader, 0, 0, cellSizeMeters, _loggerFactory.CreateLogger<FastPathAudioSim>());
+        _signalCalculator = _signalCalculatorFactory.Create(path, width, height, bytesPerSample, cellSizeMeters,
+            _loggerFactory);
         OnStatusMessage($"Heightmap loaded: {path}");
         _logger.LogDebug($"Heightmap loaded: {path}");
     }
@@ -1327,7 +1335,7 @@ public class OpenFreqService : IOpenFreqService
         var ownPosition = anySlotKey != default ? GetOwnPosition(anySlotKey.FreqKhz, anySlotKey.SlotId) : null;
         var ownVelocity = anySlotKey != default ? GetOwnVelocity(anySlotKey.FreqKhz, anySlotKey.SlotId) : null;
 
-        if (frequencyTransmission.Position == null || ownPosition == null || _audioSim == null)
+        if (frequencyTransmission.Position == null || ownPosition == null || _signalCalculator == null)
         {
             // Inputs missing (e.g. a concealed frame without position).
             // Reuse the last physics result for this source+freq, even if expired.
@@ -1355,7 +1363,7 @@ public class OpenFreqService : IOpenFreqService
             ? receiverData.RadioStation.Preset.RxSensitivity_VHF_dBm
             : receiverData.RadioStation.Preset.RxSensitivity_UHF_dBm;
 
-        var audioParams = _audioSim.CalculateAudioParams(
+        var audioParams = _signalCalculator.CalculateAudioParams(
             frequencyTransmission.Position.X, frequencyTransmission.Position.Y, frequencyTransmission.Position.Z,
             ownPosition.X, ownPosition.Y, ownPosition.Z,
             frequencyTransmission.Khz, (float)frequencyTransmission.Ppm,
@@ -1463,7 +1471,7 @@ public class OpenFreqService : IOpenFreqService
         _activeTransmissionsAndMutedFrequencies.Clear();
 
         _playbackService?.StopAll();
-        _demReader?.Dispose();
+        _signalCalculator?.Dispose();
 
         _falconSharedMemoryService.FlyingStateChanged -= OnFlyingStateChanged;
         _falconSharedMemoryService.StateChanged -= OnFalconStateChanged;

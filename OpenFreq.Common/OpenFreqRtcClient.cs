@@ -9,7 +9,7 @@ using OpenFreqAudio;
 
 namespace OpenFreq.Common;
 
-public class OpenFreqRtcClient : IDisposable
+public class OpenFreqRtcClient : IRtcClient
 {
     // Audio configuration constants
     public const int SAMPLE_RATE = RadioPlayback.SampleRate;
@@ -37,7 +37,7 @@ public class OpenFreqRtcClient : IDisposable
     private bool _opusCompressionEnabled = true;
 
     // Connection state
-    public readonly string ServerIp;
+    public string ServerIp { get; }
     private readonly string _password;
     private ClientWebSocket? _webSocket;
     private CancellationTokenSource _cts = new();
