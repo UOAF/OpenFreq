@@ -46,7 +46,8 @@ jobs:
                       OpenFreq.Server/OpenFreq.Server.csproj \
                       OpenFreq.Testclient/OpenFreq.Testclient.csproj \
                       OpenFreq.Common.Tests/OpenFreq.Common.Tests.csproj \
-                      OpenFreq.Server.Tests/OpenFreq.Server.Tests.csproj; do
+                      OpenFreq.Server.Tests/OpenFreq.Server.Tests.csproj \
+                      OpenFreq.Client.Tests/OpenFreq.Client.Tests.csproj; do
             dotnet build "$proj" --no-restore -warnaserror
           done
 
