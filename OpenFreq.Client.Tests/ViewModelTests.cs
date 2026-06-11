@@ -1,4 +1,5 @@
 using OpenFreq.Client.Models;
+using OpenFreqClient.Models;
 using OpenFreqClient.Services.Interfaces;
 using OpenFreqClient.ViewModels;
 
@@ -170,6 +171,28 @@ public class SettingsViewModelTests
 
         Assert.Equal(["server-b:9000", "server-a:9000"], fresh.OpenFreqServerAddressHistory);
         Assert.Equal(["tacview-host:42674"], fresh.TacviewServerAddressHistory);
+    }
+
+    [Fact]
+    public void WindowPlacement_SurvivesSaveWithoutUpdateWindowSettings()
+    {
+        // Closing while minimized skips the size/position capture in UpdateWindowSettings;
+        // the values loaded at startup must survive the save instead of becoming nulls/zeros.
+        var vm = VmFactory.Settings();
+        vm.LoadFromSettings(new OpenFreqSettings
+        {
+            Left = 100,
+            Top = 200,
+            Width = 800,
+            Height = 500
+        });
+
+        var saved = vm.GetSettings();
+
+        Assert.Equal(100, saved.Left);
+        Assert.Equal(200, saved.Top);
+        Assert.Equal(800, saved.Width);
+        Assert.Equal(500, saved.Height);
     }
 }
 

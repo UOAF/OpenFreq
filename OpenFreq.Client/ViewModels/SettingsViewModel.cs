@@ -119,9 +119,10 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
     private readonly IOpenFreqService _openFreqService;
     private readonly IHotkeyService _hotkeyService;
 
-    // Window size & position
-    private int _left, _top, _width, _height, _windowState;
-    private int _maximizedScreenX, _maximizedScreenY, _maximizedScreenWidth, _maximizedScreenHeight;
+    // Window size & position. Nullable so values never captured (e.g. app closed while
+    // minimized before UpdateWindowSettings ran) stay null instead of being saved as 0.
+    private int? _left, _top, _width, _height, _windowState;
+    private int? _maximizedScreenX, _maximizedScreenY, _maximizedScreenWidth, _maximizedScreenHeight;
 
     public bool IsReadyToConnect => OpenFreqServerAddress != string.Empty &&
                                     (
@@ -492,12 +493,29 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
 
     private void RestoreWindowPosition(OpenFreqSettings settings)
     {
+        _left = settings.Left;
+        _top = settings.Top;
+        _width = settings.Width;
+        _height = settings.Height;
+        _windowState = settings.WindowState;
+        _maximizedScreenX = settings.MaximizedScreenX;
+        _maximizedScreenY = settings.MaximizedScreenY;
+        _maximizedScreenWidth = settings.MaximizedScreenWidth;
+        _maximizedScreenHeight = settings.MaximizedScreenHeight;
+
         // Window settings
         if (settings.Left == null || settings.Top == null || settings.Height == null || settings.Width == null ||
             settings.WindowState == null)
         {
             // There are no settings to restore.
             // So leave the windows size and position at their defaults.
+            return;
+        }
+
+        if (settings.Width <= 0 || settings.Height <= 0)
+        {
+            // Safeguard against 0 values
+            _left = _top = _width = _height = _windowState = null;
             return;
         }
 
