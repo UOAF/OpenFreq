@@ -1,5 +1,6 @@
 using System.Threading.Tasks;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using OpenFreqClient.Services.Interfaces;
@@ -44,6 +45,14 @@ public partial class MainWindow : Window
         {
             _viewModel?.Settings.HeightmapPath = file[0].Path.LocalPath;
         }
+    }
+
+    private void AddressHistoryBox_GotFocus(object? sender, FocusChangedEventArgs e)
+    {
+        // AutoCompleteBox only opens its dropdown while typing; open it on focus so
+        // the address history is reachable by click alone.
+        if (sender is AutoCompleteBox { ItemsSource: not null } box)
+            box.IsDropDownOpen = true;
     }
 
     protected override void OnClosing(WindowClosingEventArgs e)

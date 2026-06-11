@@ -738,6 +738,9 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
     private void OnTacviewConnectionStatusChanged(object? sender, AcmiConnectionEventArgs e)
     {
         AcmiConnectionStatus = e.Status;
+
+        if (e.Status == AcmiConnectionStatus.Connected)
+            Dispatcher.UIThread.Post(() => Settings.AddTacviewServerAddressToHistory());
     }
 
 
@@ -796,6 +799,9 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
             PeerId = _openFreqService.PeerId ?? "";
             ClearError();
             SettingsDrawerOpened = false;
+
+            if (Settings.ModeIsGci)
+                Dispatcher.UIThread.Post(() => Settings.AddOpenFreqServerAddressToHistory());
 
             // Re-read live BMS flight state on connect to rule out stale local Is3dMode
             if (Settings.ConnectionMode == IOpenFreqService.Mode.BMS &&

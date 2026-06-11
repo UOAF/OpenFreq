@@ -31,6 +31,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsReadyToConnect))]
     public partial string OpenFreqServerAddress { get; set; } = string.Empty;
+    [ObservableProperty] public partial ObservableCollection<string> OpenFreqServerAddressHistory { get; set; } = [];
     [ObservableProperty] public partial string DisplayName { get; set; } = "Joe Pilot";
     [ObservableProperty] public partial string OpenFreqPassword { get; set; } = string.Empty;
     [ObservableProperty] public partial ObservableCollection<string> PlaybackDeviceNames { get; set; } = [];
@@ -73,6 +74,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsReadyToConnect))]
     public partial string TacviewServerAddress { get; set; } = string.Empty;
+    [ObservableProperty] public partial ObservableCollection<string> TacviewServerAddressHistory { get; set; } = [];
 
     [ObservableProperty] public partial string TacviewServerPassword { get; set; } = string.Empty;
 
@@ -409,9 +411,11 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
     {
         OpenFreqServerAddress = settings.OpenFreqServerAddress;
         OpenFreqPassword = settings.OpenFreqPassword;
+        OpenFreqServerAddressHistory = new ObservableCollection<string>(settings.OpenFreqServerAddressHistory);
         ConnectionMode = IsWindowsPlatform ? settings.OwnPositionMode : IOpenFreqService.Mode.GCI;
         TacviewServerAddress = settings.TacviewServerAddress;
         TacviewServerPassword = settings.TacviewServerPassword;
+        TacviewServerAddressHistory = new ObservableCollection<string>(settings.TacviewServerAddressHistory);
         SelectedTheater = settings.SelectedTheater;
         MapLayer = settings.MapLayer;
         BmsRadio1Pan = settings.BmsRadio1Pan;
@@ -576,9 +580,11 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
         {
             OpenFreqServerAddress = OpenFreqServerAddress,
             OpenFreqPassword = OpenFreqPassword,
+            OpenFreqServerAddressHistory = [.. OpenFreqServerAddressHistory],
             OwnPositionMode = ConnectionMode,
             TacviewServerAddress = TacviewServerAddress,
             TacviewServerPassword = TacviewServerPassword,
+            TacviewServerAddressHistory = [.. TacviewServerAddressHistory],
             DisplayName = DisplayName,
             InputDeviceName = InputDeviceName,
             OutputDeviceName = OutputDeviceName,
@@ -613,6 +619,27 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
             MaximizedScreenX = _maximizedScreenX,
             MaximizedScreenY = _maximizedScreenY
         };
+    }
+
+    private const int MaxAddressHistory = 10;
+
+    public void AddOpenFreqServerAddressToHistory() => AddToHistory(OpenFreqServerAddressHistory, OpenFreqServerAddress);
+
+    public void AddTacviewServerAddressToHistory() => AddToHistory(TacviewServerAddressHistory, TacviewServerAddress);
+
+    private static void AddToHistory(ObservableCollection<string> history, string value)
+    {
+        value = value.Trim();
+        if (value.Length == 0)
+            return;
+
+        var existing = history.FirstOrDefault(h => string.Equals(h, value, StringComparison.OrdinalIgnoreCase));
+        if (existing != null)
+            history.Remove(existing);
+
+        history.Insert(0, value);
+        while (history.Count > MaxAddressHistory)
+            history.RemoveAt(history.Count - 1);
     }
 
     public void UpdateWindowSettings()

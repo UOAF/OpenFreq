@@ -74,6 +74,103 @@ public class SettingsViewModelTests
 
         Assert.False(vm.IsReadyToConnect);
     }
+
+    [Fact]
+    public void AddOpenFreqServerAddressToHistory_AddsEntry()
+    {
+        var vm = VmFactory.Settings();
+        vm.OpenFreqServerAddress = "10.0.0.1:9000";
+
+        vm.AddOpenFreqServerAddressToHistory();
+
+        Assert.Equal(["10.0.0.1:9000"], vm.OpenFreqServerAddressHistory);
+    }
+
+    [Fact]
+    public void AddTacviewServerAddressToHistory_AddsEntry()
+    {
+        var vm = VmFactory.Settings();
+        vm.TacviewServerAddress = "10.0.0.2:42674";
+
+        vm.AddTacviewServerAddressToHistory();
+
+        Assert.Equal(["10.0.0.2:42674"], vm.TacviewServerAddressHistory);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void AddToHistory_SkipsEmptyAndWhitespace(string address)
+    {
+        var vm = VmFactory.Settings();
+        vm.OpenFreqServerAddress = address;
+
+        vm.AddOpenFreqServerAddressToHistory();
+
+        Assert.Empty(vm.OpenFreqServerAddressHistory);
+    }
+
+    [Fact]
+    public void AddToHistory_TrimsValue()
+    {
+        var vm = VmFactory.Settings();
+        vm.OpenFreqServerAddress = "  10.0.0.1:9000  ";
+
+        vm.AddOpenFreqServerAddressToHistory();
+
+        Assert.Equal(["10.0.0.1:9000"], vm.OpenFreqServerAddressHistory);
+    }
+
+    [Fact]
+    public void AddToHistory_MovesDuplicateToTop()
+    {
+        var vm = VmFactory.Settings();
+        vm.OpenFreqServerAddress = "server-a:9000";
+        vm.AddOpenFreqServerAddressToHistory();
+        vm.OpenFreqServerAddress = "server-b:9000";
+        vm.AddOpenFreqServerAddressToHistory();
+
+        // Case-insensitive duplicate moves to the top instead of being added twice.
+        vm.OpenFreqServerAddress = "SERVER-A:9000";
+        vm.AddOpenFreqServerAddressToHistory();
+
+        Assert.Equal(["SERVER-A:9000", "server-b:9000"], vm.OpenFreqServerAddressHistory);
+    }
+
+    [Fact]
+    public void AddToHistory_CapsAtMax()
+    {
+        var vm = VmFactory.Settings();
+        for (var i = 0; i < 11; i++)
+        {
+            vm.OpenFreqServerAddress = $"server-{i}:9000";
+            vm.AddOpenFreqServerAddressToHistory();
+        }
+
+        Assert.Equal(10, vm.OpenFreqServerAddressHistory.Count);
+        Assert.Equal("server-10:9000", vm.OpenFreqServerAddressHistory[0]);
+        Assert.DoesNotContain("server-0:9000", vm.OpenFreqServerAddressHistory);
+    }
+
+    [Fact]
+    public void History_RoundTripsThroughSettings()
+    {
+        var vm = VmFactory.Settings();
+        vm.OpenFreqServerAddressHistory = ["server-b:9000", "server-a:9000"];
+        vm.TacviewServerAddressHistory = ["tacview-host:42674"];
+
+        var settings = vm.GetSettings();
+        // A saved DarkMode or window placement makes LoadFromSettings touch Application.Current /
+        // the main window, which don't exist here.
+        settings.DarkMode = null;
+        settings.WindowState = null;
+
+        var fresh = VmFactory.Settings();
+        fresh.LoadFromSettings(settings);
+
+        Assert.Equal(["server-b:9000", "server-a:9000"], fresh.OpenFreqServerAddressHistory);
+        Assert.Equal(["tacview-host:42674"], fresh.TacviewServerAddressHistory);
+    }
 }
 
 public class LocationViewModelTests
