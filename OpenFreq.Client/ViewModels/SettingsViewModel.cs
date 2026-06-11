@@ -43,6 +43,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
     [ObservableProperty] public partial int RecordingDeviceIndex { get; set; }
     [ObservableProperty] public partial int PlaybackDeviceIndex { get; set; }
     [ObservableProperty] public partial string SelectedTheater { get; set; } = "Korea KTO";
+    [ObservableProperty] public partial string MapLayer { get; set; } = "Carto";
 
     // BMS auto-detection
     private static readonly string[] DefaultTheaterNames = ["Korea KTO", "Balkans", "Ikaros", "ITO"];
@@ -412,6 +413,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
         TacviewServerAddress = settings.TacviewServerAddress;
         TacviewServerPassword = settings.TacviewServerPassword;
         SelectedTheater = settings.SelectedTheater;
+        MapLayer = settings.MapLayer;
         BmsRadio1Pan = settings.BmsRadio1Pan;
         BmsRadio2Pan = settings.BmsRadio2Pan;
         MasterVolume = settings.MasterVolume;
@@ -582,6 +584,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
             OutputDeviceName = OutputDeviceName,
             HeightmapPath = HeightmapPath,
             SelectedTheater = SelectedTheater,
+            MapLayer = MapLayer,
             BmsRadio1Pan = BmsRadio1Pan,
             BmsRadio2Pan = BmsRadio2Pan,
             BmsSquelchUhfHotkey = BmsUhfSquelchHotkey,

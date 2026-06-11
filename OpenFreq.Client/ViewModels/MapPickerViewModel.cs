@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
+using BruTile;
 using BruTile.Predefined;
 using BruTile.Web;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -17,6 +18,7 @@ using Mapsui.Tiling.Layers;
 using NetTopologySuite.Geometries;
 using OpenFreq.Utilities;
 using OpenFreqClient.Json;
+using OpenFreqClient.Services.Interfaces;
 using Brush = Mapsui.Styles.Brush;
 using MapsuiColor = Mapsui.Styles.Color;
 using Pen = Mapsui.Styles.Pen;
@@ -34,38 +36,71 @@ public partial class MapPickerViewModel : ViewModelBase
     [ObservableProperty] public partial double SpeedKts { get; set; }
     [ObservableProperty] public partial double SpeedMach { get; set; }
     [ObservableProperty] public partial double AltitudeFt { get; set; }
+    [ObservableProperty] public partial double? TerrainAltitudeFt { get; private set; }
     [ObservableProperty] public partial string SearchQuery { get; set; } = string.Empty;
     [ObservableProperty] public partial bool IsSearching { get; private set; }
     [ObservableProperty] public partial string? SearchError { get; set; }
     [ObservableProperty] public partial bool IsTrackingMode { get; private set; }
     [ObservableProperty] public partial string? TrackedCallsign { get; private set; }
 
+    public const string LayerCarto = "Carto";
+    public const string LayerSatellite = "Satellite";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsCartoSelected))]
+    [NotifyPropertyChangedFor(nameof(IsSatelliteSelected))]
+    public partial string SelectedLayer { get; set; } = LayerCarto;
+
+    public bool IsCartoSelected
+    {
+        get => SelectedLayer == LayerCarto;
+        set { if (value) SelectedLayer = LayerCarto; }
+    }
+
+    public bool IsSatelliteSelected
+    {
+        get => SelectedLayer == LayerSatellite;
+        set { if (value) SelectedLayer = LayerSatellite; }
+    }
+
     private WritableLayer? _theaterBoundsLayer;
     private WritableLayer? _positionLayer;
+    private TileLayer? _baseLayer;
+    private TileLayer? _satelliteLayer;
+    private const double FeetPerMeter = 3.28084;
+
     private Map? _map;
     private readonly string _selectedTheatername;
+    private readonly SettingsViewModel? _settings;
+    private readonly IOpenFreqService? _openFreqService;
 
     public Map Map => _map ??= CreateMap();
 
     public event EventHandler<(double lat, double lon)>? PositionConfirmed;
 
-    public MapPickerViewModel(double initialLat, double initialLon, string selectedTheaterName)
+    public MapPickerViewModel(double initialLat, double initialLon, SettingsViewModel settings, IOpenFreqService? openFreqService = null)
     {
         Latitude = initialLat;
         Longitude = initialLon;
-        _selectedTheatername = selectedTheaterName;
+        _settings = settings;
+        _openFreqService = openFreqService;
+        _selectedTheatername = settings.SelectedTheater;
+        SelectedLayer = settings.MapLayer;
         IsTrackingMode = false;
+        UpdateTerrainAltitude();
     }
 
     /// <summary>
     /// Constructor for tracking mode - displays aircraft with heading and disables position picking
     /// </summary>
-    public MapPickerViewModel(double initialLat, double initialLon, double initialHeading, string selectedTheaterName, string? callsign = null)
+    public MapPickerViewModel(double initialLat, double initialLon, double initialHeading, SettingsViewModel settings, string? callsign = null)
     {
         Latitude = initialLat;
         Longitude = initialLon;
         Heading = initialHeading;
-        _selectedTheatername = selectedTheaterName;
+        _settings = settings;
+        _selectedTheatername = settings.SelectedTheater;
+        SelectedLayer = settings.MapLayer;
         IsTrackingMode = true;
         TrackedCallsign = callsign;
     }
@@ -78,7 +113,19 @@ public partial class MapPickerViewModel : ViewModelBase
         var tileSource = new HttpTileSource(new GlobalSphericalMercator(),
             "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
             name: "Carto Voyager");
-        map.Layers.Add(new TileLayer(tileSource) { Name = "Carto" });
+        _baseLayer = new TileLayer(tileSource) { Name = "Carto" };
+        map.Layers.Add(_baseLayer);
+
+        // Esri World Imagery for satellite view ({y}/{x} tile order)
+        var satelliteSource = new HttpTileSource(new GlobalSphericalMercator(),
+            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+            name: "Esri World Imagery",
+            attribution: new Attribution("Esri, Maxar, Earthstar Geographics"));
+        _satelliteLayer = new TileLayer(satelliteSource) { Name = "Satellite" };
+        map.Layers.Add(_satelliteLayer);
+
+        _baseLayer.Enabled = SelectedLayer != LayerSatellite;
+        _satelliteLayer.Enabled = SelectedLayer == LayerSatellite;
 
         // Add theater bounds layer (if available)
         _theaterBoundsLayer = CreateTheaterBoundsLayer();
@@ -114,6 +161,17 @@ public partial class MapPickerViewModel : ViewModelBase
         return map;
     }
 
+    partial void OnSelectedLayerChanged(string value)
+    {
+        if (_settings != null)
+            _settings.MapLayer = value;
+
+        if (_baseLayer == null || _satelliteLayer == null) return;
+        _baseLayer.Enabled = value != LayerSatellite;
+        _satelliteLayer.Enabled = value == LayerSatellite;
+        _map?.Refresh();
+    }
+
     public void OnMapClicked(MPoint worldPosition)
     {
         // Disable position picking in tracking mode
@@ -125,7 +183,39 @@ public partial class MapPickerViewModel : ViewModelBase
         Longitude = lonLat.lon;
 
         UpdatePositionMarker(lonLat.lat, lonLat.lon);
+        UpdateTerrainAltitude();
         SearchError = null;
+    }
+
+    /// <summary>
+    /// Samples terrain elevation (MSL) at the selected position from the BMS heightmap, if loaded
+    /// </summary>
+    private void UpdateTerrainAltitude()
+    {
+        TerrainAltitudeFt = null;
+
+        if (_openFreqService == null) return;
+        if (Latitude == 0 && Longitude == 0) return;
+
+        try
+        {
+            if (!TheaterCoordinateConverter.IsWithinTheaterBounds(_selectedTheatername, Latitude, Longitude))
+                return;
+
+            var xy = TheaterCoordinateConverter.LatLonToXYMeters(
+                _selectedTheatername,
+                Latitude,
+                Longitude,
+                TheaterCoordinateConverter.CoordinateSystem.BMS_HEIGHTMAP_COORDINATE_SYTEM);
+
+            var elevationMeters = _openFreqService.SampleTerrainElevationMeters(xy.x, xy.y);
+            if (elevationMeters.HasValue)
+                TerrainAltitudeFt = Math.Max(0d, elevationMeters.Value) * FeetPerMeter; // BMS sets negative magic values for oceans
+        }
+        catch
+        {
+            // No terrain info available for this position
+        }
     }
 
     private void UpdatePositionMarker(double lat, double lon, double? heading = null)
@@ -229,6 +319,7 @@ public partial class MapPickerViewModel : ViewModelBase
             Longitude = result.Longitude;
 
             UpdatePositionMarker(Latitude, Longitude);
+            UpdateTerrainAltitude();
 
             // Pan map to result
             if (_map != null)

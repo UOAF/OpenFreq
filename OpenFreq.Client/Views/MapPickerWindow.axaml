@@ -80,6 +80,12 @@
                         <Run Text="Lon: "/>
                         <Run Text="{Binding Longitude, StringFormat='{}{0:F6}'}"/>
                     </TextBlock>
+                    <!-- Sampled terrain elevation (BMS heightmap, picker mode only) -->
+                    <TextBlock Foreground="White"
+                               IsVisible="{Binding TerrainAltitudeFt, Converter={x:Static ObjectConverters.IsNotNull}}">
+                        <Run Text="Terrain: "/>
+                        <Run Text="{Binding TerrainAltitudeFt, StringFormat='{}{0:F0} ft MSL'}"/>
+                    </TextBlock>
                     <!-- Show heading if tracking -->
                     <TextBlock Foreground="White" 
                                IsVisible="{Binding IsTrackingMode}">
@@ -104,8 +110,27 @@
                 </StackPanel>
             </Border>
             
+            <!-- Layer selection -->
+            <Border Background="#CC000000"
+                    CornerRadius="4"
+                    Padding="4"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Top"
+                    Margin="10">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <ToggleButton Content="Map"
+                                  IsChecked="{Binding IsCartoSelected}"
+                                  IsHitTestVisible="{Binding !IsCartoSelected}"
+                                  Padding="8,4"/>
+                    <ToggleButton Content="Satellite"
+                                  IsChecked="{Binding IsSatelliteSelected}"
+                                  IsHitTestVisible="{Binding !IsSatelliteSelected}"
+                                  Padding="8,4"/>
+                </StackPanel>
+            </Border>
+
             <!-- Instructions overlay -->
-            <Border Background="#55000000" 
+            <Border Background="#55000000"
                     Padding="8" 
                     HorizontalAlignment="Left" 
                     VerticalAlignment="Bottom"

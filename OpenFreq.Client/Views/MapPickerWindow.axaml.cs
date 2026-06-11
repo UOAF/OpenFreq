@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Mapsui.Extensions;
+using OpenFreqClient.Services.Interfaces;
 using OpenFreqClient.ViewModels;
 
 namespace OpenFreqClient.Views;
@@ -21,10 +22,10 @@ public partial class MapPickerWindow : Window
     /// <summary>
     /// Constructor for position picking mode
     /// </summary>
-    public MapPickerWindow(double initialLat, double initialLon, string selectedTheaterName) : this()
+    public MapPickerWindow(double initialLat, double initialLon, SettingsViewModel settings, IOpenFreqService? openFreqService = null) : this()
     {
-        _selectedTheaterName = selectedTheaterName;
-        _viewModel = new MapPickerViewModel(initialLat, initialLon, selectedTheaterName);
+        _selectedTheaterName = settings.SelectedTheater;
+        _viewModel = new MapPickerViewModel(initialLat, initialLon, settings, openFreqService);
         _viewModel.PositionConfirmed += OnPositionConfirmed;
         DataContext = _viewModel;
         MapControl.PointerPressed += OnMapPointerPressed;
@@ -38,10 +39,10 @@ public partial class MapPickerWindow : Window
     /// <summary>
     /// Constructor for aircraft tracking mode
     /// </summary>
-    public MapPickerWindow(double initialLat, double initialLon, double initialHeading, string selectedTheaterName, string? callsign = null) : this()
+    public MapPickerWindow(double initialLat, double initialLon, double initialHeading, SettingsViewModel settings, string? callsign = null) : this()
     {
-        _selectedTheaterName = selectedTheaterName;
-        _viewModel = new MapPickerViewModel(initialLat, initialLon, initialHeading, selectedTheaterName, callsign);
+        _selectedTheaterName = settings.SelectedTheater;
+        _viewModel = new MapPickerViewModel(initialLat, initialLon, initialHeading, settings, callsign);
         DataContext = _viewModel;
 
         // Update window title for tracking mode

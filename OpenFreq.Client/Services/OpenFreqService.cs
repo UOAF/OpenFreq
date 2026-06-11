@@ -855,6 +855,11 @@ public class OpenFreqService : IOpenFreqService
         _logger.LogDebug($"Heightmap loaded: {path}");
     }
 
+    public double? SampleTerrainElevationMeters(double xMeters, double yMeters)
+    {
+        return _signalCalculator?.SampleElevation(xMeters, yMeters);
+    }
+
     private bool RecordProcedure(int handle, IntPtr buffer, int length, IntPtr user)
     {
         // If not transmitting on any frequency, skip

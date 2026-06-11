@@ -17,6 +17,7 @@ public class OpenFreqSettings
     public string InputDeviceName { get; set; } = "";
     public string OutputDeviceName { get; set; } = "";
     public string SelectedTheater { get; set; } = "Korea KTO";
+    public string MapLayer { get; set; } = "Carto";
 
     public int BmsRadio1Pan { get; set; } // 0 == center
     public int BmsRadio2Pan { get; set; }

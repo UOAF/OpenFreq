@@ -105,6 +105,11 @@ public interface IOpenFreqService : IDisposable
 
     public void LoadHeightmap(string path, int width = 32768, int height = 32768, int bytesPerSample = 2);
 
+    /// <summary>
+    /// Samples terrain elevation (meters MSL) at BMS heightmap coordinates. Null if no heightmap loaded.
+    /// </summary>
+    public double? SampleTerrainElevationMeters(double xMeters, double yMeters);
+
     public void SetOwnPositionMode(Mode newMode);
 
     public enum Mode

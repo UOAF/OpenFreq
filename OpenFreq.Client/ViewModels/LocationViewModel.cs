@@ -503,7 +503,7 @@ public partial class LocationViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     private async Task OpenMapPickerAsync()
     {
-        var window = new MapPickerWindow(Latitude, Longitude, Settings.SelectedTheater);
+        var window = new MapPickerWindow(Latitude, Longitude, Settings, _openFreqService);
 
         var result = await window.ShowDialog<(double lat, double lon)?>(
             (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
@@ -532,7 +532,7 @@ public partial class LocationViewModel : ViewModelBase, IDisposable
             aircraft.Transform.Latitude,
             aircraft.Transform.Longitude,
             aircraft.Transform.Heading,
-            Settings.SelectedTheater,
+            Settings,
             aircraft.CallSign);
 
         IsTracking = true;

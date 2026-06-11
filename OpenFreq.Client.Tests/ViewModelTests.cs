@@ -12,7 +12,9 @@ public class MapPickerViewModelTests
     [Fact]
     public void PickConstructor_SetsCoordinates_NotTracking()
     {
-        var vm = new MapPickerViewModel(initialLat: 37.5, initialLon: 127.0, selectedTheaterName: "Korea KTO");
+        SettingsViewModel settings = VmFactory.Settings();
+        settings.SelectedTheater = "Korea KTO";
+        var vm = new MapPickerViewModel(initialLat: 37.5, initialLon: 127.0, settings);
 
         Assert.Equal(37.5, vm.Latitude);
         Assert.Equal(127.0, vm.Longitude);
@@ -22,8 +24,11 @@ public class MapPickerViewModelTests
     [Fact]
     public void TrackingConstructor_SetsHeadingAndCallsign_Tracking()
     {
+        SettingsViewModel settings = VmFactory.Settings();
+        settings.SelectedTheater = "Korea KTO";
+
         var vm = new MapPickerViewModel(
-            initialLat: 1, initialLon: 2, initialHeading: 90, selectedTheaterName: "Korea KTO", callsign: "Viper1");
+            initialLat: 1, initialLon: 2, initialHeading: 90, settings, callsign: "Viper1");
 
         Assert.Equal(90, vm.Heading);
         Assert.Equal("Viper1", vm.TrackedCallsign);

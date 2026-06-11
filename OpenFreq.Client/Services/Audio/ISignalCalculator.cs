@@ -22,6 +22,8 @@ public interface ISignalCalculator : IDisposable
         bool rxAltitudeIsMSL = false,
         (double x, double y, double z)? txVelocity = null,
         (double x, double y, double z)? rxVelocity = null);
+    public double SampleElevation(double xMeters, double yMeters);
+
 }
 
 /// <summary>Adapter owning a <see cref="DEMReader"/> + <see cref="FastPathAudioSim"/>.</summary>
@@ -51,6 +53,7 @@ public sealed class TerrainSignalCalculator : ISignalCalculator
         (double x, double y, double z)? rxVelocity = null)
         => _sim.CalculateAudioParams(txX, txY, txAlt, rxX, rxY, rxAlt, frequencyKhz, ppm, txPowerWatts,
             receiverSensitivityDbm, includeTerrainProfile, txAltitudeIsMSL, rxAltitudeIsMSL, txVelocity, rxVelocity);
+    public double SampleElevation(double xMeters, double yMeters) => _sim.SampleElevation(xMeters, yMeters);
 
     public void Dispose() => _dem.Dispose();
 }
