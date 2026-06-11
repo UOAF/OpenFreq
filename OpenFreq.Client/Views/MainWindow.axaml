@@ -363,7 +363,7 @@
 
                                         <!-- OpenFreq Server -->
                                         <TextBlock Text="OpenFreq Server" Classes="InputLabel" />
-                                        <AutoCompleteBox Watermark="Address:Port"
+                                        <AutoCompleteBox PlaceholderText="Address:Port"
                                                          Text="{Binding Settings.OpenFreqServerAddress}"
                                                          ItemsSource="{Binding Settings.OpenFreqServerAddressHistory}"
                                                          FilterMode="StartsWith"
@@ -379,7 +379,7 @@
 
                                         <!-- Tacview Server -->
                                         <TextBlock Text="Tacview Server" Classes="InputLabel" />
-                                        <AutoCompleteBox Watermark="Address:Port"
+                                        <AutoCompleteBox PlaceholderText="Address:Port"
                                                          Text="{Binding Settings.TacviewServerAddress}"
                                                          ItemsSource="{Binding Settings.TacviewServerAddressHistory}"
                                                          FilterMode="StartsWith"
