@@ -190,6 +190,9 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: docker/build-push-action@v6
+        env:
+          # No .dockerbuild record artifact; the release job downloads all artifacts
+          DOCKER_BUILD_RECORD_UPLOAD: false
         with:
           context: .
           file: OpenFreq.Server/Dockerfile
@@ -217,6 +220,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
+          pattern: '*-builds'
           path: artifacts
           merge-multiple: true
 
