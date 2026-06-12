@@ -43,6 +43,16 @@ Real-time network voice radio with real-time physics simulation for [Falcon BMS]
 2. Launch OpenFreq Server (sensible defaults preconfigured)
 3. The configuration file is automatically created (``OpenFreq.Server.json``) - adapt and restart if necessary
 
+#### Container (Podman / Docker)
+
+```bash
+docker run -d --name openfreq-server \
+  -p 9987:9987 -p 9988:9988/udp \
+  ghcr.io/uoaf/openfreq-server:latest
+```
+
+Available tags: `latest`, `<x.y.z>`, `nightly`. See the [Handbook](docs/handbook.md "Handbook") for configuration details.
+
 
 ## Documentation
 See the [Handbook](docs/handbook.md "Handbook") for in-depth usage and configuration.

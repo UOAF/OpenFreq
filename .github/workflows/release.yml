@@ -149,7 +149,7 @@ jobs:
           retention-days: 1
 
   docker:
-    needs: [test]
+    needs: [test, build-server]
     runs-on: ubuntu-latest
     permissions:
       contents: read
