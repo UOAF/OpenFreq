@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=OpenFreq Server
+Exec=/opt/openfreq/OpenFreq.Server
+Path=/opt/openfreq
+Icon=openfreq-server
+Terminal=true
+Categories=Network;
+Keywords=radio;voice;falcon;bms;flightsim;

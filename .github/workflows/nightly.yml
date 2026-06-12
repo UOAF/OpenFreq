@@ -151,6 +151,64 @@ jobs:
           path: OpenFreq-Client-*-*.zip
           retention-days: 1
 
+  docker:
+    needs: [test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Configure SSH for submodule
+        env:
+          SSH_KEY: ${{ secrets.OPENFREQAUDIO_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/openfreqaudio_key
+          chmod 600 ~/.ssh/openfreqaudio_key
+          printf 'Host github.com\n  IdentityFile ~/.ssh/openfreqaudio_key\n  StrictHostKeyChecking no\n' >> ~/.ssh/config
+
+      - name: Fetch submodules
+        run: git submodule update --init --recursive
+
+      # Image names must be lowercase; the org is "UOAF"
+      - name: Compute image name and version
+        run: |
+          echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/openfreq-server" >> "$GITHUB_ENV"
+          echo "VERSION=0.0.0-nightly+$(echo '${{ github.sha }}' | cut -c1-7)" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: OpenFreq.Server/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE }}:nightly
+          build-args: |
+            VERSION=${{ env.VERSION }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Re-pushing :nightly leaves the previous image as an untagged version;
+      # delete those so the package doesn't accumulate stale digests
+      - name: Prune untagged images
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: openfreq-server
+          package-type: container
+          delete-only-untagged-versions: 'true'
+          min-versions-to-keep: 0
+
   release:
     needs: [build-server, build-client]
     runs-on: ubuntu-latest

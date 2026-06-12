@@ -43,7 +43,7 @@
   <Target Name="RemoveBassNativesFromPublish" AfterTargets="ComputeFilesToPublish">
     <ItemGroup>
       <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
-        Condition="'%(Filename)' == 'bass' Or '%(Filename)' == 'bassmix' Or '%(Filename)' == 'libbass' Or '%(Filename)' == 'libbassmix'" />
+        Condition="'%(Filename)' == 'bass' Or '%(Filename)' == 'bassmix' Or '%(Filename)' == 'bassenc' Or '%(Filename)' == 'bassenc_ogg' Or '%(Filename)' == 'libbass' Or '%(Filename)' == 'libbassmix' Or '%(Filename)' == 'libbassenc' Or '%(Filename)' == 'libbassenc_ogg'" />
     </ItemGroup>
   </Target>
 

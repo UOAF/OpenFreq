@@ -24,6 +24,8 @@ In any case, extract the files of the archive into a directory of your choice. A
 
 **It is not required to delete or replace any existing IVC executables.**
 
+> **Note:** Client and Server must run the same OpenFreq version - the server rejects clients with a different version. Patch releases (e.g. 1.0.0 and 1.0.1) are compatible with each other.
+
 ## 2\. Server
 
 ### Requirements
@@ -67,6 +69,40 @@ The server runs a Terminal.Gui interface with three tabs:
 - **Logs** - live log stream
 
 Press **Ctrl+Q** or close the terminal to shut down gracefully.
+
+### Headless Mode
+
+Start the server with `-a` (or `--headless`) to run without the TUI, e.g. for systemd services or Docker containers. Logs are written to the console and the log file instead. Shut down with **Ctrl+C**.
+
+### Docker
+
+Prebuilt server images are published to the GitHub Container Registry:
+
+| Tag | Contents |
+| --- | --- |
+| `ghcr.io/uoaf/openfreq-server:latest` | Latest stable release |
+| `ghcr.io/uoaf/openfreq-server:<x.y.z>` | Specific release (e.g. `1.0.0`) |
+| `ghcr.io/uoaf/openfreq-server:nightly` | Latest `develop` build, replaced on every push |
+
+```bash
+docker run -d --name openfreq-server \
+  -p 9987:9987 -p 9988:9988/udp \
+  -v ./OpenFreq.Server.json:/app/OpenFreq.Server.json \
+  ghcr.io/uoaf/openfreq-server:latest
+```
+
+The container runs in headless mode. Configuration is read from `/app/OpenFreq.Server.json` (a default is created on first start if none is mounted). Logs go to the container output and `/app/logs`.
+
+### Linux Desktop Entry
+
+A desktop entry and icon are included under `OpenFreq.Server/util/linux/` for launching the server from the application menu. The entry assumes the server is installed in `/opt/openfreq` - edit `Exec` and `Path` in the file if you installed it elsewhere.
+
+```bash
+cp OpenFreq.Server/util/linux/openfreq-server.desktop ~/.local/share/applications/
+cp OpenFreq.Server/util/linux/openfreq-server.png ~/.local/share/icons/
+```
+
+The entry launches the server in a terminal with the TUI.
 
 ### Log Files
 
