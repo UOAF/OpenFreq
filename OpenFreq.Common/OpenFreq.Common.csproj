@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="Concentus" Version="2.2.2" />
+    <PackageReference Include="Semver" Version="3.0.0" />
   </ItemGroup>
 
   <ItemGroup>

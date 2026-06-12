@@ -34,6 +34,37 @@ public class SignalingMessageFactoryTests
     }
 
     [Fact]
+    public void CreateAuthenticate_VersionRoundTrips()
+    {
+        var msg = SignalingMessageFactory.CreateAuthenticate("pass", "Viper", "1.2.3");
+        var payload = SignalingMessageFactory.DeserializePayload<AuthenticateMessage>(msg.Payload);
+
+        Assert.NotNull(payload);
+        Assert.Equal("1.2.3", payload.Version);
+    }
+
+    [Fact]
+    public void CreateError_ServerVersionRoundTrips()
+    {
+        var msg = SignalingMessageFactory.CreateError("Version mismatch", "1.2.3");
+        var payload = SignalingMessageFactory.DeserializePayload<ErrorMessage>(msg.Payload);
+
+        Assert.NotNull(payload);
+        Assert.Equal("Version mismatch", payload.Error);
+        Assert.Equal("1.2.3", payload.ServerVersion);
+    }
+
+    [Fact]
+    public void CreateError_NoServerVersion_Null()
+    {
+        var msg = SignalingMessageFactory.CreateError("boom");
+        var payload = SignalingMessageFactory.DeserializePayload<ErrorMessage>(msg.Payload);
+
+        Assert.NotNull(payload);
+        Assert.Null(payload.ServerVersion);
+    }
+
+    [Fact]
     public void CreateJoin_SetsCorrectTypeAndFrequency()
     {
         var msg = SignalingMessageFactory.CreateJoin(251000);

@@ -15,7 +15,7 @@ public class PeerUpdateCoalescingTests
     {
         var client = new RawSignalingClient();
         await client.ConnectAsync(server.WsUri);
-        await client.SendAsync(SignalingMessageFactory.CreateAuthenticate("", name));
+        await client.SendAsync(SignalingMessageFactory.CreateAuthenticate("", name, OpenFreqVersion.Current));
         await client.ReceiveUntilAsync<SuccessMessage>(SignalingMessageTypes.Success);
         return client;
     }

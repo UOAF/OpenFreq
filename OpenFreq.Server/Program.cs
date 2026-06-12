@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using Serilog;
 using Serilog.Events;
@@ -10,6 +11,19 @@ static class Program
 {
     static async Task Main(string[] args)
     {
+        var version = Assembly.GetExecutingAssembly()
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion ?? "unknown";
+
+        if (args.Any(a => a is "-h" or "--help"))
+        {
+            PrintHelp(version);
+            return;
+        }
+
+        // Headless mode: no TUI, logs to console + file
+        var headlessMode = args.Any(a => a is "-a" or "--headless");
+
         // Initialize Serilog for file logging
         var baseDirectory = Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory;
         var logsDirectory = Path.Combine(baseDirectory, "logs");
@@ -17,9 +31,12 @@ static class Program
 
         var logFile = Path.Combine(logsDirectory, $"openfreq-{DateTime.Now:yyyy-MM-dd}.log");
 
+        var loggerConfiguration = new LoggerConfiguration()
 #if DEBUG
-        Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
+#else
+            .MinimumLevel.Information()
+#endif
             .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
             .MinimumLevel.Override("System", LogEventLevel.Warning)
             .Enrich.FromLogContext()
@@ -30,27 +47,16 @@ static class Program
                 "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}",
                 rollingInterval: RollingInterval.Day,
                 retainedFileCountLimit: 30,
-                shared: true)
-            .CreateLogger();
-#else
-        Log.Logger = new LoggerConfiguration()
-            .MinimumLevel.Information()
-            .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
-            .MinimumLevel.Override("System", LogEventLevel.Warning)
-            .Enrich.FromLogContext()
-            .Enrich.WithProperty("Application", "OpenFreqServer")
-            .WriteTo.File(
-                logFile,
-                outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}",
-                rollingInterval: RollingInterval.Day,
-                retainedFileCountLimit: 30,
-                shared: true)
-            .CreateLogger();
-#endif
+                shared: true);
 
-        var version = Assembly.GetExecutingAssembly()
-            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
-            ?.InformationalVersion ?? "unknown";
+        if (headlessMode)
+        {
+            // No TUI to display logs, so mirror them to stdout
+            loggerConfiguration.WriteTo.Console(
+                outputTemplate: "{Timestamp:HH:mm:ss.fff} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}");
+        }
+
+        Log.Logger = loggerConfiguration.CreateLogger();
 
         try
         {
@@ -78,8 +84,12 @@ static class Program
                     .AddFilter("Microsoft", LogLevel.Warning)
                     .AddFilter("System", LogLevel.Warning)
                     .AddFilter("OpenFreq", LogLevel.Debug)
-                    .AddProvider(new TuiLoggerProvider(logMessages))
                     .AddSerilog(Log.Logger);
+
+                if (!headlessMode)
+                {
+                    builder.AddProvider(new TuiLoggerProvider(logMessages));
+                }
             });
 
             SignalingServer server;
@@ -92,14 +102,16 @@ static class Program
                 Console.WriteLine($"Can not start server, check your ports are not in use: {config.WebSocketPort}, {config.AudioPort}");
                 Console.WriteLine($"Error: {ex.Message}");
                 Log.Fatal(ex, "Failed to initialize server");
-                Console.WriteLine("Press any key to exit...");
-                Console.ReadKey(intercept: true);
+                WaitForKeyBeforeExit(headlessMode);
                 return;
             }
 
-            // Create stats tracker and Terminal.Gui TUI
-            var stats = new ServerStats(server.Clients, server.ChannelManager, server.AudioServer);
-            using var tui = new TerminalGuiServer(config, stats, logMessages, version);
+            // Create stats tracker and Terminal.Gui TUI (skipped in headless mode)
+            using TerminalGuiServer? tui = headlessMode
+                ? null
+                : new TerminalGuiServer(config,
+                    new ServerStats(server.Clients, server.ChannelManager, server.AudioServer),
+                    logMessages, version);
 
             // Setup graceful shutdown
             var shutdownCts = new CancellationTokenSource();
@@ -113,6 +125,17 @@ static class Program
                 }
             };
 
+            // SIGTERM (systemd stop, Windows console close) — request graceful shutdown
+            using var sigtermRegistration = PosixSignalRegistration.Create(PosixSignal.SIGTERM, context =>
+            {
+                context.Cancel = true;
+                if (!shutdownCts.IsCancellationRequested)
+                {
+                    Log.Information("SIGTERM received");
+                    shutdownCts.Cancel();
+                }
+            });
+
             // Start server (binds ports — throws on failure)
             try
             {
@@ -123,21 +146,28 @@ static class Program
                 Console.WriteLine($"Can not start server, check your ports are not in use: {config.WebSocketPort}, {config.AudioPort}");
                 Console.WriteLine($"Error: {ex.Message}");
                 Log.Fatal(ex, "Failed to start server");
-                Console.WriteLine("Press any key to exit...");
-                Console.ReadKey(intercept: true);
+                WaitForKeyBeforeExit(headlessMode);
                 return;
             }
 
-            // Start TUI (blocks until quit or shutdown requested)
-            var tuiTask = Task.Run(() => tui.Start());
+            if (tui != null)
+            {
+                // Start TUI (blocks until quit or shutdown requested)
+                var tuiTask = Task.Run(() => tui.Start());
 
-            // Wait for either TUI to quit or Ctrl+C
-            await Task.WhenAny(tuiTask, Task.Delay(-1, shutdownCts.Token).ContinueWith(_ => { }));
+                // Wait for either TUI to quit or Ctrl+C
+                await Task.WhenAny(tuiTask, Task.Delay(-1, shutdownCts.Token).ContinueWith(_ => { }));
+            }
+            else
+            {
+                Log.Information("Running in headless mode, press Ctrl+C to stop");
+                await Task.Delay(-1, shutdownCts.Token).ContinueWith(_ => { });
+            }
 
             // Now properly shut down
             Log.Information("Shutting down server...");
             await server.StopAsync();
-            tui.Stop();
+            tui?.Stop();
         }
         catch (Exception ex)
         {
@@ -148,6 +178,36 @@ static class Program
         {
             Log.CloseAndFlush();
         }
+    }
+
+    static void PrintHelp(string version)
+    {
+        Console.WriteLine($"""
+            OpenFreq Server {version}
+            Signaling and audio relay server for OpenFreq voice communication.
+
+            Usage: OpenFreq.Server [options]
+
+            Options:
+              -a, --headless    Run headless (no TUI), logs to console and file
+              -h, --help      Show this help and exit
+
+            Configuration:
+              Read from OpenFreq.Server.json next to the executable; a default
+              config is created on first run.
+
+            Logs are written to the logs/ directory (daily rolling files).
+            """);
+    }
+
+    static void WaitForKeyBeforeExit(bool headlessMode)
+    {
+        // No interactive console in headless mode (and ReadKey throws when stdin is redirected)
+        if (headlessMode || Console.IsInputRedirected)
+            return;
+
+        Console.WriteLine("Press any key to exit...");
+        Console.ReadKey(intercept: true);
     }
 
     static ServerConfig? LoadConfiguration()

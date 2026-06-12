@@ -2,7 +2,6 @@
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     x:Class="OpenFreqClient.Views.ConfirmationDialog"
-    xmlns:controls="clr-namespace:Material.Styles.Controls;assembly=Material.Styles"
     xmlns:viewModels="clr-namespace:OpenFreqClient.ViewModels"
     x:DataType="viewModels:ConfirmationDialogViewModel">
 
@@ -27,6 +26,7 @@
                 Content="{Binding CancelText}"
                 Classes="Flat"
                 IsCancel="True"
+                IsVisible="{Binding ShowCancel}"
                 Command="{Binding CancelCommand}" />
 
             <Button

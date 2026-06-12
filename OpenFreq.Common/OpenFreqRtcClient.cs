@@ -43,6 +43,10 @@ public class OpenFreqRtcClient : IRtcClient
     private CancellationTokenSource _cts = new();
     private volatile bool _authFailed;
 
+    // Set alongside _authFailed when the server rejected us for a version mismatch;
+    // carries the server's version so the UI can show both sides.
+    private volatile string? _authFailedServerVersion;
+
     // Set when the caller deliberately tears down the connection (DisconnectAsync/Dispose)
     // so the receive loop does not try to auto-reconnect a connection we closed on purpose
     private volatile bool _intentionalDisconnect;
@@ -110,6 +114,7 @@ public class OpenFreqRtcClient : IRtcClient
         _cts.Dispose();
         _cts = new CancellationTokenSource();
         _authFailed = false;
+        _authFailedServerVersion = null;
 
         var timeout = connectTimeout ?? TimeSpan.FromSeconds(10);
         using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
@@ -138,7 +143,8 @@ public class OpenFreqRtcClient : IRtcClient
         _ = Task.Run(ReceiveMessagesAsync, _cts.Token);
 
         // Authenticate
-        await SendMessageAsync(SignalingMessageFactory.CreateAuthenticate(_password, MyDisplayName));
+        await SendMessageAsync(
+            SignalingMessageFactory.CreateAuthenticate(_password, MyDisplayName, OpenFreqVersion.Current));
 
         // Wait for authentication response with timeout
         var startTime = DateTime.UtcNow;
@@ -148,7 +154,11 @@ public class OpenFreqRtcClient : IRtcClient
         }
 
         if (_authFailed)
+        {
+            if (_authFailedServerVersion is { } serverVersion)
+                throw new VersionMismatchException(OpenFreqVersion.Current, serverVersion);
             throw new System.Security.Authentication.AuthenticationException("Bad password");
+        }
 
         if (!IsAuthenticated)
             throw new TimeoutException("Authentication timeout");
@@ -542,7 +552,10 @@ public class OpenFreqRtcClient : IRtcClient
                     if (error != null)
                     {
                         if (!IsAuthenticated)
+                        {
+                            _authFailedServerVersion = error.ServerVersion;
                             _authFailed = true;
+                        }
                         OnError(error.Error);
                     }
 

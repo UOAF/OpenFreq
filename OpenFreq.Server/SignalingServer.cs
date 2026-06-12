@@ -212,8 +212,7 @@ public class SignalingServer
         if (_config.WebSocketPort != 0)
             return _config.WebSocketPort;
 
-        // Configured port 0 → Kestrel picked a free port; read it back from the server's
-        // resolved addresses (e.g. "http://[::]:49321").
+        // Configured port 0 -> Kestrel picked a free port; read it back from the server's resolved addresses
         var addresses = _app?.Services.GetService<IServer>()?
             .Features.Get<IServerAddressesFeature>()?.Addresses;
 
@@ -405,6 +404,29 @@ public class SignalingServer
         }
 
         session.DisplayName = authMsg.DisplayName;
+
+        // Reject clients whose version is incompatible with the server build (patch-level semver differences are allowed)
+        var serverVersion = OpenFreqVersion.Current;
+        if (!OpenFreqVersion.AreCompatible(authMsg.Version, serverVersion))
+        {
+            _logger.LogWarning(
+                "Rejected {DisplayName} ({ClientId}): version mismatch (client {ClientVersion}, server {ServerVersion})",
+                GetDisplayName(session), session.Id, authMsg.Version ?? "unknown", serverVersion);
+
+            await SendToClient(session, SignalingMessageFactory.CreateError(
+                $"Version mismatch: client {authMsg.Version ?? "unknown"}, server {serverVersion}",
+                serverVersion));
+
+            if (session.WebSocket.State == WebSocketState.Open)
+            {
+                await session.WebSocket.CloseAsync(
+                    WebSocketCloseStatus.PolicyViolation,
+                    "Version mismatch",
+                    CancellationToken.None);
+            }
+
+            return;
+        }
 
         if (string.IsNullOrEmpty(_config.ServerPassword) ||
             authMsg.Password == _config.ServerPassword)

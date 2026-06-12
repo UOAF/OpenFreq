@@ -663,6 +663,16 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         {
             ShowError("Connection timeout. Please check server address and network connection.");
         }
+        catch (VersionMismatchException ex)
+        {
+            ShowError($"Version mismatch: client {ex.ClientVersion}, server {ex.ServerVersion}");
+            await ConfirmationDialogService.ShowMessageAsync(
+                "Version Mismatch",
+                "The server rejected the connection because the versions do not match.\n\n" +
+                $"Client version: {ex.ClientVersion}\n" +
+                $"Server version: {ex.ServerVersion}\n\n" +
+                "Please update your client to match the server version.");
+        }
         catch (Exception ex)
         {
             ShowError($"Connection failed: {ex.Message}");

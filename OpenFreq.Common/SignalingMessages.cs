@@ -20,6 +20,7 @@ public class AuthenticateMessage
 {
     [JsonPropertyName("password")] public string? Password { get; set; }
     [JsonPropertyName("displayName")] public string? DisplayName { get; set; }
+    [JsonPropertyName("version")] public string? Version { get; set; }
 }
 
 /// <summary>
@@ -56,6 +57,7 @@ public class AudioTransmissionMessage
 public class ErrorMessage
 {
     [JsonPropertyName("error")] public string Error { get; set; } = string.Empty;
+    [JsonPropertyName("serverVersion")] public string? ServerVersion { get; set; }
 }
 
 /// <summary>

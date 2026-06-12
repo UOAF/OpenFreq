@@ -5,13 +5,13 @@ namespace OpenFreq.Common.Signaling;
 
 public static class SignalingMessageFactory
 {
-    public static SignalingMessage CreateAuthenticate(string password, string? displayName)
+    public static SignalingMessage CreateAuthenticate(string password, string? displayName, string? version = null)
     {
         return new SignalingMessage
         {
             Type = SignalingMessageTypes.Authenticate,
             Payload = JsonSerializer.SerializeToElement(
-                new AuthenticateMessage { Password = password, DisplayName = displayName },
+                new AuthenticateMessage { Password = password, DisplayName = displayName, Version = version },
                 OpenFreqJsonContext.Default.AuthenticateMessage)
         };
     }
@@ -72,13 +72,13 @@ public static class SignalingMessageFactory
         };
     }
 
-    public static SignalingMessage CreateError(string error)
+    public static SignalingMessage CreateError(string error, string? serverVersion = null)
     {
         return new SignalingMessage
         {
             Type = SignalingMessageTypes.Error,
             Payload = JsonSerializer.SerializeToElement(
-                new ErrorMessage { Error = error },
+                new ErrorMessage { Error = error, ServerVersion = serverVersion },
                 OpenFreqJsonContext.Default.ErrorMessage)
         };
     }
