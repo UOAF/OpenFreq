@@ -191,6 +191,7 @@ jobs:
           context: .
           file: OpenFreq.Server/Dockerfile
           push: true
+          provenance: false
           tags: |
             ${{ env.IMAGE }}:${{ env.VERSION }}
             ${{ env.IMAGE }}:latest

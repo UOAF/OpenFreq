@@ -1,6 +1,7 @@
 name: Nightly Build
 
 on:
+  workflow_dispatch:
   push:
     branches: [develop]
     paths-ignore:
@@ -193,6 +194,7 @@ jobs:
           context: .
           file: OpenFreq.Server/Dockerfile
           push: true
+          provenance: false
           tags: ${{ env.IMAGE }}:nightly
           build-args: |
             VERSION=${{ env.VERSION }}
