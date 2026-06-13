@@ -264,6 +264,24 @@
                                             <TextBlock Classes="InputLabel" Margin="0, 8, 0, 4" TextWrapping="Wrap" Text="Experimental feature:
                                             Sidetone with software will always have higher latency than real hardware solutions." FontStyle="Italic" />
                                         </StackPanel>
+
+                                        <CheckBox Content="Mix Falcon BMS audio into transmission"
+                                                  IsChecked="{Binding Settings.BmsAudioMixEnabled}"
+                                                  IsVisible="{Binding Settings.IsWindowsPlatform}"
+                                                  Margin="0,8,0,4" />
+                                        <StackPanel IsVisible="{Binding Settings.BmsAudioMixEnabled}">
+                                            <TextBlock Classes="InputLabel" Margin="0,4,0,4">
+                                                <Run Text="BMS level: " />
+                                                <Run Text="{Binding Settings.BmsAudioMixVolume, StringFormat={}{0:P0}}" />
+                                            </TextBlock>
+                                            <Slider Minimum="0" Maximum="1"
+                                                    Value="{Binding Settings.BmsAudioMixVolume}"
+                                                    TickFrequency="0.05"
+                                                    IsSnapToTickEnabled="True" />
+                                            <TextBlock Classes="InputLabel" Margin="0,8,0,4" TextWrapping="Wrap"
+                                                       Text="Sends Falcon BMS game audio to listeners along with your voice while in game mode. Your own monitoring and recordings are unaffected."
+                                                       FontStyle="Italic" />
+                                        </StackPanel>
                                     </StackPanel>
                                 </controls:Card>
 
@@ -594,6 +612,24 @@
                                                     IsSnapToTickEnabled="True" />
                                             <TextBlock Classes="InputLabel" Margin="0, 8, 0, 4" TextWrapping="Wrap" Text="Experimental feature:
                                             Sidetone with software will always have higher latency than real hardware solutions." FontStyle="Italic" />
+                                        </StackPanel>
+
+                                        <CheckBox Content="Mix Falcon BMS audio into transmission"
+                                                  IsChecked="{Binding Settings.BmsAudioMixEnabled}"
+                                                  IsVisible="{Binding Settings.IsWindowsPlatform}"
+                                                  Margin="0,8,0,4" />
+                                        <StackPanel IsVisible="{Binding Settings.BmsAudioMixEnabled}">
+                                            <TextBlock Classes="InputLabel" Margin="0,4,0,4">
+                                                <Run Text="BMS level: " />
+                                                <Run Text="{Binding Settings.BmsAudioMixVolume, StringFormat={}{0:P0}}" />
+                                            </TextBlock>
+                                            <Slider Minimum="0" Maximum="1"
+                                                    Value="{Binding Settings.BmsAudioMixVolume}"
+                                                    TickFrequency="0.05"
+                                                    IsSnapToTickEnabled="True" />
+                                            <TextBlock Classes="InputLabel" Margin="0,8,0,4" TextWrapping="Wrap"
+                                                       Text="Sends Falcon BMS game audio to listeners along with your voice while in game mode. Your own monitoring and recordings are unaffected."
+                                                       FontStyle="Italic" />
                                         </StackPanel>
                                     </StackPanel>
                                 </controls:Card>

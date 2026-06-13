@@ -26,6 +26,11 @@ public interface IOpenFreqService : IDisposable
     double MasterVolume { get; set; }
     double AmbientNoiseVolume { get; set; }
 
+    /// <summary>When true, Falcon BMS application audio is mixed into transmitted voice while in game mode (Windows only).</summary>
+    bool BmsAudioMixEnabled { get; set; }
+    /// <summary>Gain applied to the mixed-in BMS audio (0..1), so game sound sits under voice.</summary>
+    double BmsAudioMixVolume { get; set; }
+
     /// <summary>Where the combined capture mix goes when recording.</summary>
     enum CaptureSink
     {

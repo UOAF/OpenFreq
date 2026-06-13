@@ -96,6 +96,10 @@ public class OpenFreqService : IOpenFreqService
     private float[] _sidetonePushBuffer = new float[4800]; // 100ms @ 48kHz, grows if needed
     private readonly MicLevelNormalizer _micNormalizer = new(OpenFreqRtcClient.SAMPLE_RATE);
 
+    // BMS application audio captured via WASAPI process loopback, mixed into TX while in game mode.
+    private readonly BmsProcessAudioCapture _bmsAudioCapture;
+    private short[] _bmsMixBuffer = new short[4800]; // matches _sidetonePushBuffer sizing, grows if needed
+
     // Cache duration
     private readonly TimeSpan _audioParamsCacheDuration = TimeSpan.FromMilliseconds(100);
 
@@ -125,6 +129,7 @@ public class OpenFreqService : IOpenFreqService
         _rtcClientFactory = rtcClientFactory;
         _playbackServiceFactory = playbackServiceFactory;
         _signalCalculatorFactory = signalCalculatorFactory;
+        _bmsAudioCapture = new BmsProcessAudioCapture(loggerFactory.CreateLogger<BmsProcessAudioCapture>());
 
         // Initialize signal strength tracker with callback
         _signalStrengthTracker = new SignalStrengthTracker(
@@ -168,6 +173,8 @@ public class OpenFreqService : IOpenFreqService
                 if (value && IsConnected) StartRecording();
                 else if (!value) StopRecording();
             }
+
+            if (was != value) UpdateBmsCaptureState();
         }
     }
 
@@ -182,6 +189,33 @@ public class OpenFreqService : IOpenFreqService
     }
 
     public bool MicNormalizationEnabled { get; set; } = true;
+
+    /// <summary>When true, Falcon BMS audio is mixed into transmitted voice while in game mode (Windows only).</summary>
+    public bool BmsAudioMixEnabled
+    {
+        get;
+        set
+        {
+            field = value;
+            UpdateBmsCaptureState();
+        }
+    }
+
+    /// <summary>Gain applied to mixed-in BMS audio (0..1) so game sound sits under voice.</summary>
+    public double BmsAudioMixVolume { get; set; } = 0.5;
+
+    /// <summary>
+    /// Start/stop the BMS loopback capture so it only runs when it can actually contribute:
+    /// enabled + in game mode (3D effects). The mix itself is additionally gated per-callback.
+    /// </summary>
+    private void UpdateBmsCaptureState()
+    {
+        bool shouldRun = BmsAudioMixEnabled && Apply3dAudioEffects;
+        if (shouldRun && !_bmsAudioCapture.IsRunning)
+            _bmsAudioCapture.Start();
+        else if (!shouldRun && _bmsAudioCapture.IsRunning)
+            _bmsAudioCapture.Stop();
+    }
 
     public double SidetoneVolume
     {
@@ -917,6 +951,22 @@ public class OpenFreqService : IOpenFreqService
                 if (wantRecord) _playbackService!.PushOwnVoiceForRecording(span);
             }
 
+            // Mix in Falcon BMS application audio AFTER the sidetone/recording fan-out so it only
+            // affects transmitted voice — not local monitoring or session recordings. Gated on game
+            // mode; capture is mono 48 kHz matching audioData, so it sums sample-for-sample.
+            if (BmsAudioMixEnabled && Apply3dAudioEffects && _bmsAudioCapture.IsRunning)
+            {
+                int need = audioData.Length;
+                if (_bmsMixBuffer.Length < need) _bmsMixBuffer = new short[need];
+                int got = _bmsAudioCapture.Read(_bmsMixBuffer, need);
+                float gain = (float)BmsAudioMixVolume;
+                for (int i = 0; i < got; i++)
+                {
+                    int mixed = audioData[i] + (int)(_bmsMixBuffer[i] * gain);
+                    audioData[i] = (short)Math.Clamp(mixed, short.MinValue, short.MaxValue);
+                }
+            }
+
             // Send to ALL active frequencies
             var frequenciesData =
                 new List<(int frequencyKhz, double txPowerWatts, double ppm, Vector3? position, Vector3? velocity,
@@ -1474,6 +1524,8 @@ public class OpenFreqService : IOpenFreqService
             _recordHandle = 0;
         }
         _activeTransmissionsAndMutedFrequencies.Clear();
+
+        _bmsAudioCapture.Dispose();
 
         _playbackService?.StopAll();
         _signalCalculator?.Dispose();

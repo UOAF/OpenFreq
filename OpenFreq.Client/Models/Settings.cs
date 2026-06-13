@@ -49,6 +49,8 @@ public class OpenFreqSettings
     public IOpenFreqService.CaptureSink CaptureSink { get; set; } = IOpenFreqService.CaptureSink.File;
     public string MonitorDeviceName { get; set; } = "";
     public bool ApplyOwnVoiceSfx { get; set; } = true;
+    public bool BmsAudioMixEnabled { get; set; } = false;
+    public double BmsAudioMixVolume { get; set; } = 0.5;
     public bool? DarkMode { get; set; }
     public bool MinimizeOnConnect { get; set; } = true;
 }

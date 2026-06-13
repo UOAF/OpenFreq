@@ -103,6 +103,10 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
     }
     /// <summary>When true, own voice in the capture gets the full radio FX; when false it stays clean.</summary>
     [ObservableProperty] public partial bool ApplyOwnVoiceSfx { get; set; } = true;
+    /// <summary>When true, Falcon BMS audio is mixed into transmitted voice in game mode (Windows only).</summary>
+    [ObservableProperty] public partial bool BmsAudioMixEnabled { get; set; } = false;
+    /// <summary>Gain (0..1) of the mixed-in BMS audio so it sits under voice.</summary>
+    [ObservableProperty] public partial double BmsAudioMixVolume { get; set; } = 0.5;
     /// <summary>List index into <see cref="PlaybackDeviceNames"/> for the monitor/stream output device.</summary>
     [ObservableProperty] public partial int MonitorDeviceIndex { get; set; }
     [ObservableProperty] public partial string MonitorDeviceName { get; set; } = string.Empty;
@@ -374,6 +378,10 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
 
     partial void OnApplyOwnVoiceSfxChanged(bool value) => _openFreqService.ApplyOwnVoiceSfx = value;
 
+    partial void OnBmsAudioMixEnabledChanged(bool value) => _openFreqService.BmsAudioMixEnabled = value;
+
+    partial void OnBmsAudioMixVolumeChanged(double value) => _openFreqService.BmsAudioMixVolume = value;
+
     partial void OnMonitorDeviceIndexChanged(int value)
     {
         if (value < 0 || value >= PlaybackDeviceNames.Count) return;
@@ -433,6 +441,8 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
             RecordingPath = settings.RecordingPath;
         StreamToDevice = settings.CaptureSink == IOpenFreqService.CaptureSink.Device;
         ApplyOwnVoiceSfx = settings.ApplyOwnVoiceSfx;
+        BmsAudioMixEnabled = settings.BmsAudioMixEnabled;
+        BmsAudioMixVolume = settings.BmsAudioMixVolume;
         if (settings.DarkMode.HasValue)
         {
             IsDarkMode = settings.DarkMode.Value;
@@ -626,6 +636,8 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
                 : IOpenFreqService.CaptureSink.File,
             MonitorDeviceName = MonitorDeviceName,
             ApplyOwnVoiceSfx = ApplyOwnVoiceSfx,
+            BmsAudioMixEnabled = BmsAudioMixEnabled,
+            BmsAudioMixVolume = BmsAudioMixVolume,
             DarkMode = IsDarkMode,
             Left = _left,
             Top = _top,
