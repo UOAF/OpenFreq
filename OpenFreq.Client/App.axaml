@@ -45,5 +45,6 @@
         <StaticResource x:Key="ChannelStatusDisconnectedBrush" ResourceKey="MaterialTextFieldBoxBackgroundBrush" />
         <StaticResource x:Key="ChannelStatusTransmittingBrush" ResourceKey="SecondaryHueLightBrush" />
         <converters:BoolToSearchButtonTextConverter x:Key="BoolToSearchButtonText" />
+        <converters:InverseBoolConverter x:Key="InverseBool" />
     </Application.Resources>
 </Application>
