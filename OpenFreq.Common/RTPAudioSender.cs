@@ -186,7 +186,23 @@ public class RtpAudioSender : IDisposable
 
             // Send the packet
             var rtpBytes = rtpPacket.ToBytes();
-            _udpClient.Send(rtpBytes, rtpBytes.Length, _serverEndpoint);
+            try
+            {
+                _udpClient.Send(rtpBytes, rtpBytes.Length, _serverEndpoint);
+                _packetsSent++;
+            }
+            catch (SocketException ex)
+            {
+                // Transient network loss (e.g. 10051 network unreachable, 10054 reset).
+                // Drop this packet and keep the send thread alive.
+                _logger.LogWarning("Dropped RTP packet, transient socket error {Error}: {Message}",
+                    ex.SocketErrorCode, ex.Message);
+            }
+            catch (ObjectDisposedException)
+            {
+                // Socket closed during shutdown — exit cleanly.
+                return;
+            }
             _timestamp += OPUS_FRAME_SIZE;
             sequence++;
         }

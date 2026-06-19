@@ -50,7 +50,7 @@ public class SignalingRobustnessTests
     }
 
     [Fact]
-    public async Task DuplicateJoin_SameFrequency_RaisesError()
+    public async Task DuplicateJoin_SameFrequency_IsIdempotent_ResendsChannelState()
     {
         await using var server = await SignalingServerHarness.StartAsync();
         await using var client = await ConnectRawAsync(server);
@@ -59,10 +59,12 @@ public class SignalingRobustnessTests
         await client.SendAsync(SignalingMessageFactory.CreateJoin(Freq));
         await client.ReceiveUntilAsync<ChannelStateMessage>(SignalingMessageTypes.ChannelState);
 
+        // A duplicate join (e.g. a reconnect race) must not throw an error. The server resends
+        // the channel state so the radio still gets its peer list and stays usable.
         await client.SendAsync(SignalingMessageFactory.CreateJoin(Freq));
 
-        var error = await client.ReceiveUntilAsync<ErrorMessage>(SignalingMessageTypes.Error);
-        Assert.Contains("already joined", error.Error, StringComparison.OrdinalIgnoreCase);
+        var state = await client.ReceiveUntilAsync<ChannelStateMessage>(SignalingMessageTypes.ChannelState);
+        Assert.Equal(Freq, state.FrequencyKhz);
     }
 
     [Fact]

@@ -480,7 +480,19 @@ public class SignalingServer
 
         if (session.CurrentFrequencies.ContainsKey(joinMsg.FrequencyKhz))
         {
-            await SendError(session, "Frequency already joined");
+            // Idempotent rejoin. A reconnect race (the RTC client auto-rejoins while the
+            // app layer also rejoins a radio channel) can send a duplicate join on the same session.
+            // Just resend the current channel state.
+            List<ChannelStateMessage.Peer> currentPeers = [];
+            foreach (var clientId in _channelManager.GetClientsInChannel(joinMsg.FrequencyKhz))
+            {
+                if (clientId == session.Id) continue;
+                _clients.TryGetValue(clientId, out var clientSession);
+                if (clientSession == null) continue;
+                currentPeers.Add(new ChannelStateMessage.Peer(clientSession.Id, clientSession.DisplayName ?? "Unnamed"));
+            }
+
+            await SendChannelState(session, joinMsg.FrequencyKhz, currentPeers);
             return;
         }
 
