@@ -22,7 +22,7 @@ public sealed class MicLevelNormalizer
     // Human speach has a peak-to-average power level
     // of about 12-18 dB, so we want to be about that many
     // below full strength.
-    private const float TargetRms = 0.16f; // ~16 dBFS
+    private const float TargetRms = 0.1f; // ~20 dBFS
 
     // 16-bit PCM full-scale magnitude; maps samples to/from float in ~[-1, 1].
     private const float SampleScale = short.MaxValue;
