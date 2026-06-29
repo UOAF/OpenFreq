@@ -9,6 +9,8 @@
         <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
         <RootNamespace>openfreq-client</RootNamespace>
         <LangVersion>preview</LangVersion>
+        <!-- Lets us wrap native audio-callback buffers in a ReadOnlySpan without copying. -->
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     </PropertyGroup>
 
     <PropertyGroup Condition="$(RuntimeIdentifier.StartsWith('win')) Or ($([MSBuild]::IsOSPlatform('Windows')) And '$(RuntimeIdentifier)' == '')">
