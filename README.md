@@ -10,7 +10,7 @@ Real-time network voice radio with real-time physics simulation for [Falcon BMS]
 - Seamless integration into Falcon BMS - no extra configuration required
 - Realistic radio propagation: signal strength, line-of-sight, Doppler and more (via [OpenFreqAudio](https://github.com/UOAF/OpenFreqAudio))
 - Frequency-based voice channels with per-channel PTT and hotkeys (keyboard or joystick)
-- Realistic AM simulation including squelch (for a detailed write-up see [https://bitbashing.io/am-radio.html](https://bitbashing.io/am-radio.html))
+- [Realistic AM simulation including squelch](https://bitbashing.io/am-radio.html)
 - Hot-swappable audio devices
 - Dedicated GCI (Ground Controlled Intercept) client mode with unlimited positions & channels
 - Full 3D audio effects enabled in GCI mode — identical physics simulation as BMS mode
