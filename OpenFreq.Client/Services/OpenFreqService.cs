@@ -181,17 +181,7 @@ public class OpenFreqService : IOpenFreqService
         }
     }
 
-    public bool MicNormalizationEnabled
-    {
-        get;
-        set
-        {
-            field = value;
-            // Continuous capture (for noise-floor tracking) is tied to this toggle, so the
-            // mic stream needs to open/close when it flips while connected and idle.
-            UpdateMicCaptureState();
-        }
-    } = true;
+    public bool MicNormalizationEnabled { get; set; } = true;
 
     public double SidetoneVolume
     {
@@ -426,10 +416,6 @@ public class OpenFreqService : IOpenFreqService
 
         try
         {
-            // Stop continuous mic capture explicitly: client events are unsubscribed below
-            // before the disconnect, so the event-driven close path won't run here.
-            StopMicCapture();
-
             if (_playbackService != null)
             {
                 // Always stop recording before tearing streams down.
@@ -577,9 +563,6 @@ public class OpenFreqService : IOpenFreqService
         }
 
         _peerStreams.Clear();
-        // Close continuous capture now that we're disconnected (also closed via the connection
-        // event on unexpected drops, but be explicit on the graceful path).
-        StopMicCapture();
         OnStatusMessage("Disconnected from OpenFreq server");
         Status = IOpenFreqService.OpenFreqStatus.Disconnected;
     }
@@ -684,9 +667,6 @@ public class OpenFreqService : IOpenFreqService
             return;
         }
 
-        // Whether we're transitioning from idle → transmitting (i.e. first active TX).
-        bool wasIdle = _activeTransmissionsAndMutedFrequencies.IsEmpty;
-
         // Add to active transmissions (TX is per-frequency; only one TX per frequency at a time)
         _activeTransmissionsAndMutedFrequencies.TryAdd(frequencyKhz, mutedFrequencies);
         _activeTransmissionSlots[frequencyKhz] = slotId;
@@ -695,22 +675,44 @@ public class OpenFreqService : IOpenFreqService
         // Mute the noise
         //_playbackService.SetSquelchLevel(frequency, 1.0f);
 
-        // Make sure the mic stream is live. With normalization enabled it's usually already
-        // open for continuous noise-floor tracking; otherwise this opens it just for the
-        // duration of the transmission.
-        if (!StartMicCapture())
+        // If this is the FIRST transmission, start recording
+        if (_recordHandle == 0)
         {
-            // Couldn't open the mic — roll this transmission back so we don't TX silence.
-            _activeTransmissionsAndMutedFrequencies.TryRemove(frequencyKhz, out _);
-            _activeTransmissionSlots.TryRemove(frequencyKhz, out _);
-            return;
-        }
+            //_playbackService.SetSquelchLevel(frequency, 0.01f);
+            // RecordInit: Errors.Already is fine — AudioService.Init may have already done it.
+            if (!Bass.RecordInit(RecordingDeviceIndex) && Bass.LastError != Errors.Already)
+            {
+                var initMsg = $"Failed to initialize recording device (BASS index {RecordingDeviceIndex}): {Bass.LastError}";
+                _logger.LogError("{Message}", initMsg);
+                AudioPlaybackErrorOccurred?.Invoke(this, initMsg);
+                _activeTransmissionsAndMutedFrequencies.Clear();
+                return;
+            }
 
-        // On the idle → transmitting edge, mark the start time and arm sidetone monitoring.
-        if (wasIdle)
-        {
+            Bass.CurrentRecordingDevice = RecordingDeviceIndex;
+            _logger.LogDebug("RecordingDeviceIndex set to {RecordingDeviceIndex}", RecordingDeviceIndex);
+
+            _recordHandle = Bass.RecordStart(
+                OpenFreqRtcClient.SAMPLE_RATE,
+                1,
+                BassFlags.RecordPause,
+                Period: 2,
+                RecordProcedure);
+
+            if (_recordHandle == 0)
+            {
+                var startMsg = $"Failed to start recording on device (BASS index {RecordingDeviceIndex}): {Bass.LastError}";
+                _logger.LogError("{Message}", startMsg);
+                AudioPlaybackErrorOccurred?.Invoke(this, startMsg);
+                _activeTransmissionsAndMutedFrequencies.Clear();
+                return;
+            }
+
             _client.MarkTransmitStartTime();
             if (_playbackService != null) _playbackService.SidetoneEnabled = SidetoneEnabled;
+
+            if (!Bass.ChannelPlay(_recordHandle))
+                _logger.LogWarning("ChannelPlay on record handle returned false: {Error}", Bass.LastError);
         }
 
         await _client.StartTransmissionAsync(frequencyKhz, Apply3dAudioEffects);
@@ -732,97 +734,25 @@ public class OpenFreqService : IOpenFreqService
             _playbackService?.RemoveTransmittingFrequencies(mutedFrequencies);
         }
 
-        // If NO more transmissions, clear sidetone and re-evaluate capture: the mic stays open
-        // for continuous noise-floor tracking when normalization is enabled, otherwise it closes.
-        if (_activeTransmissionsAndMutedFrequencies.IsEmpty)
+        // If NO more transmissions, stop recording and sidetone
+        if (_activeTransmissionsAndMutedFrequencies.IsEmpty && _recordHandle != 0)
         {
+            if (!Bass.ChannelStop(_recordHandle))
+            {
+                _logger.LogWarning("ChannelStop on record handle {Handle} returned false: {Error}",
+                    _recordHandle, Bass.LastError);
+            }
+
+            _recordHandle = 0;
             if (_playbackService != null)
             {
                 _playbackService.SidetoneEnabled = SidetoneEnabled;
                 _playbackService.ClearSidetone();
             }
-
-            UpdateMicCaptureState();
         }
 
         await _client.StopTransmissionAsync(frequencyKhz, Apply3dAudioEffects);
         OnStatusMessage($"Stopped transmitting on {frequencyKhz / 1000d:F3} MHz");
-    }
-
-    /// <summary>
-    /// Whether the shared mic stream should currently be open. The mic is held open while
-    /// connected if either we're transmitting, or normalization is on (so the noise-floor
-    /// estimator can keep tracking the room between talk-spurts).
-    /// </summary>
-    private bool WantMicCapture =>
-        IsConnected && (MicNormalizationEnabled || !_activeTransmissionsAndMutedFrequencies.IsEmpty);
-
-    /// <summary>
-    /// Opens or closes the shared mic capture stream to match <see cref="WantMicCapture"/>.
-    /// Safe to call repeatedly — it's a no-op when already in the desired state.
-    /// </summary>
-    private void UpdateMicCaptureState()
-    {
-        if (WantMicCapture) StartMicCapture();
-        else StopMicCapture();
-    }
-
-    /// <summary>
-    /// Opens the shared microphone capture stream if it isn't already running. The same stream
-    /// feeds the noise-floor estimator while idle and the TX path while transmitting.
-    /// Returns true if a stream is running on return.
-    /// </summary>
-    private bool StartMicCapture()
-    {
-        if (_recordHandle != 0) return true;
-
-        // RecordInit: Errors.Already is fine — AudioService.Init may have already done it.
-        if (!Bass.RecordInit(RecordingDeviceIndex) && Bass.LastError != Errors.Already)
-        {
-            var initMsg = $"Failed to initialize recording device (BASS index {RecordingDeviceIndex}): {Bass.LastError}";
-            _logger.LogError("{Message}", initMsg);
-            AudioPlaybackErrorOccurred?.Invoke(this, initMsg);
-            return false;
-        }
-
-        Bass.CurrentRecordingDevice = RecordingDeviceIndex;
-        _logger.LogDebug("RecordingDeviceIndex set to {RecordingDeviceIndex}", RecordingDeviceIndex);
-
-        _recordHandle = Bass.RecordStart(
-            OpenFreqRtcClient.SAMPLE_RATE,
-            1,
-            BassFlags.RecordPause,
-            Period: 2,
-            RecordProcedure);
-
-        if (_recordHandle == 0)
-        {
-            var startMsg = $"Failed to start recording on device (BASS index {RecordingDeviceIndex}): {Bass.LastError}";
-            _logger.LogError("{Message}", startMsg);
-            AudioPlaybackErrorOccurred?.Invoke(this, startMsg);
-            return false;
-        }
-
-        if (!Bass.ChannelPlay(_recordHandle))
-            _logger.LogWarning("ChannelPlay on record handle returned false: {Error}", Bass.LastError);
-
-        return true;
-    }
-
-    /// <summary>
-    /// Stops and frees the shared microphone capture stream if running. No-op when idle.
-    /// </summary>
-    private void StopMicCapture()
-    {
-        if (_recordHandle == 0) return;
-
-        if (!Bass.ChannelStop(_recordHandle))
-            _logger.LogWarning("ChannelStop on record handle {Handle} returned false: {Error}",
-                _recordHandle, Bass.LastError);
-        if (!Bass.StreamFree(_recordHandle))
-            _logger.LogWarning("StreamFree on record handle {Handle} returned false: {Error}",
-                _recordHandle, Bass.LastError);
-        _recordHandle = 0;
     }
 
     public async Task NotifyModeAsync(bool is3d)
@@ -932,31 +862,12 @@ public class OpenFreqService : IOpenFreqService
 
     private bool RecordProcedure(int handle, IntPtr buffer, int length, IntPtr user)
     {
+        // If not transmitting on any frequency, skip
+        if (_activeTransmissionsAndMutedFrequencies.Count == 0)
+            return true;
+
         try
         {
-            // While not transmitting we keep the mic open purely so the normalizer can track
-            // the room's noise floor. Feed those idle samples to the estimator and return —
-            // nothing is sent, monitored, or recorded until PTT is held. This also freezes the
-            // gate during transmission: the estimate only advances on this idle path.
-            if (_activeTransmissionsAndMutedFrequencies.Count == 0)
-            {
-                if (MicNormalizationEnabled)
-                {
-                    // Read directly from the input buffer;
-                    // we'll actually allocate a GC array and copy below
-                    // if we actually need to grab a copy for sending.
-                    ReadOnlySpan<short> samples;
-                    unsafe
-                    {
-                        samples = new ReadOnlySpan<short>((void*)buffer, length / sizeof(short));
-                    }
-
-                    _micNormalizer.UpdateNoiseFloor(samples);
-                }
-
-                return true;
-            }
-
             // Handle first packet - BASS accumulates audio during initialization
             // Calculate expected size for 20ms at 48kHz, mono, 16-bit
             // 48000 samples/sec ÷ 50 = 960 samples per 20ms
@@ -1170,11 +1081,49 @@ public class OpenFreqService : IOpenFreqService
     {
         if (_recordHandle == 0) return;
 
-        // RecordingDeviceIndex has already been updated to deviceIndex by the caller, so the
-        // shared helpers pick up the new device. Reopen on it.
-        StopMicCapture();
-        if (StartMicCapture())
+        // Stop current capture
+        if (!Bass.ChannelStop(_recordHandle))
+            _logger.LogWarning("ChannelStop on record handle {Handle} returned false: {Error}",
+                _recordHandle, Bass.LastError);
+        if (!Bass.StreamFree(_recordHandle))
+            _logger.LogWarning("StreamFree on record handle {Handle} returned false: {Error}",
+                _recordHandle, Bass.LastError);
+        _recordHandle = 0;
+
+        // Init new device — Errors.Already is fine (AudioService.Init may have done it)
+        if (!Bass.RecordInit(deviceIndex) && Bass.LastError != Errors.Already)
+        {
+            var msg = $"Failed to initialize recording device (BASS index {deviceIndex}): {Bass.LastError}";
+            _logger.LogError("{Message}", msg);
+            AudioPlaybackErrorOccurred?.Invoke(this, msg);
+            return;
+        }
+
+        Bass.CurrentRecordingDevice = deviceIndex;
+
+        _recordHandle = Bass.RecordStart(
+            OpenFreqRtcClient.SAMPLE_RATE, 1,
+            BassFlags.RecordPause, Period: 2,
+            RecordProcedure);
+
+        if (_recordHandle == 0)
+        {
+            var msg = $"Failed to restart recording on device (BASS index {deviceIndex}): {Bass.LastError}";
+            _logger.LogError("{Message}", msg);
+            AudioPlaybackErrorOccurred?.Invoke(this, msg);
+            return;
+        }
+
+        if (!Bass.ChannelPlay(_recordHandle))
+        {
+            var msg = $"Failed to resume recording channel on device (BASS index {deviceIndex}): {Bass.LastError}";
+            _logger.LogError("{Message}", msg);
+            AudioPlaybackErrorOccurred?.Invoke(this, msg);
+        }
+        else
+        {
             _logger.LogInformation("Recording restarted on BASS device {Index}", deviceIndex);
+        }
     }
 
     // Client event handlers
@@ -1194,9 +1143,6 @@ public class OpenFreqService : IOpenFreqService
             _tunedSlots.Clear();
             _activeTransmissionSlots.Clear();
         }
-
-        // Open continuous capture once connected (for noise-floor tracking) / close it on drop.
-        UpdateMicCaptureState();
 
         ConnectionStateChanged?.Invoke(this, e);
     }
@@ -1518,8 +1464,15 @@ public class OpenFreqService : IOpenFreqService
         _cleanupCts?.Cancel();
         _cleanupCts?.Dispose();
 
-        // Stop all transmissions and free the recording handle
-        StopMicCapture();
+        // Stop all transmissions and free recording handle
+        if (_recordHandle != 0)
+        {
+            if (!Bass.ChannelStop(_recordHandle))
+                _logger.LogWarning("ChannelStop on record handle during Dispose returned false: {Error}", Bass.LastError);
+            if (!Bass.StreamFree(_recordHandle))
+                _logger.LogWarning("StreamFree on record handle during Dispose returned false: {Error}", Bass.LastError);
+            _recordHandle = 0;
+        }
         _activeTransmissionsAndMutedFrequencies.Clear();
 
         _playbackService?.StopAll();
