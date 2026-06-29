@@ -1,11 +1,12 @@
 using System;
 using Microsoft.Extensions.Logging;
 using OpenFreqAudio;
+using OpenFreqAudio.TerrainSampling;
 
 namespace OpenFreqClient.Services.Audio;
 
 /// <summary>
-/// Abstraction over the terrain-aware RF physics (<see cref="DEMReader"/> + <see cref="FastPathAudioSim"/>).
+/// Abstraction over the terrain-aware RF physics (<see cref="HeightPyramid"/> + <see cref="FastPathAudioSim"/>).
 /// Exists so signal calculation can be faked in tests.
 /// </summary>
 public interface ISignalCalculator : IDisposable
@@ -29,14 +30,16 @@ public interface ISignalCalculator : IDisposable
 /// <summary>Adapter owning a <see cref="DEMReader"/> + <see cref="FastPathAudioSim"/>.</summary>
 public sealed class TerrainSignalCalculator : ISignalCalculator
 {
-    private readonly DEMReader _dem;
+    private readonly HeightPyramid _pyramid;
     private readonly FastPathAudioSim _sim;
 
     public TerrainSignalCalculator(string path, int width, int height, int bytesPerSample, double cellSizeMeters,
         ILoggerFactory loggerFactory)
     {
-        _dem = new DEMReader(path, width, height, bytesPerSample);
-        _sim = new FastPathAudioSim(_dem, 0, 0, cellSizeMeters, loggerFactory.CreateLogger<FastPathAudioSim>());
+        if (bytesPerSample != 2)
+            throw new ArgumentException("HeightPyramid only supports 2-byte (int16 feet) samples", nameof(bytesPerSample));
+        _pyramid = HeightPyramid.FromFile(path, width, height);
+        _sim = new FastPathAudioSim(_pyramid, 0, 0, cellSizeMeters, loggerFactory.CreateLogger<FastPathAudioSim>());
     }
 
     public AudioParams CalculateAudioParams(
@@ -55,7 +58,7 @@ public sealed class TerrainSignalCalculator : ISignalCalculator
             receiverSensitivityDbm, includeTerrainProfile, txAltitudeIsMSL, rxAltitudeIsMSL, txVelocity, rxVelocity);
     public double SampleElevation(double xMeters, double yMeters) => _sim.SampleElevation(xMeters, yMeters);
 
-    public void Dispose() => _dem.Dispose();
+    public void Dispose() => _pyramid.Dispose();
 }
 
 /// <summary>
