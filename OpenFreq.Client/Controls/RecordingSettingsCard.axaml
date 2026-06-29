@@ -18,20 +18,22 @@
 
       <TextBlock Text="Trigger" Classes="Caption" Opacity="0.6" Margin="0,0,0,4" />
 
-      <RadioButton Content="Start/Stop recording manually"
-                   IsChecked="{Binding !Settings.AutoRecordInGameMode}"
-                   Margin="0,0,0,2" />
+      <StackPanel>
+        <RadioButton Content="Start/Stop recording manually"
+                     IsChecked="{Binding !Settings.AutoRecordInGameMode}"
+                     Margin="0,0,0,2" />
 
-      <RadioButton Content="Start recording in Game Mode"
-                   IsChecked="{Binding Settings.AutoRecordInGameMode}"
-                   Margin="0,0,0,4" />
-
+        <RadioButton Content="Start recording in Game Mode"
+                     IsChecked="{Binding Settings.AutoRecordInGameMode}"
+                     Margin="0,0,0,4" />
+      </StackPanel>
 
       <TextBlock Text="Output" Classes="Caption" Opacity="0.6" Margin="0,12,0,4" />
-      <RadioButton Content="Record to file"
-                   IsChecked="{Binding Settings.StreamToDevice, Converter={StaticResource InverseBool}}"
-                   Margin="0,0,0,2" />
-
+      <StackPanel>
+        <RadioButton Content="Record to file"
+                     IsChecked="{Binding Settings.StreamToDevice, Converter={StaticResource InverseBool}}"
+                     Margin="0,0,0,2" />
+      </StackPanel>
       <!-- File sink: output folder -->
       <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding Settings.RecordToFile}">
         <Border Grid.Column="0"
