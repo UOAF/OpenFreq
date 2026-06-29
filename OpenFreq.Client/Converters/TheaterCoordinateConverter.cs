@@ -220,7 +220,7 @@ namespace OpenFreq.Utilities
         // For UI bindings
         public static readonly IEnumerable<string> AllTheaters = ["Korea KTO", "Balkans", "HTO", "ITO"];
 
-        [GeneratedRegex(@"-?\d+(\.\d+)?[eE][+-]?\d+")]
+        [GeneratedRegex(@"[+-]?\d+(\.\d+)?[eE][+-]?\d+")]
         private static partial Regex MyRegex();
 
         public static bool IsWithinTheaterBounds(string theaterName, double latitude, double longitude)

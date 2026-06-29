@@ -207,7 +207,16 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
 
         foreach (var t in theaters)
         {
-            TheaterCoordinateConverter.RegisterTheater(t);
+            // A malformed proj4 string must not crash us - skip the offending theater and keep the rest
+            try
+            {
+                TheaterCoordinateConverter.RegisterTheater(t);
+            }
+            catch
+            {
+                _logger.LogError("Could not register the theater {Theater}", t.Name);
+                continue;
+            }
             if (!AvailableTheaterNames.Contains(t.Name))
                 AvailableTheaterNames.Add(t.Name);
         }
