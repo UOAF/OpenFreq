@@ -96,16 +96,14 @@ public class OpenFreqService : IOpenFreqService
     private float[] _sidetonePushBuffer = new float[4800]; // 100ms @ 48kHz, grows if needed
     private readonly MicLevelNormalizer _micNormalizer = new(OpenFreqRtcClient.SAMPLE_RATE);
 
-    // Cache duration
-    private readonly TimeSpan _audioParamsCacheDuration = TimeSpan.FromMilliseconds(100);
+    // Cache duration - this effectively controls the rate of local physics calculations
+    private readonly TimeSpan _audioParamsCacheDuration = TimeSpan.FromMilliseconds(50);
 
     // Cache cleanup
     private CancellationTokenSource? _cleanupCts;
 
     private const float SquelchLevelOff = 0f;
     private const float SquelchLevelOn = 1f;
-
-
 
     private readonly IRtcClientFactory _rtcClientFactory;
     private readonly IPlaybackServiceFactory _playbackServiceFactory;
