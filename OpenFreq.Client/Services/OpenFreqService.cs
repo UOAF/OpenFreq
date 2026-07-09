@@ -955,28 +955,6 @@ public class OpenFreqService : IOpenFreqService
                 return true;
             }
 
-            // Handle first packet - BASS accumulates audio during initialization
-            // Calculate expected size for 20ms at 48kHz, mono, 16-bit
-            // 48000 samples/sec ÷ 50 = 960 samples per 20ms
-            // 960 samples × 2 bytes/sample × 1 channel = 1920 bytes
-            int expectedBytes = (OpenFreqRtcClient.SAMPLE_RATE / 50) * 2;
-
-            // TODO: I dont think we need this anymore with the shorter dsp updates. Deactivated for now
-            expectedBytes = 10000;
-
-            if (length > expectedBytes)
-            {
-                _logger.LogWarning("Recording packet oversized: {Length} bytes, truncating to {ExpectedBytes}",
-                    length, expectedBytes);
-                // Option 1: Only use the LAST 20ms (most recent audio)
-                buffer = IntPtr.Add(buffer, length - expectedBytes);
-                length = expectedBytes;
-
-                // Option 2: Skip first packet entirely
-                //_isFirstPacket = false;
-                //return true;
-            }
-
             // Copy audio data once
             short[] audioData = new short[length / 2];
             Marshal.Copy(buffer, audioData, 0, audioData.Length);
