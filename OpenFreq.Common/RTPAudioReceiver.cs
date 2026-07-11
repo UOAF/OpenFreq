@@ -30,7 +30,6 @@ public class RtpAudioReceiver : IDisposable
     private readonly ILogger<RtpAudioReceiver> _logger;
     private readonly UdpClient _udpClient;
     private readonly RtpJitterBufferPool _pool;
-    private readonly bool _opusEnabled;
 
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _rxTask;
@@ -44,11 +43,9 @@ public class RtpAudioReceiver : IDisposable
     private readonly Thread _jitterDrainThread;
     private readonly Task _playTask;
 
-    public RtpAudioReceiver(ILoggerFactory loggerFactory, UdpClient udpClient, bool opusEnabled = true,
-        int initialBufferMs = 150)
+    public RtpAudioReceiver(ILoggerFactory loggerFactory, UdpClient udpClient, int initialBufferMs = 150)
     {
         _logger = loggerFactory.CreateLogger<RtpAudioReceiver>();
-        _opusEnabled = opusEnabled;
 
         var playChan = Channel.CreateBounded<AudioReceivedEventArgs>(new BoundedChannelOptions(128)
         {
@@ -56,14 +53,13 @@ public class RtpAudioReceiver : IDisposable
             FullMode = BoundedChannelFullMode.DropOldest
         });
 
-        _pool = new RtpJitterBufferPool(loggerFactory, _cts.Token, playChan.Writer, opusEnabled, initialBufferMs);
+        _pool = new RtpJitterBufferPool(loggerFactory, _cts.Token, playChan.Writer, initialBufferMs);
         _pool.SourceAdded += ssrc => _logger.LogInformation("Source joined:  SSRC={Ssrc:X8}", ssrc);
         _pool.SourceExpired += ssrc => _logger.LogInformation("Source expired: SSRC={Ssrc:X8}", ssrc);
 
         _udpClient = udpClient;
         var port = (_udpClient.Client.LocalEndPoint as IPEndPoint)!.Port;
         _logger.LogInformation("Started on port {Port}", port);
-        _logger.LogInformation("  Opus: {OpusEnabled}", _opusEnabled);
         _logger.LogInformation("  Initial buffer: {BufferMs}ms (adaptive, per-SSRC)", initialBufferMs);
 
         _rxTask = Task.Run(() => ReceiveLoop(), _cts.Token);

@@ -436,7 +436,7 @@ public class SignalingServer
             var audioPort = _audioServer.CreateAudioSession(session.Id);
             LogClientAuthenticated(_logger, GetDisplayName(session), session.Id, audioPort, null);
 
-            await SendSuccess(session, "Authenticated", session.Id, audioPort, _config.EnableOpusCompression);
+            await SendSuccess(session, "Authenticated", session.Id, audioPort);
         }
         else
         {
@@ -752,12 +752,10 @@ public class SignalingServer
         await SendToClient(session, SignalingMessageFactory.CreateError(error));
     }
 
-    private async Task SendSuccess(ClientSession session, string message, string? peerId = null, int? audioPort = null,
-        bool opusEnabled = true)
+    private async Task SendSuccess(ClientSession session, string message, string? peerId = null, int? audioPort = null)
     {
         await SendToClient(session,
-            SignalingMessageFactory.CreateSuccess(message, _channelManager.GetAllChannelStates(), peerId, audioPort,
-                opusEnabled));
+            SignalingMessageFactory.CreateSuccess(message, _channelManager.GetAllChannelStates(), peerId, audioPort));
     }
 
     private async Task SendChannelState(ClientSession session, int frequencyKhz, List<ChannelStateMessage.Peer> peers)

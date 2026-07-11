@@ -33,13 +33,6 @@ public class ServerConfigTests
     }
 
     [Fact]
-    public void DefaultEnableOpusCompression_IsTrue()
-    {
-        var config = new ServerConfig();
-        Assert.True(config.EnableOpusCompression);
-    }
-
-    [Fact]
     public void DefaultBroadcastPeerUpdates_IsTrue()
     {
         var config = new ServerConfig();

@@ -35,7 +35,6 @@ public class SignalingMessagesTests
         Assert.Equal(string.Empty, msg.Message);
         Assert.Null(msg.PeerId);
         Assert.Null(msg.AudioPort);
-        Assert.False(msg.OpusCompressionEnabled);
         Assert.Empty(msg.FrequenciesPeers);
     }
 

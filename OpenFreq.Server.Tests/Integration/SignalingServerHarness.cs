@@ -39,7 +39,6 @@ public sealed class SignalingServerHarness : IAsyncDisposable
             AudioPort = FakeAudioRelay.FakePort,
             MaxClientsPerChannel = maxClientsPerChannel,
             BroadcastPeerUpdates = broadcastPeerUpdates,
-            EnableOpusCompression = false,
         };
 
         var audio = new FakeAudioRelay();
