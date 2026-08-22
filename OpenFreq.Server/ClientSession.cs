@@ -10,6 +10,7 @@ public class ClientSession(string id, string displayName, WebSocket webSocket, s
     public string Id { get; } = id;
     public WebSocket WebSocket { get; } = webSocket;
     public bool IsAuthenticated { get; set; }
+    public bool DiagnosticTelemetryConsent { get; set; }
     public ConcurrentDictionary<int, FrequencyClientStatus> CurrentFrequencies { get; } = new();
     public DateTime LastActivity { get; set; } = DateTime.UtcNow;
     public string? DisplayName { get; set; } = displayName;

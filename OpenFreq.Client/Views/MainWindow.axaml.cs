@@ -5,8 +5,8 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
-using OpenFreqClient.Services.Interfaces;
 using OpenFreqClient.Models;
+using OpenFreqClient.Services.Interfaces;
 using OpenFreqClient.ViewModels;
 using OpenFreqClient.Views.Util;
 

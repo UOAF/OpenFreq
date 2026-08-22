@@ -16,7 +16,7 @@ public class TelemetryTokenIssuerTests
     [Fact]
     public void IssuedTokenHasValidSignatureAndCorrelation()
     {
-        const string key = "test-signing-key-with-enough-entropy";
+        const string key = "test-signing-key-with-enough-entropy-32";
         var runId = Guid.NewGuid();
         var now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
         var issued = TelemetryTokenIssuer.TryIssue(new ServerConfig
@@ -37,6 +37,18 @@ public class TelemetryTokenIssuerTests
         Assert.Equal(runId, payload.RootElement.GetProperty("ServerRunId").GetGuid());
         Assert.Equal("UOAF-TEST", payload.RootElement.GetProperty("EventId").GetString());
         Assert.Equal(now.AddHours(6), issued.ExpiresAtUtc);
+    }
+
+    [Theory]
+    [InlineData("http://telemetry.example/v1/batches", "test-signing-key-with-enough-entropy-32")]
+    [InlineData("https://telemetry.example/v1/batches", "too-short")]
+    public void InsecureConfigurationDoesNotIssueToken(string endpoint, string key)
+    {
+        Assert.Null(TelemetryTokenIssuer.TryIssue(new ServerConfig
+        {
+            TelemetryEndpoint = endpoint,
+            TelemetrySigningKey = key
+        }, Guid.NewGuid()));
     }
 
     private static byte[] Decode(string value)

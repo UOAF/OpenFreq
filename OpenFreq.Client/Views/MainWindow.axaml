@@ -611,6 +611,9 @@
                                                TextWrapping="Wrap"
                                                Classes="InputLabel" />
                                     <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button Content="Send now"
+                                                Command="{Binding SendTelemetryNowCommand}"
+                                                IsEnabled="{Binding Settings.TelemetryEnabled}" />
                                         <Button Content="Export diagnostics"
                                                 Click="ExportTelemetryButton_OnClick" />
                                         <Button Content="Delete queued data"

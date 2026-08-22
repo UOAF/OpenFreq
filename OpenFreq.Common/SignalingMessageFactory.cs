@@ -5,13 +5,20 @@ namespace OpenFreq.Common.Signaling;
 
 public static class SignalingMessageFactory
 {
-    public static SignalingMessage CreateAuthenticate(string password, string? displayName, string? version = null)
+    public static SignalingMessage CreateAuthenticate(string password, string? displayName, string? version = null,
+        bool diagnosticTelemetryConsent = false)
     {
         return new SignalingMessage
         {
             Type = SignalingMessageTypes.Authenticate,
             Payload = JsonSerializer.SerializeToElement(
-                new AuthenticateMessage { Password = password, DisplayName = displayName, Version = version },
+                new AuthenticateMessage
+                {
+                    Password = password,
+                    DisplayName = displayName,
+                    Version = version,
+                    DiagnosticTelemetryConsent = diagnosticTelemetryConsent
+                },
                 OpenFreqJsonContext.Default.AuthenticateMessage)
         };
     }
@@ -26,6 +33,30 @@ public static class SignalingMessageFactory
                 OpenFreqJsonContext.Default.JoinChannelMessage)
         };
     }
+
+    public static SignalingMessage CreateTelemetryConsent(bool consented) => new()
+    {
+        Type = SignalingMessageTypes.TelemetryConsent,
+        Payload = JsonSerializer.SerializeToElement(
+            new DiagnosticTelemetryConsentMessage { Consented = consented },
+            OpenFreqJsonContext.Default.DiagnosticTelemetryConsentMessage)
+    };
+
+    public static SignalingMessage CreateTelemetryCapability(Guid serverRunId, string? eventId,
+        string? endpoint, string? token, DateTimeOffset? expiresAtUtc) => new()
+        {
+            Type = SignalingMessageTypes.TelemetryCapability,
+            Payload = JsonSerializer.SerializeToElement(
+            new TelemetryCapabilityMessage
+            {
+                ServerRunId = serverRunId,
+                EventId = eventId,
+                TelemetryEndpoint = endpoint,
+                TelemetryToken = token,
+                TelemetryTokenExpiresAtUtc = expiresAtUtc
+            },
+            OpenFreqJsonContext.Default.TelemetryCapabilityMessage)
+        };
 
     public static SignalingMessage CreateLeave(int frequencyKhz)
     {

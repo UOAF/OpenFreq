@@ -14,6 +14,12 @@ namespace OpenFreqClient.Json;
 [JsonSerializable(typeof(TelemetryContextUpdate))]
 [JsonSerializable(typeof(TelemetryCorrelationUpdate))]
 [JsonSerializable(typeof(TelemetryExportManifest))]
+[JsonSerializable(typeof(TelemetryUploadBatch))]
+[JsonSerializable(typeof(string))]
+[JsonSerializable(typeof(bool))]
+[JsonSerializable(typeof(int))]
+[JsonSerializable(typeof(long))]
+[JsonSerializable(typeof(double))]
 public partial class TelemetryJsonContext : JsonSerializerContext
 {
 }

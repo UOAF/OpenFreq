@@ -11,11 +11,13 @@ public static class TelemetryTokenIssuer
         DateTimeOffset? now = null)
     {
         if (string.IsNullOrWhiteSpace(config.TelemetryEndpoint) ||
-            string.IsNullOrWhiteSpace(config.TelemetrySigningKey))
+            string.IsNullOrWhiteSpace(config.TelemetrySigningKey) ||
+            Encoding.UTF8.GetByteCount(config.TelemetrySigningKey) < 32)
             return null;
 
         if (!Uri.TryCreate(config.TelemetryEndpoint, UriKind.Absolute, out var endpoint) ||
-            endpoint.Scheme is not ("https" or "http"))
+            endpoint.Scheme is not ("https" or "http") ||
+            endpoint.Scheme == "http" && !endpoint.IsLoopback)
             return null;
 
         var issuedAt = now ?? DateTimeOffset.UtcNow;

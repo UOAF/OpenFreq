@@ -319,6 +319,7 @@ public class OpenFreqService : IOpenFreqService
         // Subscribe to client events
         _client.ConnectionStateChanged += OnClientConnectionStateChanged;
         _client.Authenticated += OnClientAuthenticated;
+        _client.TelemetryCapabilityChanged += OnTelemetryCapabilityChanged;
         _client.FrequencyJoined += OnClientFrequencyJoined;
         _client.FrequencyLeft += OnClientFrequencyLeft;
         _client.PeerJoined += OnClientPeerJoined;
@@ -459,6 +460,7 @@ public class OpenFreqService : IOpenFreqService
                 // Unsubscribe from events before disposing
                 _client.ConnectionStateChanged -= OnClientConnectionStateChanged;
                 _client.Authenticated -= OnClientAuthenticated;
+                _client.TelemetryCapabilityChanged -= OnTelemetryCapabilityChanged;
                 _client.FrequencyJoined -= OnClientFrequencyJoined;
                 _client.FrequencyLeft -= OnClientFrequencyLeft;
                 _client.PeerJoined -= OnClientPeerJoined;
@@ -504,8 +506,12 @@ public class OpenFreqService : IOpenFreqService
 
         OnStatusMessage($"Connecting to OpenFreq server {_client.ServerIp}...");
         Status = IOpenFreqService.OpenFreqStatus.Connecting;
+        _client.DiagnosticTelemetryConsent = _telemetry.IsEnabled;
         await _client.ConnectAsync(connectTimeout);
     }
+
+    public Task SetDiagnosticTelemetryConsentAsync(bool consented) =>
+        _client?.SetDiagnosticTelemetryConsentAsync(consented) ?? Task.CompletedTask;
 
     /// <summary>
     /// Start a combined session recording (incoming as heard + own voice rendered as if heard
@@ -738,6 +744,7 @@ public class OpenFreqService : IOpenFreqService
             await _client.StartTransmissionAsync(frequencyKhz, Apply3dAudioEffects);
             _telemetry.Track(TelemetryEvents.TransmissionState(telemetryState.TransmissionId, "started",
                 frequencyKhz, slotId, Apply3dAudioEffects));
+            TrackBmsPosition();
         }
         catch
         {
@@ -796,6 +803,7 @@ public class OpenFreqService : IOpenFreqService
                     Interlocked.Read(ref _captureCallbackCount) - telemetryState.CaptureCallbacksAtStart,
                     Interlocked.Read(ref _capturedSampleCount) - telemetryState.CapturedSamplesAtStart,
                     Interlocked.Read(ref _audioSendCallCount) - telemetryState.SendCallsAtStart));
+                TrackBmsPosition();
             }
         }
         OnStatusMessage($"Stopped transmitting on {frequencyKhz / 1000d:F3} MHz");
@@ -1289,6 +1297,12 @@ public class OpenFreqService : IOpenFreqService
         _ = _client?.SendModeUpdateAsync(Apply3dAudioEffects);
     }
 
+    private void OnTelemetryCapabilityChanged(object? sender, TelemetryCapabilityChangedEventArgs e)
+    {
+        _telemetry.UpdateCorrelation(new TelemetryCorrelationUpdate(e.ServerRunId, _client?.MyPeerId, e.EventId));
+        _telemetry.ConfigureUpload(e.Capability);
+    }
+
     private void OnClientFrequencyJoined(object? sender, FrequencyJoinedEventArgs e)
     {
         FrequencyJoined?.Invoke(this, e);
@@ -1580,6 +1594,23 @@ public class OpenFreqService : IOpenFreqService
         _healthWindowStartedUtc = now;
     }
 
+    private void TrackBmsPosition()
+    {
+        if (OwnPositionMode != IOpenFreqService.Mode.BMS ||
+            _falconSharedMemoryService is not { IsFlying: true, Position: { } position }) return;
+        double? terrainFeet = null;
+        try
+        {
+            var heightmap = BmsHeightmapConverter.ToHeightmap(position.X, position.Y, position.Z);
+            terrainFeet = SampleTerrainElevationMeters(heightmap.x, heightmap.y) * 3.28084;
+        }
+        catch
+        {
+            // Heightmap failures have their own telemetry event; retain the raw simulated position.
+        }
+        _telemetry.Track(TelemetryEvents.PositionSample(position.X, position.Y, position.Z, terrainFeet, "bms"));
+    }
+
     // Last computed physics params for this source+freq, ignoring the cache freshness.
     // Fallback to flat default only when nothing was ever calculated.
     private AudioParams LastKnownOrDefaultAudioParams((string PeerId, int FrequencyKhz) cacheKey, int khz)
@@ -1667,6 +1698,7 @@ public class OpenFreqService : IOpenFreqService
         {
             _client.ConnectionStateChanged -= OnClientConnectionStateChanged;
             _client.Authenticated -= OnClientAuthenticated;
+            _client.TelemetryCapabilityChanged -= OnTelemetryCapabilityChanged;
             _client.FrequencyJoined -= OnClientFrequencyJoined;
             _client.FrequencyLeft -= OnClientFrequencyLeft;
             _client.PeerJoined -= OnClientPeerJoined;

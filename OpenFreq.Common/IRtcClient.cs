@@ -22,12 +22,14 @@ public interface IRtcClient : IDisposable
     event EventHandler<AudioDataEventArgs>? AudioDataReceived;
     event EventHandler<AllPeersStatusEventArgs>? AllPeersStatusUpdateReceived;
     event EventHandler<ErrorEventArgs>? ErrorOccurred;
+    event EventHandler<TelemetryCapabilityChangedEventArgs>? TelemetryCapabilityChanged;
 
     string ServerIp { get; }
     string? MyPeerId { get; }
     Guid? ServerRunId { get; }
     string? EventId { get; }
     TelemetryCapability? TelemetryCapability { get; }
+    bool DiagnosticTelemetryConsent { get; set; }
     bool IsConnected { get; }
     bool IsAuthenticated { get; }
 
@@ -39,6 +41,7 @@ public interface IRtcClient : IDisposable
     Task StopTransmissionAsync(int frequencyKhz, bool is3d);
     Task SendModeUpdateAsync(bool is3d);
     Task SetDisplayNameAsync(string displayName);
+    Task SetDiagnosticTelemetryConsentAsync(bool consented);
     void MarkTransmitStartTime();
 
     void SendAudio(

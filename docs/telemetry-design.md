@@ -1,7 +1,7 @@
 # OpenFreq diagnostic telemetry design
 
-Status: Draft for discussion  
-Target: phased implementation after design approval  
+Status: Implemented prototype for review
+Target: opt-in UOAF pilot after operator approvals
 Initial deployment: UOAF-operated multiplayer servers
 
 ## Summary
@@ -376,7 +376,7 @@ Upload behavior:
 - Cancel promptly on consent withdrawal.
 - Delete a batch only after an idempotent success response for its `batch_id`.
 
-An API key embedded in a distributed client is not a secret. The initial UOAF design should have the OpenFreq server provide a short-lived telemetry upload token or capability during authentication. The ingestion service validates the token and binds it to a known `server_run_id`/`event_id`. Pre-authentication startup telemetry can remain queued until a capability is obtained. Manual export remains available when a client never authenticates.
+An API key embedded in a distributed client is not a secret. The OpenFreq server provides a short-lived telemetry upload capability only when the authentication request reports current explicit consent. The ingestion service validates the capability and records its issuing `server_run_id`/`event_id` as authorization metadata. Each record retains its own historical correlation, so pre-authentication and prior-run records can upload later without being falsely attributed to the current event. Manual export remains available when a client never authenticates.
 
 Community servers can omit the telemetry capability. A future design may allow operators to configure their own compatible endpoint, but a server must not silently redirect clients to an undisclosed telemetry recipient.
 
@@ -395,7 +395,7 @@ The ingestion endpoint accepts a compressed batch containing:
 It performs:
 
 1. TLS termination and request-size enforcement.
-2. Token, server, event, and rate-limit validation.
+2. Token issuer, expiry, and rate-limit validation.
 3. Decompression limits to prevent zip bombs.
 4. Strict schema validation.
 5. Server-side field redaction as a second line of defense.
@@ -408,8 +408,10 @@ It performs:
 Raw validated batches are immutable and partitioned for bounded queries, for example:
 
 ```text
-s3://<bucket>/schema=1/date=2026-08-22/event=UOAF-2026-08-22/server=<uuid>/batch.json.gz
+s3://<bucket>/schema=1/date=2026-08-22/authorized-event=UOAF-2026-08-22/authorized-server=<uuid>/batch=<uuid>.json.gz
 ```
+
+The authorization partitions identify the server that admitted an uploader. Historical attribution remains in each record's `correlation.event_id` and `correlation.server_run_id`; a queued batch may legitimately span application or server runs.
 
 An optional DynamoDB index stores small session-level records such as event ID, server run ID, callsign, connection ID, first/last timestamps, client version, upload completeness, and anomaly flags. It does not need to store every position or packet-health event.
 
@@ -595,7 +597,7 @@ Acceptance: an offline-first end-to-end event reaches storage exactly once per b
 - The backend starts with an AWS serverless ingestion pattern; DynamoDB is optional session indexing rather than the raw event store.
 - Hosted raw telemetry retention starts at 30 days.
 
-## Items to confirm before PR 4
+## Deployment decisions still required
 
 - Which AWS account and maintainers own the hosted data.
 - Whether infrastructure-as-code lives in this repository or a separately controlled infrastructure repository.

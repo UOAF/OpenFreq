@@ -33,9 +33,13 @@ public sealed class RtcClientHarness : IAsyncDisposable
 
     public string? PeerId => Client.MyPeerId;
 
-    public static RtcClientHarness Create(SignalingServerHarness server, string displayName, string password = "")
+    public static RtcClientHarness Create(SignalingServerHarness server, string displayName, string password = "",
+        bool diagnosticTelemetryConsent = false)
     {
-        var client = new OpenFreqRtcClient(NullLoggerFactory.Instance, server.ServerAddress, password, displayName);
+        var client = new OpenFreqRtcClient(NullLoggerFactory.Instance, server.ServerAddress, password, displayName)
+        {
+            DiagnosticTelemetryConsent = diagnosticTelemetryConsent
+        };
         return new RtcClientHarness(client);
     }
 

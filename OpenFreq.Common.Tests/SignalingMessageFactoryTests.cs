@@ -41,6 +41,18 @@ public class SignalingMessageFactoryTests
 
         Assert.NotNull(payload);
         Assert.Equal("1.2.3", payload.Version);
+        Assert.False(payload.DiagnosticTelemetryConsent);
+    }
+
+    [Fact]
+    public void CreateAuthenticate_TelemetryConsentRoundTrips()
+    {
+        var msg = SignalingMessageFactory.CreateAuthenticate("pass", "Viper", "1.2.3",
+            diagnosticTelemetryConsent: true);
+        var payload = SignalingMessageFactory.DeserializePayload<AuthenticateMessage>(msg.Payload);
+
+        Assert.NotNull(payload);
+        Assert.True(payload.DiagnosticTelemetryConsent);
     }
 
     [Fact]

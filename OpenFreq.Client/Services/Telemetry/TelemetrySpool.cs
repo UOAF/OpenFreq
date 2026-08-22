@@ -8,6 +8,10 @@ namespace OpenFreqClient.Services.Telemetry;
 public interface ITelemetrySpool
 {
     ValueTask EnqueueAsync(TelemetryEnvelope record, CancellationToken cancellationToken = default);
+    Task<TelemetryBatch?> ClaimBatchAsync(CancellationToken cancellationToken = default);
+    Task AcknowledgeAsync(Guid batchId, CancellationToken cancellationToken = default);
+    Task ReleaseAsync(Guid batchId, CancellationToken cancellationToken = default);
+    Task RejectAsync(Guid batchId, CancellationToken cancellationToken = default);
     IAsyncEnumerable<TelemetryEnvelope> ReadAllAsync(CancellationToken cancellationToken = default);
     Task<TelemetryQueueStats> GetStatsAsync(long droppedRecords, CancellationToken cancellationToken = default);
     Task DeleteAllAsync(CancellationToken cancellationToken = default);
@@ -16,7 +20,8 @@ public interface ITelemetrySpool
 public sealed class TelemetryStorageOptions
 {
     public long MaximumBytes { get; init; } = 50L * 1024 * 1024;
-    public long MaximumSegmentBytes { get; init; } = 1024L * 1024;
+    public long MaximumSegmentBytes { get; init; } = 768L * 1024;
     public int MaximumRecordBytes { get; init; } = 64 * 1024;
+    public int MaximumSegmentRecords { get; init; } = 1000;
     public TimeSpan MaximumAge { get; init; } = TimeSpan.FromDays(7);
 }

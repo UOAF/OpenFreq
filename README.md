@@ -58,6 +58,8 @@ Available tags: `latest`, `<x.y.z>`, `nightly`. See the [Handbook](docs/handbook
 ## Documentation
 See the [Handbook](docs/handbook.md "Handbook") for in-depth usage and configuration.
 
+See [Diagnostic telemetry](docs/telemetry.md) for the opt-in data policy, local controls, server configuration, and ingestion deployment.
+
 ## Requirements
 
 - **Self-contained builds** — no dependencies, runs as-is

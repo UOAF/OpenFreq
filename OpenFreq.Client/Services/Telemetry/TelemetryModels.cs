@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using OpenFreqClient.Json;
 using OpenFreqClient.Models;
 
 namespace OpenFreqClient.Services.Telemetry;
@@ -30,7 +32,7 @@ public sealed record AppSessionStartedTelemetry(string Distribution) : ITelemetr
 
     public Dictionary<string, JsonElement> CreateAttributes() => new()
     {
-        ["distribution"] = JsonSerializer.SerializeToElement(Distribution)
+        ["distribution"] = TelemetryJsonValue.Create(Distribution)
     };
 }
 
@@ -41,7 +43,7 @@ public sealed record AppSessionEndedTelemetry(bool Clean) : ITelemetryEvent
 
     public Dictionary<string, JsonElement> CreateAttributes() => new()
     {
-        ["clean"] = JsonSerializer.SerializeToElement(Clean)
+        ["clean"] = TelemetryJsonValue.Create(Clean)
     };
 }
 
@@ -52,8 +54,8 @@ public sealed record ConsentChangedTelemetry(TelemetryConsentStatus Status, int 
 
     public Dictionary<string, JsonElement> CreateAttributes() => new()
     {
-        ["status"] = JsonSerializer.SerializeToElement(Status.ToString().ToLowerInvariant()),
-        ["policy_version"] = JsonSerializer.SerializeToElement(PolicyVersion)
+        ["status"] = TelemetryJsonValue.Create(Status.ToString().ToLowerInvariant()),
+        ["policy_version"] = TelemetryJsonValue.Create(PolicyVersion)
     };
 }
 
@@ -113,10 +115,33 @@ public sealed record TelemetryCorrelationUpdate(
 
 public sealed record TelemetryQueueStats(long Bytes, int RecordCount, DateTimeOffset? OldestRecordUtc, long DroppedRecords);
 
+public sealed record TelemetryBatch(Guid BatchId, IReadOnlyList<TelemetryEnvelope> Records);
+
+public sealed class TelemetryUploadBatch
+{
+    public int ProtocolVersion { get; init; } = 1;
+    public required Guid BatchId { get; init; }
+    public required List<TelemetryEnvelope> Records { get; init; }
+}
+
 public sealed class TelemetryExportManifest
 {
     public int FormatVersion { get; init; } = 1;
     public required string OpenFreqVersion { get; init; }
     public DateTimeOffset ExportedAtUtc { get; init; } = DateTimeOffset.UtcNow;
     public required string Contents { get; init; }
+}
+
+internal static class TelemetryJsonValue
+{
+    public static JsonElement Create(object value) => value switch
+    {
+        string item => JsonSerializer.SerializeToElement(item, TelemetryJsonContext.Default.String),
+        bool item => JsonSerializer.SerializeToElement(item, TelemetryJsonContext.Default.Boolean),
+        int item => JsonSerializer.SerializeToElement(item, TelemetryJsonContext.Default.Int32),
+        long item => JsonSerializer.SerializeToElement(item, TelemetryJsonContext.Default.Int64),
+        double item => JsonSerializer.SerializeToElement(item, TelemetryJsonContext.Default.Double),
+        Guid item => JsonSerializer.SerializeToElement(item, TelemetryJsonContext.Default.Guid),
+        _ => throw new InvalidDataException($"Unsupported telemetry attribute type {value.GetType().Name}")
+    };
 }

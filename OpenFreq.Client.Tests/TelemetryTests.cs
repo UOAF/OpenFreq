@@ -1,7 +1,10 @@
 using System.IO.Compression;
+using System.Net;
+using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
+using OpenFreq.Common;
 using OpenFreqClient.Json;
 using OpenFreqClient.Models;
 using OpenFreqClient.Services.Telemetry;
@@ -119,6 +122,143 @@ public sealed class TelemetryTests : IDisposable
         Assert.DoesNotContain(Environment.MachineName, json, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task ClaimReleasePreservesBatchIdAndAcknowledgeDeletesIt()
+    {
+        using var spool = new FileTelemetrySpool(_directory);
+        await spool.EnqueueAsync(CreateEnvelope("test.claim"));
+
+        var claimed = await spool.ClaimBatchAsync();
+        Assert.NotNull(claimed);
+        await spool.ReleaseAsync(claimed.BatchId);
+        var retried = await spool.ClaimBatchAsync();
+
+        Assert.NotNull(retried);
+        Assert.Equal(claimed.BatchId, retried.BatchId);
+        Assert.Single(retried.Records);
+        await spool.AcknowledgeAsync(retried.BatchId);
+        Assert.Equal(0, (await spool.GetStatsAsync(0)).RecordCount);
+    }
+
+    [Fact]
+    public async Task SegmentRecordLimitProducesIngestionSizedBatches()
+    {
+        using var spool = new FileTelemetrySpool(_directory, new TelemetryStorageOptions
+        {
+            MaximumBytes = 1024 * 1024,
+            MaximumSegmentBytes = 1024 * 1024,
+            MaximumSegmentRecords = 2
+        });
+        await spool.EnqueueAsync(CreateEnvelope("test.one"));
+        await spool.EnqueueAsync(CreateEnvelope("test.two"));
+        await spool.EnqueueAsync(CreateEnvelope("test.three"));
+
+        var first = await spool.ClaimBatchAsync();
+        Assert.NotNull(first);
+        Assert.Equal(2, first.Records.Count);
+        await spool.AcknowledgeAsync(first.BatchId);
+        var second = await spool.ClaimBatchAsync();
+        Assert.NotNull(second);
+        Assert.Single(second.Records);
+    }
+
+    [Fact]
+    public async Task ReleasedUploadSegmentsRemainInsideTheTotalSpoolBound()
+    {
+        var firstRecord = CreateEnvelope("test.first");
+        firstRecord.Attributes["padding"] = JsonSerializer.SerializeToElement(new string('x', 300));
+        var oneRecordBytes = Encoding.UTF8.GetByteCount(
+            JsonSerializer.Serialize(firstRecord, TelemetryJsonContext.Default.TelemetryEnvelope)) + 1;
+        using var spool = new FileTelemetrySpool(_directory, new TelemetryStorageOptions
+        {
+            MaximumBytes = oneRecordBytes + 100,
+            MaximumSegmentBytes = oneRecordBytes + 100,
+            MaximumRecordBytes = oneRecordBytes + 100
+        });
+        await spool.EnqueueAsync(firstRecord);
+        var released = await spool.ClaimBatchAsync();
+        Assert.NotNull(released);
+        await spool.ReleaseAsync(released.BatchId);
+
+        await spool.EnqueueAsync(CreateEnvelope("test.second"));
+
+        var records = new List<TelemetryEnvelope>();
+        await foreach (var record in spool.ReadAllAsync()) records.Add(record);
+        Assert.Single(records);
+        Assert.Equal("test.second", records[0].EventName);
+    }
+
+    [Fact]
+    public async Task SendQueuedUploadsGzipBatchAndAcknowledgesIt()
+    {
+        var handler = new CapturingHandler();
+        using var httpClient = new HttpClient(handler);
+        using var spool = new FileTelemetrySpool(_directory);
+        await using var service = new TelemetryService(
+            spool,
+            NullLogger<TelemetryService>.Instance,
+            Guid.Parse("11111111-1111-1111-1111-111111111111"),
+            httpClient);
+        service.ConfigureUpload(new TelemetryCapability(
+            "https://telemetry.example/v1/batches", "signed-token", DateTimeOffset.UtcNow.AddHours(1)));
+        await service.ConfigureConsentAsync(new TelemetryConsent { Status = TelemetryConsentStatus.Granted });
+        service.Track(TelemetryEvents.IvcState(true));
+        await service.SendQueuedAsync();
+        for (var i = 0; i < 50 && handler.CallCount == 0; i++) await Task.Delay(10);
+
+        Assert.Equal(1, handler.CallCount);
+        Assert.Equal("Bearer", handler.AuthorizationScheme);
+        Assert.Equal("signed-token", handler.AuthorizationParameter);
+        Assert.NotNull(handler.DecompressedBody);
+        Assert.Contains("ivc.process.state.changed", handler.DecompressedBody, StringComparison.Ordinal);
+        Assert.Equal(0, (await service.GetQueueStatsAsync()).RecordCount);
+    }
+
+    [Fact]
+    public async Task WithdrawingConsentCancelsAnInFlightUploadAndKeepsTheBatch()
+    {
+        var handler = new BlockingHandler();
+        using var httpClient = new HttpClient(handler);
+        using var spool = new FileTelemetrySpool(_directory);
+        await using var service = new TelemetryService(
+            spool,
+            NullLogger<TelemetryService>.Instance,
+            Guid.Parse("11111111-1111-1111-1111-111111111111"),
+            httpClient);
+        await service.ConfigureConsentAsync(new TelemetryConsent { Status = TelemetryConsentStatus.Granted });
+        service.Track(TelemetryEvents.IvcState(true));
+        await service.FlushAsync();
+        service.ConfigureUpload(new TelemetryCapability(
+            "https://telemetry.example/v1/batches", "signed-token", DateTimeOffset.UtcNow.AddHours(1)));
+        await handler.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        await service.ConfigureConsentAsync(new TelemetryConsent { Status = TelemetryConsentStatus.Declined });
+        await handler.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.True((await service.GetQueueStatsAsync()).RecordCount > 0);
+    }
+
+    [Fact]
+    public async Task PermanentSchemaFailureQuarantinesInsteadOfRetryingForever()
+    {
+        var handler = new CapturingHandler { ResponseStatusCode = HttpStatusCode.BadRequest };
+        using var httpClient = new HttpClient(handler);
+        using var spool = new FileTelemetrySpool(_directory);
+        await using var service = new TelemetryService(spool, NullLogger<TelemetryService>.Instance,
+            Guid.NewGuid(), httpClient);
+        await service.ConfigureConsentAsync(new TelemetryConsent { Status = TelemetryConsentStatus.Granted });
+        service.ConfigureUpload(new TelemetryCapability(
+            "https://telemetry.example/v1/batches", "signed-token", DateTimeOffset.UtcNow.AddHours(1)));
+        service.Track(TelemetryEvents.IvcState(true));
+
+        await service.SendQueuedAsync();
+        await service.SendQueuedAsync();
+
+        Assert.Equal(1, handler.CallCount);
+        Assert.True((await service.GetQueueStatsAsync()).RecordCount > 0);
+        Assert.Single(Directory.GetFiles(_directory, "rejected-*.jsonl"));
+    }
+
     private static TelemetryEnvelope CreateEnvelope(string eventName) => new()
     {
         EventName = eventName,
@@ -147,5 +287,50 @@ public sealed class TelemetryTests : IDisposable
     {
         if (!Directory.Exists(_directory)) return;
         Directory.Delete(_directory, recursive: true);
+    }
+
+    private sealed class CapturingHandler : HttpMessageHandler
+    {
+        public int CallCount { get; private set; }
+        public string? AuthorizationScheme { get; private set; }
+        public string? AuthorizationParameter { get; private set; }
+        public string? DecompressedBody { get; private set; }
+        public HttpStatusCode ResponseStatusCode { get; init; } = HttpStatusCode.Accepted;
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            CallCount++;
+            AuthorizationScheme = request.Headers.Authorization?.Scheme;
+            AuthorizationParameter = request.Headers.Authorization?.Parameter;
+            var bytes = await request.Content!.ReadAsByteArrayAsync(cancellationToken);
+            await using var compressed = new MemoryStream(bytes);
+            await using var gzip = new GZipStream(compressed, CompressionMode.Decompress);
+            using var reader = new StreamReader(gzip, Encoding.UTF8);
+            DecompressedBody = await reader.ReadToEndAsync(cancellationToken);
+            return new HttpResponseMessage(ResponseStatusCode);
+        }
+    }
+
+    private sealed class BlockingHandler : HttpMessageHandler
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Cancelled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            Started.TrySetResult();
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                return new HttpResponseMessage(HttpStatusCode.Accepted);
+            }
+            catch (OperationCanceledException)
+            {
+                Cancelled.TrySetResult();
+                throw;
+            }
+        }
     }
 }

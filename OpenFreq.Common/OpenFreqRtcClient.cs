@@ -29,6 +29,7 @@ public class OpenFreqRtcClient : IRtcClient
     public event EventHandler<AudioDataEventArgs>? AudioDataReceived;
     public event EventHandler<AllPeersStatusEventArgs>? AllPeersStatusUpdateReceived;
     public event EventHandler<ErrorEventArgs>? ErrorOccurred;
+    public event EventHandler<TelemetryCapabilityChangedEventArgs>? TelemetryCapabilityChanged;
 
     private RtpAudioReceiver? _rtpReceiver;
     private RtpAudioSender? _rtpSender;
@@ -67,6 +68,7 @@ public class OpenFreqRtcClient : IRtcClient
     public Guid? ServerRunId { get; private set; }
     public string? EventId { get; private set; }
     public TelemetryCapability? TelemetryCapability { get; private set; }
+    public bool DiagnosticTelemetryConsent { get; set; }
 
     public string? MyDisplayName { get; }
 
@@ -147,7 +149,8 @@ public class OpenFreqRtcClient : IRtcClient
 
         // Authenticate
         await SendMessageAsync(
-            SignalingMessageFactory.CreateAuthenticate(_password, MyDisplayName, OpenFreqVersion.Current));
+            SignalingMessageFactory.CreateAuthenticate(_password, MyDisplayName, OpenFreqVersion.Current,
+                DiagnosticTelemetryConsent));
 
         // Wait for authentication response with timeout
         var startTime = DateTime.UtcNow;
@@ -572,6 +575,24 @@ public class OpenFreqRtcClient : IRtcClient
 
                     break;
 
+                case SignalingMessageTypes.TelemetryCapability:
+                    var telemetry = SignalingMessageFactory.DeserializePayload<TelemetryCapabilityMessage>(
+                        message.Payload);
+                    if (telemetry != null)
+                    {
+                        ServerRunId = telemetry.ServerRunId;
+                        EventId = telemetry.EventId;
+                        TelemetryCapability = !string.IsNullOrWhiteSpace(telemetry.TelemetryEndpoint) &&
+                                              !string.IsNullOrWhiteSpace(telemetry.TelemetryToken)
+                            ? new TelemetryCapability(telemetry.TelemetryEndpoint, telemetry.TelemetryToken,
+                                telemetry.TelemetryTokenExpiresAtUtc)
+                            : null;
+                        TelemetryCapabilityChanged?.Invoke(this,
+                            new TelemetryCapabilityChangedEventArgs(ServerRunId, EventId, TelemetryCapability));
+                    }
+
+                    break;
+
                 case SignalingMessageTypes.PeerJoined:
                     var joined = SignalingMessageFactory.DeserializePayload<PeerJoinedMessage>(message.Payload);
                     if (joined != null)
@@ -655,6 +676,19 @@ public class OpenFreqRtcClient : IRtcClient
         {
             OnError($"Error sending message: {ex.Message}");
         }
+    }
+
+    public async Task SetDiagnosticTelemetryConsentAsync(bool consented)
+    {
+        DiagnosticTelemetryConsent = consented;
+        if (!consented)
+        {
+            TelemetryCapability = null;
+            TelemetryCapabilityChanged?.Invoke(this,
+                new TelemetryCapabilityChangedEventArgs(ServerRunId, EventId, null));
+        }
+        if (IsAuthenticated)
+            await SendMessageAsync(SignalingMessageFactory.CreateTelemetryConsent(consented));
     }
 
     // Event raising methods
@@ -776,6 +810,14 @@ public sealed record TelemetryCapability(
     string Endpoint,
     string Token,
     DateTimeOffset? ExpiresAtUtc);
+
+public sealed class TelemetryCapabilityChangedEventArgs(
+    Guid? serverRunId, string? eventId, TelemetryCapability? capability) : EventArgs
+{
+    public Guid? ServerRunId { get; } = serverRunId;
+    public string? EventId { get; } = eventId;
+    public TelemetryCapability? Capability { get; } = capability;
+}
 
 public class FrequencyJoinedEventArgs(int frequencyKhz, List<ChannelStateMessage.Peer> peers) : EventArgs
 {

@@ -17,9 +17,10 @@ public partial class TelemetryConsentDialogViewModel : ViewModelBase
 
     public string Details { get; } =
         "OpenFreq never includes voice audio, recordings, passwords, your real name, IP addresses, or " +
-        "computer account information. Diagnostic records are stored locally first, uploaded in the " +
-        "background, and retained by UOAF for 30 days. You can disable telemetry, export it, or delete " +
-        "the local queue from Settings at any time.";
+        "computer account information. Diagnostic records are stored locally first and, when the server " +
+        "offers a diagnostics service, uploaded in the background. Settings shows its destination. The " +
+        "UOAF service retains raw data for 30 days. You can disable telemetry, export it, or delete the " +
+        "local queue at any time.";
 
     public ICommand AllowCommand { get; } = new RelayCommand(() =>
         DialogHost.Close("MainDialogHost", TelemetryConsentStatus.Granted));

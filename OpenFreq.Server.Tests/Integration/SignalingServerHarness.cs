@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenFreqServer;
+using OpenFreqServer.Telemetry;
 
 namespace OpenFreq.Server.Tests.Integration;
 
@@ -30,7 +31,9 @@ public sealed class SignalingServerHarness : IAsyncDisposable
         int maxClientsPerChannel = 50,
         bool broadcastPeerUpdates = true,
         TimeSpan? rtpTimeout = null,
-        TimeSpan? watchdogInterval = null)
+        TimeSpan? watchdogInterval = null,
+        string? telemetryEndpoint = null,
+        string? telemetrySigningKey = null)
     {
         var config = new ServerConfig
         {
@@ -40,11 +43,14 @@ public sealed class SignalingServerHarness : IAsyncDisposable
             MaxClientsPerChannel = maxClientsPerChannel,
             BroadcastPeerUpdates = broadcastPeerUpdates,
             EnableOpusCompression = false,
+            TelemetryEndpoint = telemetryEndpoint,
+            TelemetrySigningKey = telemetrySigningKey,
+            TelemetryEventId = "TEST-EVENT"
         };
 
         var audio = new FakeAudioRelay();
         var server = new SignalingServer(
-            config, NullLoggerFactory.Instance, audio, rtpTimeout, watchdogInterval);
+            config, NullLoggerFactory.Instance, audio, rtpTimeout, watchdogInterval, NullServerTelemetry.Instance);
 
         await server.StartAsync();
         return new SignalingServerHarness(audio, server);

@@ -162,6 +162,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         _falconSharedMemoryService = falconSharedMemoryService;
         _ivcMonitorService = ivcMonitorService;
         _telemetryService = telemetryService;
+        _telemetryService.UploadDestinationChanged += OnTelemetryUploadDestinationChanged;
 
         // Subscribe to service events
         _openFreqService.ConnectionStateChanged += OnConnectionStateChanged;
@@ -861,6 +862,9 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         }
     }
 
+    private void OnTelemetryUploadDestinationChanged(object? sender, EventArgs e) =>
+        Dispatcher.UIThread.Post(() => _ = RefreshTelemetryStatusAsync());
+
     [RelayCommand]
     private void ToggleSettingsDrawer()
     {
@@ -999,6 +1003,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
             ? TelemetryConsentStatus.Granted
             : TelemetryConsentStatus.Declined);
         await _telemetryService.ConfigureConsentAsync(Settings.GetTelemetryConsent());
+        await _openFreqService.SetDiagnosticTelemetryConsentAsync(_telemetryService.IsEnabled);
         await RefreshTelemetryStatusAsync();
         await SaveConfigurationAsync();
     }
@@ -1015,6 +1020,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
             _applyingTelemetryConsent = false;
         }
         await _telemetryService.ConfigureConsentAsync(Settings.GetTelemetryConsent());
+        await _openFreqService.SetDiagnosticTelemetryConsentAsync(_telemetryService.IsEnabled);
         await RefreshTelemetryStatusAsync();
         await SaveConfigurationAsync();
     }
@@ -1028,16 +1034,30 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
     [RelayCommand]
     private async Task DeleteTelemetryAsync()
     {
+        if (!await ConfirmationDialogService.ShowAsync(
+                "Delete diagnostic data?",
+                "This permanently deletes all diagnostic records queued on this computer.",
+                confirmText: "Delete")) return;
         await _telemetryService.DeleteQueuedAsync();
+        await RefreshTelemetryStatusAsync();
+    }
+
+    [RelayCommand]
+    private async Task SendTelemetryNowAsync()
+    {
+        await _telemetryService.SendQueuedAsync();
         await RefreshTelemetryStatusAsync();
     }
 
     public async Task RefreshTelemetryStatusAsync()
     {
         var stats = await _telemetryService.GetQueueStatsAsync();
+        var destination = string.IsNullOrWhiteSpace(_telemetryService.UploadDestination)
+            ? ""
+            : $" · destination {_telemetryService.UploadDestination}";
         TelemetryStatus = $"Diagnostic telemetry is {(_telemetryService.IsEnabled ? "on" : "off")} · " +
                           $"{stats.RecordCount} queued record{(stats.RecordCount == 1 ? "" : "s")} " +
-                          $"({stats.Bytes / 1024d:F1} KiB)";
+                          $"({stats.Bytes / 1024d:F1} KiB){destination}";
     }
 
     private void UpdateModeDependent()
@@ -1185,6 +1205,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         await SaveConfigurationAsync();
 
         _openFreqService.ConnectionStateChanged -= OnConnectionStateChanged;
+        _telemetryService.UploadDestinationChanged -= OnTelemetryUploadDestinationChanged;
         _openFreqService.StatusMessageReceived -= OnStatusMessageReceived;
         _openFreqService.PeerActivityReceived -= OnPeerActivityReceived;
         _openFreqService.AllPeersStatusChanged -= OnAllPeersChanged;

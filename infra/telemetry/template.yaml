@@ -1,0 +1,109 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: OpenFreq opt-in diagnostic telemetry ingestion
+
+Parameters:
+  TelemetrySigningSecretArn:
+    Type: String
+    Description: ARN of a Secrets Manager secret whose SecretString is shared with approved OpenFreq servers
+  AllowedOrigins:
+    Type: String
+    Default: "*"
+
+Resources:
+  TelemetryBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteRawTelemetryAfter30Days
+            Status: Enabled
+            ExpirationInDays: 30
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+
+  TelemetryBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref TelemetryBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource:
+              - !Sub "${TelemetryBucket.Arn}"
+              - !Sub "${TelemetryBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+  TelemetryApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins:
+          - !Ref AllowedOrigins
+        AllowHeaders:
+          - authorization
+          - content-encoding
+          - content-type
+          - x-openfreq-batch-id
+        AllowMethods:
+          - POST
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 50
+        ThrottlingRateLimit: 25
+
+  TelemetryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: python3.13
+      Architectures: [arm64]
+      CodeUri: src/
+      Handler: handler.lambda_handler
+      MemorySize: 256
+      Timeout: 10
+      Environment:
+        Variables:
+          TELEMETRY_BUCKET: !Ref TelemetryBucket
+          SIGNING_SECRET_ARN: !Ref TelemetrySigningSecretArn
+      Policies:
+        - S3WritePolicy:
+            BucketName: !Ref TelemetryBucket
+        - Statement:
+            - Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !Ref TelemetrySigningSecretArn
+      Events:
+        Ingest:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref TelemetryApi
+            Method: POST
+            Path: /v1/batches
+            PayloadFormatVersion: "2.0"
+
+  TelemetryFunctionLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${TelemetryFunction}"
+      RetentionInDays: 30
+
+Outputs:
+  IngestionEndpoint:
+    Value: !Sub "https://${TelemetryApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/v1/batches"
+  TelemetryBucketName:
+    Value: !Ref TelemetryBucket

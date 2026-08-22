@@ -11,6 +11,8 @@ namespace OpenFreq.Common;
 [JsonSerializable(typeof(AudioPacketMetadata))]
 [JsonSerializable(typeof(FrequencyTransmission))]
 [JsonSerializable(typeof(AuthenticateMessage))]
+[JsonSerializable(typeof(DiagnosticTelemetryConsentMessage))]
+[JsonSerializable(typeof(TelemetryCapabilityMessage))]
 [JsonSerializable(typeof(JoinChannelMessage))]
 [JsonSerializable(typeof(LeaveChannelMessage))]
 [JsonSerializable(typeof(AudioTransmissionMessage))]

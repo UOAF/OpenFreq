@@ -21,6 +21,21 @@ public class AuthenticateMessage
     [JsonPropertyName("password")] public string? Password { get; set; }
     [JsonPropertyName("displayName")] public string? DisplayName { get; set; }
     [JsonPropertyName("version")] public string? Version { get; set; }
+    [JsonPropertyName("diagnosticTelemetryConsent")] public bool DiagnosticTelemetryConsent { get; set; }
+}
+
+public class DiagnosticTelemetryConsentMessage
+{
+    [JsonPropertyName("consented")] public bool Consented { get; set; }
+}
+
+public class TelemetryCapabilityMessage
+{
+    [JsonPropertyName("serverRunId")] public Guid? ServerRunId { get; set; }
+    [JsonPropertyName("eventId")] public string? EventId { get; set; }
+    [JsonPropertyName("telemetryEndpoint")] public string? TelemetryEndpoint { get; set; }
+    [JsonPropertyName("telemetryToken")] public string? TelemetryToken { get; set; }
+    [JsonPropertyName("telemetryTokenExpiresAtUtc")] public DateTimeOffset? TelemetryTokenExpiresAtUtc { get; set; }
 }
 
 /// <summary>

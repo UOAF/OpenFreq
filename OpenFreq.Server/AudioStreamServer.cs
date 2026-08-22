@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Net;
@@ -7,6 +8,7 @@ using System.Text;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Common;
 using OpenFreq.Common.Rtp;
+using OpenFreqServer.Telemetry;
 
 namespace OpenFreqServer;
 
@@ -37,6 +39,9 @@ public class AudioStreamServer : IAudioStreamServer
     private readonly FrequencyChannelManager _channelManager;
     private readonly ConcurrentDictionary<string, ClientSession> _clients;
     private readonly ILogger<AudioStreamServer> _logger;
+    private readonly IServerTelemetry _telemetry;
+    private readonly Dictionary<string, RelayWindow> _relayWindows = [];
+    private long _relayWindowStarted = Stopwatch.GetTimestamp();
     private CancellationTokenSource _cts = new();
 
     // Single receive task for all clients
@@ -89,11 +94,13 @@ public class AudioStreamServer : IAudioStreamServer
         FrequencyChannelManager channelManager,
         ConcurrentDictionary<string, ClientSession> clients,
         ILoggerFactory loggerFactory,
-        int audioPort)
+        int audioPort,
+        IServerTelemetry? telemetry = null)
     {
         _channelManager = channelManager;
         _clients = clients;
         _logger = loggerFactory.CreateLogger<AudioStreamServer>();
+        _telemetry = telemetry ?? NullServerTelemetry.Instance;
         _audioPort = audioPort;
 
         // Create single shared UDP client
@@ -196,6 +203,12 @@ public class AudioStreamServer : IAudioStreamServer
 
                         LogEndpointMapped(_logger, remoteEndpoint.ToString(),
                             GetDisplayName(clientId), clientId, null);
+                        if (claimedClient.DiagnosticTelemetryConsent)
+                            _telemetry.Track("server.audio.endpoint.mapped", clientId,
+                                new Dictionary<string, object?>
+                                {
+                                    ["address_family"] = remoteEndpoint.AddressFamily.ToString().ToLowerInvariant()
+                                });
                     }
                     else
                     {
@@ -262,7 +275,10 @@ public class AudioStreamServer : IAudioStreamServer
 
                 // Forward audio to all receivers — deduplicated so a client on multiple matching
                 // frequencies gets exactly one packet (metadata contains all frequencies).
-                ForwardAudioToReceivers(validFrequencies.Select(f => f.Khz), clientId, rtpPacket, metadata, audioData);
+                var relay = ForwardAudioToReceivers(validFrequencies.Select(f => f.Khz), clientId, rtpPacket,
+                    metadata, audioData);
+                RecordRelay(clientId, validFrequencies.Count,
+                    metadata.Frequencies.Count - validFrequencies.Count, relay);
             }
 
             catch (SocketException ex)
@@ -377,7 +393,7 @@ public class AudioStreamServer : IAudioStreamServer
     /// Forward audio to all unique receivers across the given frequency channels.
     /// A receiver joined to multiple matching frequencies receives exactly one packet.
     /// </summary>
-    private void ForwardAudioToReceivers(
+    private RelayResult ForwardAudioToReceivers(
         IEnumerable<int> frequencyKhzList,
         string sourceClientId,
         RtpPacket originalRtpPacket,
@@ -395,6 +411,8 @@ public class AudioStreamServer : IAudioStreamServer
             }
         }
 
+        var forwarded = 0;
+        var missingEndpoint = 0;
         foreach (var clientId in seen)
         {
             if (!_sessions.TryGetValue(clientId, out var targetSession))
@@ -405,12 +423,58 @@ public class AudioStreamServer : IAudioStreamServer
                 _logger.LogWarning(
                     "Cannot relay audio to {DisplayName} ({ClientId}): no RTP endpoint registered yet",
                     GetDisplayName(clientId), clientId);
+                missingEndpoint++;
                 continue;
             }
 
             var rtpPacket = CreateRtpAudioPacket(clientId, originalRtpPacket, metadata, audioData);
             SendPacket(rtpPacket, targetSession.RemoteEndPoint);
+            forwarded++;
         }
+
+        return new RelayResult(seen.Count, forwarded, missingEndpoint);
+    }
+
+    private void RecordRelay(string sourceClientId, int frequencyCount, int rejectedFrequencyCount,
+        RelayResult result)
+    {
+        if (!_clients.TryGetValue(sourceClientId, out var client) || !client.DiagnosticTelemetryConsent) return;
+        if (!_relayWindows.TryGetValue(sourceClientId, out var window))
+        {
+            window = new RelayWindow();
+            _relayWindows[sourceClientId] = window;
+        }
+
+        window.PacketsReceived++;
+        window.PacketsForwarded += result.Forwarded;
+        window.CandidateReceivers += result.Candidates;
+        window.ReceiversWithoutEndpoint += result.MissingEndpoint;
+        window.RejectedFrequencies += rejectedFrequencyCount;
+        window.MaxFrequencyCount = Math.Max(window.MaxFrequencyCount, frequencyCount);
+
+        if (Stopwatch.GetElapsedTime(_relayWindowStarted) < TimeSpan.FromSeconds(1)) return;
+        FlushRelaySummaries();
+    }
+
+    private void FlushRelaySummaries()
+    {
+        var durationMs = Math.Max(1, (long)Stopwatch.GetElapsedTime(_relayWindowStarted).TotalMilliseconds);
+        foreach (var (connectionId, window) in _relayWindows)
+        {
+            _telemetry.Track("server.audio.relay.summary", connectionId,
+                new Dictionary<string, object?>
+                {
+                    ["window_duration_ms"] = durationMs,
+                    ["packets_received"] = window.PacketsReceived,
+                    ["packets_forwarded"] = window.PacketsForwarded,
+                    ["candidate_receivers"] = window.CandidateReceivers,
+                    ["receivers_without_endpoint"] = window.ReceiversWithoutEndpoint,
+                    ["rejected_frequencies"] = window.RejectedFrequencies,
+                    ["max_frequency_count"] = window.MaxFrequencyCount
+                });
+        }
+        _relayWindows.Clear();
+        _relayWindowStarted = Stopwatch.GetTimestamp();
     }
 
     private void SendPacket(byte[] packet, IPEndPoint remoteEndPoint)
@@ -488,6 +552,19 @@ public class AudioStreamServer : IAudioStreamServer
         _sessions.Clear();
         _endpointToClient.Clear();
         _receiverRtpStates.Clear();
+        FlushRelaySummaries();
+    }
+
+    private readonly record struct RelayResult(int Candidates, int Forwarded, int MissingEndpoint);
+
+    private sealed class RelayWindow
+    {
+        public long PacketsReceived { get; set; }
+        public long PacketsForwarded { get; set; }
+        public long CandidateReceivers { get; set; }
+        public long ReceiversWithoutEndpoint { get; set; }
+        public long RejectedFrequencies { get; set; }
+        public int MaxFrequencyCount { get; set; }
     }
 }
 

@@ -84,6 +84,7 @@ public interface IOpenFreqService : IDisposable
     Task StopTransmissionAsync(int frequencyKhz);
     Task UpdateDisplayNameAsync(string newDisplayName);
     Task NotifyModeAsync(bool is3d);
+    Task SetDiagnosticTelemetryConsentAsync(bool consented);
 
     void SetVolume(int frequencyKhz, Guid slotId, float volumeValue);
     void SetPan(int frequencyKhz, Guid slotId, int pan);

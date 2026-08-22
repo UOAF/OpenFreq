@@ -133,22 +133,23 @@ public static class TelemetryEvents
         Create(name, TelemetrySeverity.Info, attributes);
 
     private static ITelemetryEvent Create(string name, TelemetrySeverity severity,
-        params (string Name, object? Value)[] attributes)
-    {
-        var values = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
-        foreach (var (attributeName, value) in attributes)
-        {
-            if (value == null) continue;
-            values[attributeName] = JsonSerializer.SerializeToElement(value, value.GetType());
-        }
-        return new AllowlistedTelemetryEvent(name, severity, values);
-    }
+        params (string Name, object? Value)[] attributes) =>
+        new AllowlistedTelemetryEvent(name, severity, attributes);
 
     private sealed record AllowlistedTelemetryEvent(
         string EventName,
         TelemetrySeverity Severity,
-        Dictionary<string, JsonElement> Attributes) : ITelemetryEvent
+        (string Name, object? Value)[] AttributeValues) : ITelemetryEvent
     {
-        public Dictionary<string, JsonElement> CreateAttributes() => Attributes;
+        public Dictionary<string, JsonElement> CreateAttributes()
+        {
+            var values = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+            foreach (var (attributeName, value) in AttributeValues)
+            {
+                if (value == null) continue;
+                values[attributeName] = TelemetryJsonValue.Create(value);
+            }
+            return values;
+        }
     }
 }

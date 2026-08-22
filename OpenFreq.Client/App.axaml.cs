@@ -37,14 +37,14 @@ public partial class App : Application
             }
 
 #if WINDOWS
-        _services =
-        [
-            serviceProvider.GetRequiredService<IFalconRadioSharedMemoryService>(),
+            _services =
+            [
+                serviceProvider.GetRequiredService<IFalconRadioSharedMemoryService>(),
             serviceProvider.GetRequiredService<IFalconSharedMemoryService>(),
             serviceProvider.GetRequiredService<IAcmiClientService>(),
             serviceProvider.GetRequiredService<IHotkeyService>(),
             serviceProvider.GetRequiredService<TelemetryInstrumentationService>()
-        ];
+            ];
 #else
             _services = new List<ILifecycleService>
             {

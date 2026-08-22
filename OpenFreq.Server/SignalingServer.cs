@@ -13,6 +13,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Common;
 using OpenFreq.Common.Signaling;
+using OpenFreqServer.Telemetry;
 
 namespace OpenFreqServer;
 
@@ -24,6 +25,7 @@ public class SignalingServer
     private readonly FrequencyChannelManager _channelManager = new();
     private readonly IAudioStreamServer _audioServer;
     private readonly ILogger<SignalingServer> _logger;
+    private readonly IServerTelemetry _telemetry;
     private CancellationTokenSource _cts = new();
     private readonly Guid _serverRunId = Guid.NewGuid();
 
@@ -103,7 +105,7 @@ public class SignalingServer
         !string.IsNullOrWhiteSpace(session.DisplayName) ? session.DisplayName : "Unnamed";
 
     public SignalingServer(ServerConfig config, ILoggerFactory loggerFactory)
-        : this(config, loggerFactory, null, null, null)
+        : this(config, loggerFactory, null, null, null, null)
     {
     }
 
@@ -119,13 +121,16 @@ public class SignalingServer
         ILoggerFactory loggerFactory,
         IAudioStreamServer? audioServer,
         TimeSpan? rtpTimeout,
-        TimeSpan? watchdogInterval)
+        TimeSpan? watchdogInterval,
+        IServerTelemetry? telemetry = null)
     {
         _config = config;
         _logger = loggerFactory.CreateLogger<SignalingServer>();
         _rtpTimeoutDuration = rtpTimeout ?? TimeSpan.FromMinutes(1);
         _watchdogInterval = watchdogInterval ?? TimeSpan.FromSeconds(30);
-        _audioServer = audioServer ?? new AudioStreamServer(_channelManager, _clients, loggerFactory, config.AudioPort);
+        _telemetry = telemetry ?? ServerTelemetryService.Create(config, _serverRunId, loggerFactory);
+        _audioServer = audioServer ?? new AudioStreamServer(_channelManager, _clients, loggerFactory, config.AudioPort,
+            _telemetry);
 
         // Build Kestrel application
         var builder = WebApplication.CreateBuilder();
@@ -203,6 +208,11 @@ public class SignalingServer
         }
 
         BoundWebSocketPort = ResolveBoundPort();
+        _telemetry.Track("server.session.started", attributes: new Dictionary<string, object?>
+        {
+            ["websocket_port"] = BoundWebSocketPort,
+            ["audio_port"] = _config.AudioPort
+        });
 
         _ = IdleWatchdogAsync(_cts.Token);
         _ = PeerUpdateBroadcastLoopAsync(_cts.Token);
@@ -374,6 +384,9 @@ public class SignalingServer
                 case "set-display-name":
                     await SetDisplayName(session, message);
                     break;
+                case SignalingMessageTypes.TelemetryConsent:
+                    await HandleTelemetryConsent(session, message);
+                    break;
 
                 default:
                     if (_logger.IsEnabled(LogLevel.Warning))
@@ -405,6 +418,7 @@ public class SignalingServer
         }
 
         session.DisplayName = authMsg.DisplayName;
+        session.DiagnosticTelemetryConsent = authMsg.DiagnosticTelemetryConsent;
 
         // Reject clients whose version is incompatible with the server build (patch-level semver differences are allowed)
         var serverVersion = OpenFreqVersion.Current;
@@ -436,6 +450,8 @@ public class SignalingServer
 
             var audioPort = _audioServer.CreateAudioSession(session.Id);
             LogClientAuthenticated(_logger, GetDisplayName(session), session.Id, audioPort, null);
+            TrackClient(session, "server.client.lifecycle",
+                new Dictionary<string, object?> { ["state"] = "authenticated", ["reason"] = "accepted" });
 
             await SendSuccess(session, "Authenticated", session.Id, audioPort, _config.EnableOpusCompression);
         }
@@ -518,6 +534,12 @@ public class SignalingServer
             SignalingMessageFactory.CreatePeerJoined(session.Id, session.DisplayName, joinMsg.FrequencyKhz));
 
         LogClientJoinedFrequency(_logger, GetDisplayName(session), session.Id, joinMsg.FrequencyKhz / 1000d, null);
+        TrackClient(session, "server.channel.state.changed", new Dictionary<string, object?>
+        {
+            ["state"] = "joined",
+            ["frequency_khz"] = joinMsg.FrequencyKhz,
+            ["peer_count"] = peers.Count
+        });
 
         if (_config.BroadcastPeerUpdates)
             RequestPeerUpdateBroadcast();
@@ -545,6 +567,12 @@ public class SignalingServer
 
         session.CurrentFrequencies.TryRemove(frequencyKhz, out _);
         LogClientLeftFrequency(_logger, GetDisplayName(session), session.Id, frequencyKhz / 1000d, null);
+        TrackClient(session, "server.channel.state.changed", new Dictionary<string, object?>
+        {
+            ["state"] = "left",
+            ["frequency_khz"] = frequencyKhz,
+            ["peer_count"] = _channelManager.GetChannelCount(frequencyKhz)
+        });
 
         if (_config.BroadcastPeerUpdates)
             RequestPeerUpdateBroadcast();
@@ -599,6 +627,13 @@ public class SignalingServer
 
         LogTransmissionState(_logger, GetDisplayName(session), session.Id, transmissionMsg.Transmitting,
             transmissionMsg.FrequencyKhz / 1000d, peersInChannel.Length, null);
+        TrackClient(session, "server.transmission.state.changed", new Dictionary<string, object?>
+        {
+            ["state"] = transmissionMsg.Transmitting ? "started" : "stopped",
+            ["frequency_khz"] = transmissionMsg.FrequencyKhz,
+            ["peer_count"] = peersInChannel.Length,
+            ["is_3d"] = transmissionMsg.Is3d
+        });
 
         await BroadcastToChannel(
             transmissionMsg.FrequencyKhz,
@@ -640,6 +675,22 @@ public class SignalingServer
 
         if (_config.BroadcastPeerUpdates)
             RequestPeerUpdateBroadcast();
+    }
+
+    private async Task HandleTelemetryConsent(ClientSession session, SignalingMessage message)
+    {
+        if (!session.IsAuthenticated) return;
+        var consent = SignalingMessageFactory.DeserializePayload<DiagnosticTelemetryConsentMessage>(message.Payload);
+        if (consent == null) return;
+
+        session.DiagnosticTelemetryConsent = consent.Consented;
+        var token = consent.Consented ? TelemetryTokenIssuer.TryIssue(_config, _serverRunId) : null;
+        await SendToClient(session, SignalingMessageFactory.CreateTelemetryCapability(
+            _serverRunId,
+            _config.TelemetryEventId,
+            token == null ? null : _config.TelemetryEndpoint,
+            token?.Token,
+            token?.ExpiresAtUtc));
     }
 
     /// <summary>
@@ -756,11 +807,21 @@ public class SignalingServer
     private async Task SendSuccess(ClientSession session, string message, string? peerId = null, int? audioPort = null,
         bool opusEnabled = true)
     {
-        var telemetryToken = TelemetryTokenIssuer.TryIssue(_config, _serverRunId);
+        var telemetryToken = session.DiagnosticTelemetryConsent
+            ? TelemetryTokenIssuer.TryIssue(_config, _serverRunId)
+            : null;
         await SendToClient(session,
             SignalingMessageFactory.CreateSuccess(message, _channelManager.GetAllChannelStates(), peerId, audioPort,
-                opusEnabled, _serverRunId, _config.TelemetryEventId, _config.TelemetryEndpoint,
+                opusEnabled, _serverRunId, _config.TelemetryEventId,
+                telemetryToken == null ? null : _config.TelemetryEndpoint,
                 telemetryToken?.Token, telemetryToken?.ExpiresAtUtc));
+    }
+
+    private void TrackClient(ClientSession session, string eventName,
+        IReadOnlyDictionary<string, object?> attributes)
+    {
+        if (session.DiagnosticTelemetryConsent)
+            _telemetry.Track(eventName, session.Id, attributes);
     }
 
     private async Task SendChannelState(ClientSession session, int frequencyKhz, List<ChannelStateMessage.Peer> peers)
@@ -797,12 +858,19 @@ public class SignalingServer
             session.Dispose();
 
             LogClientCleanedUp(_logger, GetDisplayName(session), clientId, null);
+            TrackClient(session, "server.client.lifecycle",
+                new Dictionary<string, object?> { ["state"] = "disconnected", ["reason"] = "cleanup" });
         }
     }
 
     public async Task StopAsync()
     {
         _logger.LogInformation("Stopping signaling server...");
+        _telemetry.Track("server.session.ended", attributes: new Dictionary<string, object?>
+        {
+            ["clean"] = true,
+            ["client_count"] = _clients.Count
+        });
 
         // Stop audio server first
         _audioServer.Stop();
@@ -857,6 +925,8 @@ public class SignalingServer
 
             await _app.DisposeAsync();
         }
+
+        await _telemetry.DisposeAsync();
 
         _logger.LogInformation("Signaling server stopped");
     }
