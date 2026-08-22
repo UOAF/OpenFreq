@@ -1,3 +1,5 @@
+using System;
+using System.IO;
 using FalconBmsDataService.Services;
 using FalconRadioService.Services;
 using Microsoft.Extensions.DependencyInjection;
@@ -7,6 +9,7 @@ using OpenFreq.Common;
 using OpenFreq.Services.Acmi;
 using OpenFreqClient.Services.Audio;
 using OpenFreqClient.Services.Interfaces;
+using OpenFreqClient.Services.Telemetry;
 using OpenFreqClient.ViewModels;
 using Serilog;
 
@@ -36,6 +39,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IFalconSharedMemoryService, FalconSharedMemoryService>();
         services.AddSingleton<IFalconRadioSharedMemoryService, FalconRadioSharedMemoryService>();
         services.AddSingleton<IIvcMonitorService, IvcMonitorService>();
+        services.AddSingleton<ITelemetrySpool>(_ => new FileTelemetrySpool(
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "OpenFreq", "telemetry", "queue")));
+        services.AddSingleton<ITelemetryService, TelemetryService>();
 
         // Register ViewModels
         services.AddSingleton<SettingsViewModel>();

@@ -599,6 +599,27 @@
                                 </controls:Card>
                             </StackPanel>
 
+                            <controls:Card Margin="0,8,0,0">
+                                <StackPanel Margin="16" Spacing="8">
+                                    <TextBlock Text="Diagnostics" Classes="SectionHeader" />
+                                    <CheckBox Content="Allow diagnostic telemetry"
+                                              IsChecked="{Binding Settings.TelemetryEnabled}" />
+                                    <TextBlock Text="Includes your in-game callsign and simulated aircraft position. Never includes voice audio, passwords, or your real name."
+                                               TextWrapping="Wrap"
+                                               Classes="InputLabel" />
+                                    <TextBlock Text="{Binding TelemetryStatus}"
+                                               TextWrapping="Wrap"
+                                               Classes="InputLabel" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button Content="Export diagnostics"
+                                                Click="ExportTelemetryButton_OnClick" />
+                                        <Button Content="Delete queued data"
+                                                Command="{Binding DeleteTelemetryCommand}"
+                                                Classes="Flat" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </controls:Card>
+
                             <!-- Debug Button (visible in both modes) -->
                             <Button IsVisible="{Binding DebugMode}"
                                     Command="{Binding DebugCommand}"

@@ -43,7 +43,12 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
     private readonly IAcmiClientService _acmiClientService;
     private readonly IConfigurationService _configurationService;
     private readonly IIvcMonitorService _ivcMonitorService;
+    private readonly ITelemetryService _telemetryService;
     private readonly ILogger<MainWindowViewModel> _logger;
+    private bool _configurationLoaded;
+    private bool _applyingTelemetryConsent;
+
+    public Task InitializationTask { get; }
 
     // TODO remove when done
 #if DEBUG
@@ -107,6 +112,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
 
     [ObservableProperty] private partial ObservableCollection<string> ErrorLog { get; set; } = [];
     [ObservableProperty] public partial bool IvcWarning { get; set; }
+    [ObservableProperty] public partial string TelemetryStatus { get; set; } = "Diagnostic telemetry is off";
 
     public string AppVersion { get; } = Program.Version;
 
@@ -141,7 +147,8 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         ILogger<MainWindowViewModel> logger,
         ChannelCardListViewModel channelList,
         SettingsViewModel settings, IFalconRadioSharedMemoryService falconRadioSharedMemoryService,
-        IFalconSharedMemoryService falconSharedMemoryService, IIvcMonitorService ivcMonitorService)
+        IFalconSharedMemoryService falconSharedMemoryService, IIvcMonitorService ivcMonitorService,
+        ITelemetryService telemetryService)
     {
         _openFreqService = openFreqService;
         _hotkeyService = hotkeyService;
@@ -154,6 +161,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         _falconRadioSharedMemoryService = falconRadioSharedMemoryService;
         _falconSharedMemoryService = falconSharedMemoryService;
         _ivcMonitorService = ivcMonitorService;
+        _telemetryService = telemetryService;
 
         // Subscribe to service events
         _openFreqService.ConnectionStateChanged += OnConnectionStateChanged;
@@ -187,7 +195,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         UpdateLocationSubscription();
 
         // Load config
-        _ = LoadConfigurationAsync();
+        InitializationTask = LoadConfigurationAsync();
 
         _openFreqService.SetOwnPositionMode(Settings.ConnectionMode);
 
@@ -975,8 +983,61 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
 
     private void OnSettingsPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName != nameof(Settings.Is3dMode)) return;
-        Dispatcher.UIThread.Post(UpdateModeDependent);
+        if (e.PropertyName == nameof(Settings.Is3dMode))
+        {
+            Dispatcher.UIThread.Post(UpdateModeDependent);
+            return;
+        }
+
+        if (e.PropertyName == nameof(Settings.TelemetryEnabled) && _configurationLoaded && !_applyingTelemetryConsent)
+            _ = ApplyTelemetryToggleAsync();
+    }
+
+    private async Task ApplyTelemetryToggleAsync()
+    {
+        Settings.SetTelemetryConsent(Settings.TelemetryEnabled
+            ? TelemetryConsentStatus.Granted
+            : TelemetryConsentStatus.Declined);
+        await _telemetryService.ConfigureConsentAsync(Settings.GetTelemetryConsent());
+        await RefreshTelemetryStatusAsync();
+        await SaveConfigurationAsync();
+    }
+
+    public async Task ApplyTelemetryConsentAsync(TelemetryConsentStatus status)
+    {
+        _applyingTelemetryConsent = true;
+        try
+        {
+            Settings.SetTelemetryConsent(status);
+        }
+        finally
+        {
+            _applyingTelemetryConsent = false;
+        }
+        await _telemetryService.ConfigureConsentAsync(Settings.GetTelemetryConsent());
+        await RefreshTelemetryStatusAsync();
+        await SaveConfigurationAsync();
+    }
+
+    public async Task ExportTelemetryAsync(string destination)
+    {
+        await _telemetryService.ExportBundleAsync(destination);
+        await RefreshTelemetryStatusAsync();
+    }
+
+    [RelayCommand]
+    private async Task DeleteTelemetryAsync()
+    {
+        await _telemetryService.DeleteQueuedAsync();
+        await RefreshTelemetryStatusAsync();
+    }
+
+    public async Task RefreshTelemetryStatusAsync()
+    {
+        var stats = await _telemetryService.GetQueueStatsAsync();
+        TelemetryStatus = $"Diagnostic telemetry is {(_telemetryService.IsEnabled ? "on" : "off")} · " +
+                          $"{stats.RecordCount} queued record{(stats.RecordCount == 1 ? "" : "s")} " +
+                          $"({stats.Bytes / 1024d:F1} KiB)";
     }
 
     private void UpdateModeDependent()
@@ -1032,6 +1093,9 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
 
             // Load audio settings
             Settings.LoadFromSettings(config.Settings);
+            await _telemetryService.ConfigureConsentAsync(config.Settings.TelemetryConsent);
+            _configurationLoaded = true;
+            await RefreshTelemetryStatusAsync();
 
             // Load locations
             foreach (var locationData in config.Locations)
@@ -1162,5 +1226,6 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
         _falconRadioSharedMemoryService.Dispose();
         await _audioService.DisposeAsync();
         await _ivcMonitorService.DisposeAsync();
+        await _telemetryService.DisposeAsync();
     }
 }

@@ -108,6 +108,10 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
     [ObservableProperty] public partial string MonitorDeviceName { get; set; } = string.Empty;
     [ObservableProperty] public partial bool IsDarkMode { get; set; }
     [ObservableProperty] public partial bool MinimizeOnConnect { get; set; } = true;
+    [ObservableProperty] public partial bool TelemetryEnabled { get; set; }
+    public TelemetryConsentStatus TelemetryConsentState { get; private set; } = TelemetryConsentStatus.Unknown;
+    public int TelemetryPolicyVersion { get; private set; } = TelemetryConsent.CurrentPolicyVersion;
+    public DateTimeOffset? TelemetryConsentRecordedAtUtc { get; private set; }
 
     public bool IsWindowsPlatform { get; } = OperatingSystem.IsWindows();
 
@@ -419,6 +423,10 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
 
     public void LoadFromSettings(OpenFreqSettings settings)
     {
+        TelemetryConsentState = settings.TelemetryConsent.Status;
+        TelemetryPolicyVersion = settings.TelemetryConsent.PolicyVersion;
+        TelemetryConsentRecordedAtUtc = settings.TelemetryConsent.RecordedAtUtc;
+        TelemetryEnabled = TelemetryConsentState == TelemetryConsentStatus.Granted;
         OpenFreqServerAddress = settings.OpenFreqServerAddress;
         OpenFreqPassword = settings.OpenFreqPassword;
         OpenFreqServerAddressHistory = new ObservableCollection<string>(settings.OpenFreqServerAddressHistory);
@@ -605,6 +613,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
     {
         return new OpenFreqSettings
         {
+            TelemetryConsent = GetTelemetryConsent(),
             OpenFreqServerAddress = OpenFreqServerAddress,
             OpenFreqPassword = OpenFreqPassword,
             OpenFreqServerAddressHistory = [.. OpenFreqServerAddressHistory],
@@ -646,6 +655,21 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
             MaximizedScreenX = _maximizedScreenX,
             MaximizedScreenY = _maximizedScreenY
         };
+    }
+
+    public TelemetryConsent GetTelemetryConsent() => new()
+    {
+        Status = TelemetryConsentState,
+        PolicyVersion = TelemetryPolicyVersion,
+        RecordedAtUtc = TelemetryConsentRecordedAtUtc
+    };
+
+    public void SetTelemetryConsent(TelemetryConsentStatus status)
+    {
+        TelemetryConsentState = status;
+        TelemetryPolicyVersion = TelemetryConsent.CurrentPolicyVersion;
+        TelemetryConsentRecordedAtUtc = DateTimeOffset.UtcNow;
+        TelemetryEnabled = status == TelemetryConsentStatus.Granted;
     }
 
     private const int MaxAddressHistory = 10;

@@ -1,0 +1,33 @@
+<UserControl
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:viewModels="clr-namespace:OpenFreqClient.ViewModels"
+    x:Class="OpenFreqClient.Views.TelemetryConsentDialog"
+    x:DataType="viewModels:TelemetryConsentDialogViewModel">
+
+    <StackPanel Width="500" MaxWidth="500" Spacing="16">
+        <TextBlock Text="Help improve OpenFreq"
+                   Classes="Headline6" />
+        <TextBlock Text="{Binding Summary}"
+                   TextWrapping="Wrap" />
+        <Border IsVisible="{Binding DetailsVisible}"
+                Padding="12"
+                Background="{DynamicResource MaterialBackgroundBrush}">
+            <TextBlock Text="{Binding Details}"
+                       TextWrapping="Wrap" />
+        </Border>
+        <StackPanel Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Spacing="8">
+            <Button Content="View details"
+                    Classes="Flat"
+                    Command="{Binding ToggleDetailsCommand}" />
+            <Button Content="Not now"
+                    Classes="Flat"
+                    Command="{Binding DeclineCommand}" />
+            <Button Content="Allow diagnostics"
+                    IsDefault="True"
+                    Command="{Binding AllowCommand}" />
+        </StackPanel>
+    </StackPanel>
+</UserControl>

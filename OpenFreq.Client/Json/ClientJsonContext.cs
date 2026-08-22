@@ -16,6 +16,7 @@ namespace OpenFreqClient.Json;
 [JsonSerializable(typeof(MapPickerViewModel.NominatimResult))]
 [JsonSerializable(typeof(MapPickerViewModel.NominatimResult[]))]  // we need the array as well
 [JsonSerializable(typeof(HotkeyBinding))]
+[JsonSerializable(typeof(TelemetryConsent))]
 public partial class ClientJsonContext : JsonSerializerContext
 {
 }

@@ -1,9 +1,12 @@
+using System;
+using System.IO;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using OpenFreqClient.Services.Interfaces;
+using OpenFreqClient.Models;
 using OpenFreqClient.ViewModels;
 using OpenFreqClient.Views.Util;
 
@@ -21,10 +24,35 @@ public partial class MainWindow : Window
         InitializeComponent();
     }
 
-    protected override void OnLoaded(RoutedEventArgs e)
+    protected override async void OnLoaded(RoutedEventArgs e)
     {
         base.OnLoaded(e);
         _viewModel = DataContext as MainWindowViewModel;
+        if (_viewModel == null) return;
+
+        await _viewModel.InitializationTask;
+        if (_viewModel.Settings.TelemetryConsentState == TelemetryConsentStatus.Unknown)
+        {
+            var consent = await TelemetryConsentDialogService.ShowAsync();
+            await _viewModel.ApplyTelemetryConsentAsync(consent);
+        }
+    }
+
+    private async void ExportTelemetryButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (_viewModel == null) return;
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Export OpenFreq Diagnostics",
+            SuggestedFileName = $"openfreq-diagnostics-{DateTime.Now:yyyy-MM-dd-HHmm}.zip",
+            DefaultExtension = "zip",
+            FileTypeChoices =
+            [
+                new FilePickerFileType("Zip archive") { Patterns = ["*.zip"] }
+            ]
+        });
+        if (file == null) return;
+        await _viewModel.ExportTelemetryAsync(file.Path.LocalPath);
     }
 
     private async void HeightmapButton_OnClick(object? sender, RoutedEventArgs e)

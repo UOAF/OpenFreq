@@ -6,6 +6,7 @@ namespace OpenFreqClient.Models;
 
 public class OpenFreqSettings
 {
+    public TelemetryConsent TelemetryConsent { get; set; } = new();
     public string OpenFreqServerAddress { get; set; } = "";
     public string OpenFreqPassword { get; set; } = "";
     public List<string> OpenFreqServerAddressHistory { get; set; } = [];
