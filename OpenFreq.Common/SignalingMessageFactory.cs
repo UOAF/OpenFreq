@@ -54,7 +54,10 @@ public static class SignalingMessageFactory
         };
     }
 
-    public static SignalingMessage CreateSuccess(string message, SortedDictionary<int, List<PeerData>> peers, string? peerId = null, int? audioPort = null, bool opusEnabled = true)
+    public static SignalingMessage CreateSuccess(string message, SortedDictionary<int, List<PeerData>> peers,
+        string? peerId = null, int? audioPort = null, bool opusEnabled = true,
+        Guid? serverRunId = null, string? eventId = null, string? telemetryEndpoint = null,
+        string? telemetryToken = null, DateTimeOffset? telemetryTokenExpiresAtUtc = null)
     {
         return new SignalingMessage
         {
@@ -66,6 +69,11 @@ public static class SignalingMessageFactory
                     PeerId = peerId,
                     AudioPort = audioPort,
                     OpusCompressionEnabled = opusEnabled,
+                    ServerRunId = serverRunId,
+                    EventId = eventId,
+                    TelemetryEndpoint = telemetryEndpoint,
+                    TelemetryToken = telemetryToken,
+                    TelemetryTokenExpiresAtUtc = telemetryTokenExpiresAtUtc,
                     FrequenciesPeers = peers
                 },
                 OpenFreqJsonContext.Default.SuccessMessage)

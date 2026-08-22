@@ -91,6 +91,34 @@ public sealed class TelemetryTests : IDisposable
         Assert.Equal(0, (await spool.GetStatsAsync(0)).RecordCount);
     }
 
+    [Fact]
+    public async Task UpdatedContextAndCorrelationAreCapturedWithoutMachineIdentity()
+    {
+        using var spool = new FileTelemetrySpool(_directory);
+        await using var service = new TelemetryService(
+            spool,
+            NullLogger<TelemetryService>.Instance,
+            Guid.Parse("11111111-1111-1111-1111-111111111111"));
+        await service.ConfigureConsentAsync(new TelemetryConsent { Status = TelemetryConsentStatus.Granted });
+        service.UpdateContext(new TelemetryContextUpdate(
+            Callsign: "VIPR11", Mode: "game", TheaterId: "balkans", AircraftType: "F-16CM-50"));
+        service.UpdateCorrelation(new TelemetryCorrelationUpdate(
+            Guid.Parse("33333333-3333-3333-3333-333333333333"), "peer-42", "UOAF-TEST"));
+        service.Track(TelemetryEvents.PositionSample(100, 200, -3000, 500, "bms"));
+        await service.FlushAsync();
+
+        var records = new List<TelemetryEnvelope>();
+        await foreach (var item in spool.ReadAllAsync()) records.Add(item);
+        var position = Assert.Single(records, item => item.EventName == "position.sample");
+        Assert.Equal("VIPR11", position.Context.Callsign);
+        Assert.Equal("balkans", position.Context.TheaterId);
+        Assert.Equal("peer-42", position.Correlation.ConnectionId);
+        Assert.Equal("UOAF-TEST", position.Correlation.EventId);
+        var json = JsonSerializer.Serialize(position, TelemetryJsonContext.Default.TelemetryEnvelope);
+        Assert.DoesNotContain(Environment.UserName, json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(Environment.MachineName, json, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static TelemetryEnvelope CreateEnvelope(string eventName) => new()
     {
         EventName = eventName,

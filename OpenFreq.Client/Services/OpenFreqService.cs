@@ -20,6 +20,7 @@ using OpenFreqAudio;
 using OpenFreqClient.Models;
 using OpenFreqClient.Services.Audio;
 using OpenFreqClient.Services.Interfaces;
+using OpenFreqClient.Services.Telemetry;
 using ErrorEventArgs = OpenFreq.Common.ErrorEventArgs;
 
 namespace OpenFreqClient.Services;
@@ -108,12 +109,23 @@ public class OpenFreqService : IOpenFreqService
     private readonly IRtcClientFactory _rtcClientFactory;
     private readonly IPlaybackServiceFactory _playbackServiceFactory;
     private readonly ISignalCalculatorFactory _signalCalculatorFactory;
+    private readonly ITelemetryService _telemetry;
+    private readonly ConcurrentDictionary<int, TransmissionTelemetryState> _transmissionTelemetry = new();
+    private readonly ConcurrentDictionary<(string PeerId, int FrequencyKhz), DateTime> _lastPropagationTelemetry = new();
+    private long _captureCallbackCount;
+    private long _capturedSampleCount;
+    private long _audioSendCallCount;
+    private long _healthWindowCallbacks;
+    private long _healthWindowSamples;
+    private double _healthWindowSumSquares;
+    private int _healthWindowPeak;
+    private DateTime _healthWindowStartedUtc = DateTime.UtcNow;
 
     public OpenFreqService(IFalconSharedMemoryService falconSharedMemoryService,
         IFalconRadioSharedMemoryService falconRadioSharedMemoryService, ILogger<OpenFreqService> logger,
         ILoggerFactory loggerFactory, IAcmiClientService acmiClientService,
         IRtcClientFactory rtcClientFactory, IPlaybackServiceFactory playbackServiceFactory,
-        ISignalCalculatorFactory signalCalculatorFactory)
+        ISignalCalculatorFactory signalCalculatorFactory, ITelemetryService telemetry)
     {
         _falconSharedMemoryService = falconSharedMemoryService;
         _falconRadioSharedMemoryService = falconRadioSharedMemoryService;
@@ -123,6 +135,7 @@ public class OpenFreqService : IOpenFreqService
         _rtcClientFactory = rtcClientFactory;
         _playbackServiceFactory = playbackServiceFactory;
         _signalCalculatorFactory = signalCalculatorFactory;
+        _telemetry = telemetry;
 
         // Initialize signal strength tracker with callback
         _signalStrengthTracker = new SignalStrengthTracker(
@@ -704,6 +717,15 @@ public class OpenFreqService : IOpenFreqService
             return;
         }
 
+        var telemetryState = new TransmissionTelemetryState(
+            Guid.NewGuid(),
+            slotId,
+            DateTime.UtcNow,
+            Interlocked.Read(ref _captureCallbackCount),
+            Interlocked.Read(ref _capturedSampleCount),
+            Interlocked.Read(ref _audioSendCallCount));
+        _transmissionTelemetry[frequencyKhz] = telemetryState;
+
         // On the idle → transmitting edge, mark the start time and arm sidetone monitoring.
         if (wasIdle)
         {
@@ -711,7 +733,19 @@ public class OpenFreqService : IOpenFreqService
             if (_playbackService != null) _playbackService.SidetoneEnabled = SidetoneEnabled;
         }
 
-        await _client.StartTransmissionAsync(frequencyKhz, Apply3dAudioEffects);
+        try
+        {
+            await _client.StartTransmissionAsync(frequencyKhz, Apply3dAudioEffects);
+            _telemetry.Track(TelemetryEvents.TransmissionState(telemetryState.TransmissionId, "started",
+                frequencyKhz, slotId, Apply3dAudioEffects));
+        }
+        catch
+        {
+            _transmissionTelemetry.TryRemove(frequencyKhz, out _);
+            _telemetry.Track(TelemetryEvents.TransmissionState(telemetryState.TransmissionId, "start_failed",
+                frequencyKhz, slotId, Apply3dAudioEffects));
+            throw;
+        }
         OnStatusMessage($"Transmitting on {frequencyKhz / 1000d:F3}");
     }
 
@@ -743,7 +777,27 @@ public class OpenFreqService : IOpenFreqService
             UpdateMicCaptureState();
         }
 
-        await _client.StopTransmissionAsync(frequencyKhz, Apply3dAudioEffects);
+        _transmissionTelemetry.TryRemove(frequencyKhz, out var telemetryState);
+        try
+        {
+            await _client.StopTransmissionAsync(frequencyKhz, Apply3dAudioEffects);
+        }
+        finally
+        {
+            if (telemetryState != null)
+            {
+                var duration = (long)Math.Max(0, (DateTime.UtcNow - telemetryState.StartedUtc).TotalMilliseconds);
+                _telemetry.Track(TelemetryEvents.TransmissionState(telemetryState.TransmissionId, "stopped",
+                    frequencyKhz, telemetryState.SlotId, Apply3dAudioEffects));
+                _telemetry.Track(TelemetryEvents.TransmissionHealth(
+                    telemetryState.TransmissionId,
+                    frequencyKhz,
+                    duration,
+                    Interlocked.Read(ref _captureCallbackCount) - telemetryState.CaptureCallbacksAtStart,
+                    Interlocked.Read(ref _capturedSampleCount) - telemetryState.CapturedSamplesAtStart,
+                    Interlocked.Read(ref _audioSendCallCount) - telemetryState.SendCallsAtStart));
+            }
+        }
         OnStatusMessage($"Stopped transmitting on {frequencyKhz / 1000d:F3} MHz");
     }
 
@@ -780,6 +834,8 @@ public class OpenFreqService : IOpenFreqService
             var initMsg = $"Failed to initialize recording device (BASS index {RecordingDeviceIndex}): {Bass.LastError}";
             _logger.LogError("{Message}", initMsg);
             AudioPlaybackErrorOccurred?.Invoke(this, initMsg);
+            _telemetry.Track(TelemetryEvents.AudioCaptureState("initialization_failed", RecordingDeviceIndex,
+                Bass.LastError.ToString()));
             return false;
         }
 
@@ -798,11 +854,15 @@ public class OpenFreqService : IOpenFreqService
             var startMsg = $"Failed to start recording on device (BASS index {RecordingDeviceIndex}): {Bass.LastError}";
             _logger.LogError("{Message}", startMsg);
             AudioPlaybackErrorOccurred?.Invoke(this, startMsg);
+            _telemetry.Track(TelemetryEvents.AudioCaptureState("start_failed", RecordingDeviceIndex,
+                Bass.LastError.ToString()));
             return false;
         }
 
         if (!Bass.ChannelPlay(_recordHandle))
             _logger.LogWarning("ChannelPlay on record handle returned false: {Error}", Bass.LastError);
+
+        _telemetry.Track(TelemetryEvents.AudioCaptureState("started", RecordingDeviceIndex));
 
         return true;
     }
@@ -821,6 +881,7 @@ public class OpenFreqService : IOpenFreqService
             _logger.LogWarning("StreamFree on record handle {Handle} returned false: {Error}",
                 _recordHandle, Bass.LastError);
         _recordHandle = 0;
+        _telemetry.Track(TelemetryEvents.AudioCaptureState("stopped", RecordingDeviceIndex));
     }
 
     public async Task NotifyModeAsync(bool is3d)
@@ -914,13 +975,25 @@ public class OpenFreqService : IOpenFreqService
     /// </summary>
     public void LoadHeightmap(string path, int width = 32768, int height = 32768, int bytesPerSample = 2)
     {
-        _signalCalculator?.Dispose();
-        // Cell size = theater world size / DEM resolution
-        var cellSizeMeters = BmsHeightmapConverter.HEIGHTMAP_SIZE_METERS / width;
-        _signalCalculator = _signalCalculatorFactory.Create(path, width, height, bytesPerSample, cellSizeMeters,
-            _loggerFactory);
-        OnStatusMessage($"Heightmap loaded: {path}");
-        _logger.LogDebug($"Heightmap loaded: {path}");
+        var theaterId = Path.GetFileName(Path.GetDirectoryName(path)) ?? "unknown";
+        try
+        {
+            _signalCalculator?.Dispose();
+            // Cell size = theater world size / DEM resolution
+            var cellSizeMeters = BmsHeightmapConverter.HEIGHTMAP_SIZE_METERS / width;
+            _signalCalculator = _signalCalculatorFactory.Create(path, width, height, bytesPerSample, cellSizeMeters,
+                _loggerFactory);
+            _telemetry.UpdateContext(new TelemetryContextUpdate(TheaterId: theaterId));
+            _telemetry.Track(TelemetryEvents.HeightmapLoad(true, theaterId, width, height, bytesPerSample));
+            OnStatusMessage($"Heightmap loaded: {path}");
+            _logger.LogDebug($"Heightmap loaded: {path}");
+        }
+        catch (Exception ex)
+        {
+            _telemetry.Track(TelemetryEvents.HeightmapLoad(false, theaterId, width, height, bytesPerSample,
+                ex.GetType().Name));
+            throw;
+        }
     }
 
     public double? SampleTerrainElevationMeters(double xMeters, double yMeters)
@@ -986,6 +1059,10 @@ public class OpenFreqService : IOpenFreqService
             // (and peers receive) the same normalized audio.
             if (MicNormalizationEnabled)
                 _micNormalizer.Process(audioData, audioData.Length);
+
+            Interlocked.Increment(ref _captureCallbackCount);
+            Interlocked.Add(ref _capturedSampleCount, audioData.Length);
+            CaptureAudioHealth(audioData);
 
             // Convert mic to float once and fan out to sidetone (speaker loopback) and/or the
             // session recording (own voice, rendered through radio FX downstream).
@@ -1057,6 +1134,7 @@ public class OpenFreqService : IOpenFreqService
             }
 
             _client?.SendAudio(audioData, frequenciesData, Apply3dAudioEffects);
+            Interlocked.Increment(ref _audioSendCallCount);
 
             // Clean up any frequencies which might have been disabled in the meantime
             foreach (var disabledFrequency in disabledFrequencies)
@@ -1201,6 +1279,8 @@ public class OpenFreqService : IOpenFreqService
 
     private void OnClientAuthenticated(object? sender, AuthenticationEventArgs e)
     {
+        _telemetry.UpdateCorrelation(new TelemetryCorrelationUpdate(e.ServerRunId, e.PeerId, e.EventId));
+        _telemetry.ConfigureUpload(e.TelemetryCapability);
         OnStatusMessage($"Authenticated - Peer ID: {e.PeerId}, Audio Port: {e.AudioPort}");
         OnAllPeersStatusUpdateReceived(sender, new AllPeersStatusEventArgs(e.Peers));
         // Push current mode to server immediately so it knows our Is3d state before
@@ -1437,11 +1517,67 @@ public class OpenFreqService : IOpenFreqService
             LastCalculated = now
         };
 
+        if (!_lastPropagationTelemetry.TryGetValue(cacheKey, out var lastTelemetry) ||
+            now - lastTelemetry >= TimeSpan.FromSeconds(1))
+        {
+            _lastPropagationTelemetry[cacheKey] = now;
+            _telemetry.Track(TelemetryEvents.PropagationSample(
+                peerId,
+                frequencyTransmission.Khz,
+                frequencyTransmission.Position.X,
+                frequencyTransmission.Position.Y,
+                frequencyTransmission.Position.Z,
+                ownPosition.X,
+                ownPosition.Y,
+                ownPosition.Z,
+                audioParams.ReceivedDb,
+                audioParams.ReceivedSnrDb,
+                audioParams.DropoutRate,
+                audioParams.DeepFadeRate));
+        }
+
 #if DEBUG
         _logger.LogDebug("Calculated audio params {AudioParams}", audioParams);
 #endif
 
         return audioParams;
+    }
+
+    private void CaptureAudioHealth(ReadOnlySpan<short> audioData)
+    {
+        double sumSquares = 0;
+        var peak = 0;
+        foreach (var sample in audioData)
+        {
+            var magnitude = Math.Abs((int)sample);
+            if (magnitude > peak) peak = magnitude;
+            var normalized = sample / (double)short.MaxValue;
+            sumSquares += normalized * normalized;
+        }
+
+        _healthWindowCallbacks++;
+        _healthWindowSamples += audioData.Length;
+        _healthWindowSumSquares += sumSquares;
+        _healthWindowPeak = Math.Max(_healthWindowPeak, peak);
+
+        var now = DateTime.UtcNow;
+        if (now - _healthWindowStartedUtc < TimeSpan.FromSeconds(1)) return;
+        var rms = _healthWindowSamples == 0 ? 0 : Math.Sqrt(_healthWindowSumSquares / _healthWindowSamples);
+        var peakNormalized = _healthWindowPeak / (double)short.MaxValue;
+        var rmsDbfs = rms <= 0 ? -120 : 20 * Math.Log10(rms);
+        var peakDbfs = peakNormalized <= 0 ? -120 : 20 * Math.Log10(peakNormalized);
+        _telemetry.Track(TelemetryEvents.AudioCaptureHealth(
+            _healthWindowCallbacks,
+            _healthWindowSamples,
+            rmsDbfs,
+            peakDbfs,
+            _activeTransmissionsAndMutedFrequencies.Count));
+
+        _healthWindowCallbacks = 0;
+        _healthWindowSamples = 0;
+        _healthWindowSumSquares = 0;
+        _healthWindowPeak = 0;
+        _healthWindowStartedUtc = now;
     }
 
     // Last computed physics params for this source+freq, ignoring the cache freshness.
@@ -1584,3 +1720,11 @@ internal class AudioParamsCacheEntry
     public required AudioParams Params { get; set; }
     public DateTime LastCalculated { get; set; }
 }
+
+internal sealed record TransmissionTelemetryState(
+    Guid TransmissionId,
+    Guid SlotId,
+    DateTime StartedUtc,
+    long CaptureCallbacksAtStart,
+    long CapturedSamplesAtStart,
+    long SendCallsAtStart);

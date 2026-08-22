@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using OpenFreq.Common;
 using OpenFreqClient.Json;
 using OpenFreqClient.Models;
 using OpenFreqClient.Services.Interfaces;
@@ -30,6 +31,9 @@ public sealed class TelemetryService : ITelemetryService
     private long _dropped;
     private int _disposed;
     private int _sessionStarted;
+    private TelemetryContext _context = new();
+    private TelemetryCorrelationUpdate _correlation = new();
+    private TelemetryCapability? _uploadCapability;
 
     public bool IsEnabled { get; private set; }
     public TelemetryConsentStatus ConsentStatus { get; private set; } = TelemetryConsentStatus.Unknown;
@@ -74,6 +78,30 @@ public sealed class TelemetryService : ITelemetryService
         Interlocked.Decrement(ref _pending);
         Interlocked.Increment(ref _dropped);
     }
+
+    public void UpdateContext(TelemetryContextUpdate update)
+    {
+        var current = Volatile.Read(ref _context);
+        Volatile.Write(ref _context, new TelemetryContext
+        {
+            Callsign = update.Callsign ?? current.Callsign,
+            Mode = update.Mode ?? current.Mode,
+            TheaterId = update.TheaterId ?? current.TheaterId,
+            AircraftType = update.AircraftType ?? current.AircraftType
+        });
+    }
+
+    public void UpdateCorrelation(TelemetryCorrelationUpdate update)
+    {
+        var current = Volatile.Read(ref _correlation);
+        Volatile.Write(ref _correlation, new TelemetryCorrelationUpdate(
+            update.ServerRunId ?? current.ServerRunId,
+            update.ConnectionId ?? current.ConnectionId,
+            update.EventId ?? current.EventId));
+    }
+
+    public void ConfigureUpload(TelemetryCapability? capability) =>
+        Volatile.Write(ref _uploadCapability, capability);
 
     public async Task FlushAsync(CancellationToken cancellationToken = default)
     {
@@ -171,13 +199,23 @@ public sealed class TelemetryService : ITelemetryService
             Architecture = RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant(),
             RuntimeVersion = RuntimeInformation.FrameworkDescription
         },
-        Correlation = new TelemetryCorrelation
-        {
-            InstallationId = _installationId,
-            AppSessionId = _appSessionId
-        },
+        Correlation = CreateCorrelation(),
+        Context = Volatile.Read(ref _context),
         Attributes = telemetryEvent.CreateAttributes()
     };
+
+    private TelemetryCorrelation CreateCorrelation()
+    {
+        var current = Volatile.Read(ref _correlation);
+        return new TelemetryCorrelation
+        {
+            InstallationId = _installationId,
+            AppSessionId = _appSessionId,
+            ServerRunId = current.ServerRunId,
+            ConnectionId = current.ConnectionId,
+            EventId = current.EventId
+        };
+    }
 
     private Guid LoadOrCreateInstallationId()
     {

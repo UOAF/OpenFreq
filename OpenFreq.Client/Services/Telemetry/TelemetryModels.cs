@@ -100,6 +100,17 @@ public sealed class TelemetryContext
     public string? AircraftType { get; init; }
 }
 
+public sealed record TelemetryContextUpdate(
+    string? Callsign = null,
+    string? Mode = null,
+    string? TheaterId = null,
+    string? AircraftType = null);
+
+public sealed record TelemetryCorrelationUpdate(
+    Guid? ServerRunId = null,
+    string? ConnectionId = null,
+    string? EventId = null);
+
 public sealed record TelemetryQueueStats(long Bytes, int RecordCount, DateTimeOffset? OldestRecordUtc, long DroppedRecords);
 
 public sealed class TelemetryExportManifest

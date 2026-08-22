@@ -73,6 +73,16 @@ public class SuccessMessage
 
     [JsonPropertyName("opusCompression")] public bool OpusCompressionEnabled { get; set; }
 
+    [JsonPropertyName("serverRunId")] public Guid? ServerRunId { get; set; }
+
+    [JsonPropertyName("eventId")] public string? EventId { get; set; }
+
+    [JsonPropertyName("telemetryEndpoint")] public string? TelemetryEndpoint { get; set; }
+
+    [JsonPropertyName("telemetryToken")] public string? TelemetryToken { get; set; }
+
+    [JsonPropertyName("telemetryTokenExpiresAtUtc")] public DateTimeOffset? TelemetryTokenExpiresAtUtc { get; set; }
+
     [JsonPropertyName("frequencies")] public SortedDictionary<int, List<PeerData>> FrequenciesPeers { get; set; } = [];
 
 }

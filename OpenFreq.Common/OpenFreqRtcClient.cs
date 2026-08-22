@@ -64,6 +64,9 @@ public class OpenFreqRtcClient : IRtcClient
 
     // Properties
     public string? MyPeerId { get; private set; }
+    public Guid? ServerRunId { get; private set; }
+    public string? EventId { get; private set; }
+    public TelemetryCapability? TelemetryCapability { get; private set; }
 
     public string? MyDisplayName { get; }
 
@@ -537,12 +540,20 @@ public class OpenFreqRtcClient : IRtcClient
                     if (success?.PeerId != null)
                     {
                         MyPeerId = success.PeerId;
+                        ServerRunId = success.ServerRunId;
+                        EventId = success.EventId;
+                        TelemetryCapability = !string.IsNullOrWhiteSpace(success.TelemetryEndpoint) &&
+                                              !string.IsNullOrWhiteSpace(success.TelemetryToken)
+                            ? new TelemetryCapability(success.TelemetryEndpoint, success.TelemetryToken,
+                                success.TelemetryTokenExpiresAtUtc)
+                            : null;
                         AudioPort = success.AudioPort ?? 0;
                         IsAuthenticated = true;
                         _opusCompressionEnabled = success.OpusCompressionEnabled;
                         _logger.LogDebug("Opus compression enabled: " + _opusCompressionEnabled);
                         OnConnectionStateChanged(ConnectionState.Authenticated);
-                        OnAuthenticated(MyPeerId, success.FrequenciesPeers, AudioPort);
+                        OnAuthenticated(MyPeerId, success.FrequenciesPeers, AudioPort, ServerRunId, EventId,
+                            TelemetryCapability);
                     }
 
                     break;
@@ -650,8 +661,10 @@ public class OpenFreqRtcClient : IRtcClient
     private void OnConnectionStateChanged(ConnectionState state, DisconnectReason reason = DisconnectReason.None) =>
         ConnectionStateChanged?.Invoke(this, new ConnectionStateChangedEventArgs(state, reason));
 
-    private void OnAuthenticated(string peerId, SortedDictionary<int, List<PeerData>> peers, int audioPort) =>
-        Authenticated?.Invoke(this, new AuthenticationEventArgs(peerId, peers, audioPort));
+    private void OnAuthenticated(string peerId, SortedDictionary<int, List<PeerData>> peers, int audioPort,
+        Guid? serverRunId, string? eventId, TelemetryCapability? telemetryCapability) =>
+        Authenticated?.Invoke(this,
+            new AuthenticationEventArgs(peerId, peers, audioPort, serverRunId, eventId, telemetryCapability));
 
     private void OnFrequencyJoined(int frequencyKhz, List<ChannelStateMessage.Peer> peers) =>
         FrequencyJoined?.Invoke(this, new FrequencyJoinedEventArgs(frequencyKhz, peers));
@@ -741,16 +754,28 @@ public class AuthenticationEventArgs : EventArgs
 {
     public string PeerId { get; }
     public int AudioPort { get; }
+    public Guid? ServerRunId { get; }
+    public string? EventId { get; }
+    public TelemetryCapability? TelemetryCapability { get; }
 
     public SortedDictionary<int, List<PeerData>> Peers { get; }
 
-    public AuthenticationEventArgs(string peerId, SortedDictionary<int, List<PeerData>> peers, int audioPort)
+    public AuthenticationEventArgs(string peerId, SortedDictionary<int, List<PeerData>> peers, int audioPort,
+        Guid? serverRunId = null, string? eventId = null, TelemetryCapability? telemetryCapability = null)
     {
         PeerId = peerId;
         Peers = peers;
         AudioPort = audioPort;
+        ServerRunId = serverRunId;
+        EventId = eventId;
+        TelemetryCapability = telemetryCapability;
     }
 }
+
+public sealed record TelemetryCapability(
+    string Endpoint,
+    string Token,
+    DateTimeOffset? ExpiresAtUtc);
 
 public class FrequencyJoinedEventArgs(int frequencyKhz, List<ChannelStateMessage.Peer> peers) : EventArgs
 {

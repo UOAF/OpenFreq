@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using OpenFreq.Common;
 using OpenFreqClient.Models;
 using OpenFreqClient.Services.Telemetry;
 
@@ -12,6 +13,9 @@ public interface ITelemetryService : IAsyncDisposable
     TelemetryConsentStatus ConsentStatus { get; }
 
     ValueTask ConfigureConsentAsync(TelemetryConsent consent, CancellationToken cancellationToken = default);
+    void UpdateContext(TelemetryContextUpdate update);
+    void UpdateCorrelation(TelemetryCorrelationUpdate update);
+    void ConfigureUpload(TelemetryCapability? capability);
     void Track(ITelemetryEvent telemetryEvent);
     Task FlushAsync(CancellationToken cancellationToken = default);
     Task<TelemetryQueueStats> GetQueueStatsAsync(CancellationToken cancellationToken = default);

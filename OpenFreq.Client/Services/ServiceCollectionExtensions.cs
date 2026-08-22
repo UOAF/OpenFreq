@@ -43,6 +43,7 @@ public static class ServiceCollectionExtensions
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "OpenFreq", "telemetry", "queue")));
         services.AddSingleton<ITelemetryService, TelemetryService>();
+        services.AddSingleton<TelemetryInstrumentationService>();
 
         // Register ViewModels
         services.AddSingleton<SettingsViewModel>();

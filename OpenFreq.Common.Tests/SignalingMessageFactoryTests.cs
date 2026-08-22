@@ -207,6 +207,31 @@ public class SignalingMessageFactoryTests
     }
 
     [Fact]
+    public void CreateSuccess_TelemetryCorrelationRoundTrips()
+    {
+        var serverRunId = Guid.NewGuid();
+        var expires = DateTimeOffset.UtcNow.AddHours(1);
+        var msg = SignalingMessageFactory.CreateSuccess(
+            "Authenticated",
+            new SortedDictionary<int, List<PeerData>>(),
+            peerId: "peer-1",
+            serverRunId: serverRunId,
+            eventId: "UOAF-2026-08-22",
+            telemetryEndpoint: "https://telemetry.example/v1/batches",
+            telemetryToken: "payload.signature",
+            telemetryTokenExpiresAtUtc: expires);
+
+        var payload = SignalingMessageFactory.DeserializePayload<SuccessMessage>(msg.Payload);
+
+        Assert.NotNull(payload);
+        Assert.Equal(serverRunId, payload.ServerRunId);
+        Assert.Equal("UOAF-2026-08-22", payload.EventId);
+        Assert.Equal("https://telemetry.example/v1/batches", payload.TelemetryEndpoint);
+        Assert.Equal("payload.signature", payload.TelemetryToken);
+        Assert.Equal(expires, payload.TelemetryTokenExpiresAtUtc);
+    }
+
+    [Fact]
     public void CreateAllPeersStatus_EmptyDict_PayloadRoundTrips()
     {
         var allPeers = new SortedDictionary<int, List<PeerData>>();

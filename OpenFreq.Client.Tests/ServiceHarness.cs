@@ -25,6 +25,7 @@ internal sealed class ServiceHarness
     public IFalconSharedMemoryService Falcon { get; } = Substitute.For<IFalconSharedMemoryService>();
     public IFalconRadioSharedMemoryService FalconRadio { get; } = Substitute.For<IFalconRadioSharedMemoryService>();
     public IAcmiClientService Acmi { get; } = Substitute.For<IAcmiClientService>();
+    public ITelemetryService Telemetry { get; } = Substitute.For<ITelemetryService>();
 
     public OpenFreqService Service { get; }
 
@@ -41,7 +42,7 @@ internal sealed class ServiceHarness
 
         Service = new OpenFreqService(
             Falcon, FalconRadio, NullLogger<OpenFreqService>.Instance, NullLoggerFactory.Instance, Acmi,
-            rtcFactory, playbackFactory, signalFactory);
+            rtcFactory, playbackFactory, signalFactory, Telemetry);
     }
 
     /// <summary>Run Initialize() with sane defaults (GCI mode, device 0).</summary>

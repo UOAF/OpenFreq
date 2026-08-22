@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using OpenFreq.Client.Services.Interfaces;
 using OpenFreq.Services.Acmi;
 using OpenFreqClient.Services.Interfaces;
+using OpenFreqClient.Services.Telemetry;
 using OpenFreqClient.ViewModels;
 using OpenFreqClient.Views;
 
@@ -41,13 +42,15 @@ public partial class App : Application
             serviceProvider.GetRequiredService<IFalconRadioSharedMemoryService>(),
             serviceProvider.GetRequiredService<IFalconSharedMemoryService>(),
             serviceProvider.GetRequiredService<IAcmiClientService>(),
-            serviceProvider.GetRequiredService<IHotkeyService>()
+            serviceProvider.GetRequiredService<IHotkeyService>(),
+            serviceProvider.GetRequiredService<TelemetryInstrumentationService>()
         ];
 #else
             _services = new List<ILifecycleService>
             {
                 serviceProvider.GetRequiredService<IAcmiClientService>(),
                 serviceProvider.GetRequiredService<IHotkeyService>(),
+                serviceProvider.GetRequiredService<TelemetryInstrumentationService>(),
             };
 #endif
 

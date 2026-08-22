@@ -25,6 +25,7 @@ public class SignalingServer
     private readonly IAudioStreamServer _audioServer;
     private readonly ILogger<SignalingServer> _logger;
     private CancellationTokenSource _cts = new();
+    private readonly Guid _serverRunId = Guid.NewGuid();
 
     // Guards against a single wedged socket stalling a broadcast indefinitely. Kept well above
     // the worst-case send latency seen during synchronized channel tune bursts (clients all jumping to 3D) so we
@@ -755,9 +756,11 @@ public class SignalingServer
     private async Task SendSuccess(ClientSession session, string message, string? peerId = null, int? audioPort = null,
         bool opusEnabled = true)
     {
+        var telemetryToken = TelemetryTokenIssuer.TryIssue(_config, _serverRunId);
         await SendToClient(session,
             SignalingMessageFactory.CreateSuccess(message, _channelManager.GetAllChannelStates(), peerId, audioPort,
-                opusEnabled));
+                opusEnabled, _serverRunId, _config.TelemetryEventId, _config.TelemetryEndpoint,
+                telemetryToken?.Token, telemetryToken?.ExpiresAtUtc));
     }
 
     private async Task SendChannelState(ClientSession session, int frequencyKhz, List<ChannelStateMessage.Peer> peers)

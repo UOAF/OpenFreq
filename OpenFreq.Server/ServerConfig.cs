@@ -24,4 +24,13 @@ public class ServerConfig
 
     [JsonPropertyName("broadcastPeerUpdates")]
     public bool BroadcastPeerUpdates { get; set; } = true;
+
+    [JsonPropertyName("telemetryEventId")]
+    public string? TelemetryEventId { get; set; }
+
+    [JsonPropertyName("telemetryEndpoint")]
+    public string? TelemetryEndpoint { get; set; }
+
+    [JsonPropertyName("telemetrySigningKey")]
+    public string? TelemetrySigningKey { get; set; }
 }

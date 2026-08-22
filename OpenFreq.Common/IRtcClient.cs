@@ -25,6 +25,9 @@ public interface IRtcClient : IDisposable
 
     string ServerIp { get; }
     string? MyPeerId { get; }
+    Guid? ServerRunId { get; }
+    string? EventId { get; }
+    TelemetryCapability? TelemetryCapability { get; }
     bool IsConnected { get; }
     bool IsAuthenticated { get; }
 
