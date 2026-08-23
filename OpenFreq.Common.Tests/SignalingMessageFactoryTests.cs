@@ -195,7 +195,7 @@ public class SignalingMessageFactoryTests
     {
         var peers = new SortedDictionary<int, List<PeerData>>();
         var msg = SignalingMessageFactory.CreateSuccess(
-            "Authenticated", peers, peerId: "me-123", audioPort: 9988, opusEnabled: true);
+            "Authenticated", peers, peerId: "me-123", audioPort: 9988);
 
         Assert.Equal(SignalingMessageTypes.Success, msg.Type);
         var payload = SignalingMessageFactory.DeserializePayload<SuccessMessage>(msg.Payload);
@@ -203,7 +203,6 @@ public class SignalingMessageFactoryTests
         Assert.Equal("Authenticated", payload.Message);
         Assert.Equal("me-123", payload.PeerId);
         Assert.Equal(9988, payload.AudioPort);
-        Assert.True(payload.OpusCompressionEnabled);
     }
 
     [Fact]

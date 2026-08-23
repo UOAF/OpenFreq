@@ -15,7 +15,6 @@ public class JsonTests
             AudioPort = 2222,
             MaxClientsPerChannel = 7,
             MaxChannelsPerClient = 3,
-            EnableOpusCompression = false,
             BroadcastPeerUpdates = false
         };
 
@@ -28,7 +27,6 @@ public class JsonTests
         Assert.Equal(2222, back.AudioPort);
         Assert.Equal(7, back.MaxClientsPerChannel);
         Assert.Equal(3, back.MaxChannelsPerClient);
-        Assert.False(back.EnableOpusCompression);
         Assert.False(back.BroadcastPeerUpdates);
     }
 
@@ -41,7 +39,6 @@ public class JsonTests
         Assert.Equal(8000, back.WebSocketPort);
         Assert.Equal(9988, back.AudioPort);          // default
         Assert.Equal(50, back.MaxClientsPerChannel); // default
-        Assert.True(back.EnableOpusCompression);     // default
     }
 
     [Fact]

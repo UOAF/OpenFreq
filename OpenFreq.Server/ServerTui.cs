@@ -373,8 +373,7 @@ public class TerminalGuiServer : IDisposable
             $"● OpenFreq Server {_version} | Up: {uptimeStr} | " +
             $"Ports: {_config.WebSocketPort} (ws://) {_config.AudioPort} (Audio) | Clients: {_stats.AuthenticatedClients} | " +
             $"TX: {_stats.ActiveTransmissions} | " +
-            $"Auth:{(!string.IsNullOrEmpty(_config.ServerPassword) ? " Yes" : " No")} | " +
-            $"Opus:{(_config.EnableOpusCompression ? " Yes" : " No")}";
+            $"Auth:{(!string.IsNullOrEmpty(_config.ServerPassword) ? " Yes" : " No")}";
 
         const string hotkeys = " | F1=Freq  F2=Clients  F3=Logs  CTRL+q=Quit";
         var termWidth = _app?.Screen.Width ?? Console.WindowWidth;

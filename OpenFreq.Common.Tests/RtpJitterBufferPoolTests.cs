@@ -14,12 +14,10 @@ public class RtpJitterBufferPoolTests
     private static RtpJitterBufferPool CreatePool(out Channel<AudioReceivedEventArgs> player)
     {
         player = Channel.CreateUnbounded<AudioReceivedEventArgs>();
-        // opusEnabled: false avoids creating native Opus decoders in the per-source contexts.
         return new RtpJitterBufferPool(
             NullLoggerFactory.Instance,
             CancellationToken.None,
             player.Writer,
-            opusEnabled: false,
             initialBufferMs: 40);
     }
 

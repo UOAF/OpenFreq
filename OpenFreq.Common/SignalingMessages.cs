@@ -71,8 +71,6 @@ public class SuccessMessage
 
     [JsonPropertyName("audioPort")] public int? AudioPort { get; set; }
 
-    [JsonPropertyName("opusCompression")] public bool OpusCompressionEnabled { get; set; }
-
     [JsonPropertyName("frequencies")] public SortedDictionary<int, List<PeerData>> FrequenciesPeers { get; set; } = [];
 
 }
