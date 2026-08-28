@@ -40,6 +40,9 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
 
     private const int OFFSET_HSIBITS = 232; // hsiBits (uint) at byte 232
 
+    // Consecutive polls with the flying bit clear before we accept "not flying"
+    private const int NotFlyingDebounceSamples = 3;
+
     private ServiceState _state = ServiceState.Stopped;
     private double _pollingFrequencyHz = 2.0;
 
@@ -61,6 +64,7 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
     private bool _disposed;
     private bool _wasFlying;
     private bool _isFlying;
+    private int _notFlyingSamples;
     private readonly ILogger<FalconSharedMemoryService> _logger = logger;
 
     public event EventHandler<ServiceStateChangedEventArgs>? StateChanged;
@@ -174,6 +178,7 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
         {
             // Reset so the next Start() re-signals a false -> true transition
             _wasFlying = false;
+            _notFlyingSamples = 0;
             ChangeState(ServiceState.Stopped);
         }
 
@@ -410,14 +415,50 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
 
             // Read hsiBits
             uint hsiBits = BitConverter.ToUInt32(ReadBytes(_lpPrimaryBaseAddress, OFFSET_HSIBITS, 4), 0);
-            bool isFlying = (hsiBits & HSI_FLYING_BIT) != 0;
+            bool rawIsFlying = (hsiBits & HSI_FLYING_BIT) != 0;
 
-            if (isFlying != _wasFlying)
+            // Debounce the flying -> not-flying state
+            bool isFlying;
+            if (rawIsFlying)
             {
-                FlyingStateChanged?.Invoke(this, new FlyingStateChangedEventArgs(_wasFlying, isFlying));
+                _notFlyingSamples = 0;
+                isFlying = true;
+            }
+            else if (!_wasFlying)
+            {
+                isFlying = false;
+            }
+            else if (++_notFlyingSamples >= NotFlyingDebounceSamples)
+            {
+                isFlying = false;
+            }
+            else
+            {
+                _logger.LogDebug(
+                    "Flying bit clear ({Sample}/{Needed}) - holding In-game until debounce completes",
+                    _notFlyingSamples, NotFlyingDebounceSamples);
+                isFlying = true;
             }
 
+            bool flyingChanged = isFlying != _wasFlying;
+            var previousFlying = _wasFlying;
+
             _wasFlying = isFlying;
+            if (isFlying)
+                _notFlyingSamples = 0;
+
+            if (flyingChanged)
+            {
+                _logger.LogInformation("Flying state changed: {Old} -> {New}", previousFlying, isFlying);
+                try
+                {
+                    FlyingStateChanged?.Invoke(this, new FlyingStateChangedEventArgs(previousFlying, isFlying));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "FlyingStateChanged subscriber threw");
+                }
+            }
 
             // Poll AcName/AcNCTR — can change while BMS is running
             bool aircraftInfoChanged = false;
@@ -439,10 +480,8 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
                 }
             }
 
-            if (aircraftInfoChanged)
-                AircraftInfoChanged?.Invoke(this, new AircraftInfoChangedEventArgs(newAcName, newAcNctr));
-
-            // Update position & velocity
+            // Update position & velocity before notifying, so a throwing subscriber cannot
+            // leave the cached state stale.
             lock (_dataLock)
             {
                 // For some reason BMS switches x & y in shmem, correct this
@@ -451,10 +490,24 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
                 _isFlying = isFlying;
             }
 
+            if (aircraftInfoChanged)
+            {
+                try
+                {
+                    AircraftInfoChanged?.Invoke(this, new AircraftInfoChangedEventArgs(newAcName, newAcNctr));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "AircraftInfoChanged subscriber threw");
+                }
+            }
+
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            // Genuine shared memory read failure - the caller tears down and re-maps.
+            _logger.LogWarning(ex, "Failed to read flight data from shared memory");
             return false;
         }
     }
@@ -473,6 +526,7 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
             return;
 
         _state = newState;
+        _logger.LogInformation("State: {Old} -> {New}", oldState, newState);
         StateChanged?.Invoke(this, new ServiceStateChangedEventArgs(oldState, newState));
     }
 
