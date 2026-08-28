@@ -50,8 +50,10 @@
         <PackageReference Include="Material.Avalonia" Version="3.16.1" />
         <PackageReference Include="Material.Avalonia.Dialogs" Version="3.16.1" />
         <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
         <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
         <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.0" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
         <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.0" />
         <PackageReference Include="Serilog" Version="4.2.0" />
         <PackageReference Include="Serilog.Extensions.Hosting" Version="9.0.0" />
@@ -82,15 +84,6 @@
       <TrimmerRootAssembly Include="Serilog.Sinks.File" />
       <TrimmerRootAssembly Include="DotSpatial.Projections" />
       <TrimmerRootAssembly Include="Material.Styles" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <Reference Include="Microsoft.Extensions.DependencyInjection">
-        <HintPath>..\..\..\.nuget\packages\microsoft.extensions.dependencyinjection\9.0.10\lib\net9.0\Microsoft.Extensions.DependencyInjection.dll</HintPath>
-      </Reference>
-      <Reference Include="Microsoft.Extensions.Logging.Abstractions">
-        <HintPath>..\..\..\.nuget\packages\microsoft.extensions.logging.abstractions\9.0.10\lib\net9.0\Microsoft.Extensions.Logging.Abstractions.dll</HintPath>
-      </Reference>
     </ItemGroup>
 
     <ItemGroup>
