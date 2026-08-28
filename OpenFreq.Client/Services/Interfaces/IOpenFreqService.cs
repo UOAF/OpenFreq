@@ -29,7 +29,7 @@ public interface IOpenFreqService : IDisposable
     /// <summary>Where the combined capture mix goes when recording.</summary>
     enum CaptureSink
     {
-        /// <summary>Write to an Ogg/Vorbis file.</summary>
+        /// <summary>Write to an Ogg Opus file.</summary>
         File,
         /// <summary>Stream to a separate playback device (e.g. a virtual audio cable).</summary>
         Device

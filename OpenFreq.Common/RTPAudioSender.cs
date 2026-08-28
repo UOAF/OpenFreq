@@ -209,7 +209,7 @@ public class RtpAudioSender : IDisposable
     public void Dispose()
     {
         _heartbeatTimer.Dispose();
-        _sendQueue.Close(); // Sentinel kills the thread
+        _sendQueue.ClearAndClose(); // Sentinel kills the thread
         _sendThread?.Join();
         _udpClient.Close();
         _udpClient.Dispose();

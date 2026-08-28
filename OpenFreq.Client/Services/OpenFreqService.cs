@@ -496,7 +496,7 @@ public class OpenFreqService : IOpenFreqService
 
     /// <summary>
     /// Start a combined session recording (incoming as heard + own voice rendered as if heard
-    /// from the same position) to a timestamped .ogg. No-op if already recording or the
+    /// from the same position) to a timestamped Ogg Opus .ogg file. No-op if already recording or the
     /// playback subsystem is not initialized.
     /// </summary>
     public void StartRecording()
