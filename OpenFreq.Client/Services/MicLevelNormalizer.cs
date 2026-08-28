@@ -60,6 +60,13 @@ public sealed class MicLevelNormalizer
     /// </summary>
     public float NoiseGateRms { get; private set; } = NoiseFloorSeedRms;
 
+    /// <summary>
+    /// Gain <see cref="Process"/> is currently applying (linear, 1.0 = unity). Held constant while
+    /// the input sits below <see cref="NoiseGateRms"/>, so a gate that stops opening leaves this
+    /// frozen at whatever the last talk-spurt ducked it to — which is worth being able to see.
+    /// </summary>
+    public float CurrentGain => _gainRamp.D1;
+
     public MicLevelNormalizer(int sampleRate)
     {
         _level = FirstOrderFilter.MakeFirstOrderFilter(LevelTau, sampleRate, TargetRms * TargetRms);

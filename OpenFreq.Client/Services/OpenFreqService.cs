@@ -96,6 +96,15 @@ public class OpenFreqService : IOpenFreqService
     private float[] _sidetonePushBuffer = new float[4800]; // 100ms @ 48kHz, grows if needed
     private readonly MicLevelNormalizer _micNormalizer = new(OpenFreqRtcClient.SAMPLE_RATE);
 
+    // TX level telemetry, accumulated across the current talk-spurt and logged once when PTT drops.
+    // Written only from the BASS record callback (single-threaded), read again after the callback
+    // has been stopped, so no locking is needed.
+    private long _txLevelSamples;
+    private double _txRawSumSquares;
+    private double _txSentSumSquares;
+    private float _txRawPeak;
+    private float _txSentPeak;
+
     // Cache duration - this effectively controls the rate of local physics calculations
     private readonly TimeSpan _audioParamsCacheDuration = TimeSpan.FromMilliseconds(50);
 
@@ -784,7 +793,12 @@ public class OpenFreqService : IOpenFreqService
         }
 
         Bass.CurrentRecordingDevice = RecordingDeviceIndex;
-        _logger.LogDebug("RecordingDeviceIndex set to {RecordingDeviceIndex}", RecordingDeviceIndex);
+
+        // Information, not Debug: "which mic did we actually open" is the first question asked
+        // whenever a user reports that peers can't hear them, and users ship us release logs.
+        var deviceName = Bass.RecordGetDeviceInfo(RecordingDeviceIndex).Name ?? $"<unknown: {Bass.LastError}>";
+        _logger.LogInformation("Capturing from recording device (BASS index {RecordingDeviceIndex}): {DeviceName}",
+            RecordingDeviceIndex, deviceName);
 
         _recordHandle = Bass.RecordStart(
             OpenFreqRtcClient.SAMPLE_RATE,
@@ -814,13 +828,17 @@ public class OpenFreqService : IOpenFreqService
     {
         if (_recordHandle == 0) return;
 
+        // ChannelStop both stops *and* frees a recording channel — BASS has no ChannelFree, and
+        // StreamFree only accepts HSTREAM, so calling it here just logged BASS_ERROR_HANDLE
+        // against an already-freed handle on every disconnect.
         if (!Bass.ChannelStop(_recordHandle))
             _logger.LogWarning("ChannelStop on record handle {Handle} returned false: {Error}",
                 _recordHandle, Bass.LastError);
-        if (!Bass.StreamFree(_recordHandle))
-            _logger.LogWarning("StreamFree on record handle {Handle} returned false: {Error}",
-                _recordHandle, Bass.LastError);
         _recordHandle = 0;
+
+        // The callback is stopped now, so the talk-spurt accumulators are safe to read: flush a
+        // spurt that was still in flight when capture went away (disconnect mid-transmission).
+        LogTalkspurtLevel();
     }
 
     public async Task NotifyModeAsync(bool is3d)
@@ -928,6 +946,59 @@ public class OpenFreqService : IOpenFreqService
         return _signalCalculator?.SampleElevation(xMeters, yMeters);
     }
 
+    /// <summary>
+    /// Adds one callback's worth of samples to a running sum-of-squares and peak. Called on the
+    /// BASS record thread twice per callback (pre- and post-normalization).
+    /// </summary>
+    private static void AccumulateLevel(short[] samples, ref double sumSquares, ref float peak)
+    {
+        double sum = 0;
+        int peakRaw = 0;
+        foreach (var sample in samples)
+        {
+            int magnitude = Math.Abs((int)sample);
+            if (magnitude > peakRaw) peakRaw = magnitude;
+            double x = sample / (double)short.MaxValue;
+            sum += x * x;
+        }
+
+        sumSquares += sum;
+        var peakScaled = peakRaw / (float)short.MaxValue;
+        if (peakScaled > peak) peak = peakScaled;
+    }
+
+    /// <summary>Linear amplitude to dBFS, floored so digital silence stays printable.</summary>
+    private static double ToDbFs(double amplitude) => amplitude > 1e-5 ? 20 * Math.Log10(amplitude) : -100;
+
+    /// <summary>
+    /// Logs peak/RMS for the talk-spurt that just ended, then resets the accumulators. No-op when
+    /// nothing was captured since the last call.
+    /// </summary>
+    private void LogTalkspurtLevel()
+    {
+        var samples = _txLevelSamples;
+        if (samples == 0) return;
+
+        var rawRms = Math.Sqrt(_txRawSumSquares / samples);
+        var sentRms = Math.Sqrt(_txSentSumSquares / samples);
+
+        _logger.LogInformation(
+            "TX level over {DurationMs}ms: mic peak {RawPeak:F1} dBFS rms {RawRms:F1} dBFS | " +
+            "sent peak {SentPeak:F1} dBFS rms {SentRms:F1} dBFS | " +
+            "normalizer {NormalizerState}, gain {Gain:F3}, gate {Gate:F1} dBFS",
+            samples * 1000 / OpenFreqRtcClient.SAMPLE_RATE,
+            ToDbFs(_txRawPeak), ToDbFs(rawRms),
+            ToDbFs(_txSentPeak), ToDbFs(sentRms),
+            MicNormalizationEnabled ? "on" : "off",
+            _micNormalizer.CurrentGain, ToDbFs(_micNormalizer.NoiseGateRms));
+
+        _txLevelSamples = 0;
+        _txRawSumSquares = 0;
+        _txSentSumSquares = 0;
+        _txRawPeak = 0;
+        _txSentPeak = 0;
+    }
+
     private bool RecordProcedure(int handle, IntPtr buffer, int length, IntPtr user)
     {
         try
@@ -938,6 +1009,8 @@ public class OpenFreqService : IOpenFreqService
             // gate during transmission: the estimate only advances on this idle path.
             if (_activeTransmissionsAndMutedFrequencies.Count == 0)
             {
+                LogTalkspurtLevel();
+
                 if (MicNormalizationEnabled)
                 {
                     // Read directly from the input buffer;
@@ -959,11 +1032,19 @@ public class OpenFreqService : IOpenFreqService
             short[] audioData = new short[length / 2];
             Marshal.Copy(buffer, audioData, 0, audioData.Length);
 
+            // Measure the raw mic before normalization and the buffer again after, so a capture
+            // that only ever delivers silence can be told apart from a normalizer that ducked the
+            // audio away. Both land in one log line when the talk-spurt ends.
+            AccumulateLevel(audioData, ref _txRawSumSquares, ref _txRawPeak);
+
             // Normalize transmit level so loud/quiet mics land near a common
             // reference. Applied before sidetone + send so the operator hears
             // (and peers receive) the same normalized audio.
             if (MicNormalizationEnabled)
                 _micNormalizer.Process(audioData, audioData.Length);
+
+            AccumulateLevel(audioData, ref _txSentSumSquares, ref _txSentPeak);
+            _txLevelSamples += audioData.Length;
 
             // Convert mic to float once and fan out to sidetone (speaker loopback) and/or the
             // session recording (own voice, rendered through radio FX downstream).
