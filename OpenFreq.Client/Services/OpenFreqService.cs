@@ -518,7 +518,7 @@ public class OpenFreqService : IOpenFreqService
                     ? Path.Combine(exeDir, "recordings")
                     : RecordingPath;
                 Directory.CreateDirectory(dir);
-                var file = Path.Combine(dir, $"OpenFreq_{DateTime.Now:yyyyMMdd_HHmmss}.ogg");
+                var file = Path.Combine(dir, $"OpenFreq_{DateTime.UtcNow:yyyyMMddTHHmmss}Z.ogg");
                 _playbackService.StartRecording(file);
                 if (!_playbackService.IsRecording) return; // start failed; error already surfaced
                 OnStatusMessage($"Recording to {file}");
