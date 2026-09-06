@@ -389,4 +389,121 @@ public class FrequencyChannelManagerTests
 
         Assert.False(mgr.LeaveChannel(251000, "client-1"));
     }
+
+    // --- Concurrency regression tests ---------------------------------------
+    //
+    // A leave that emptied a channel used to unpublish the whole channel dictionary
+    // without rechecking, so a join racing it could be dropped on the floor: the peer
+    // landed in a dictionary the leaver then removed from _channels. The client
+    // believed it was tuned while the server had no route to it, in either direction.
+
+    [Fact]
+    public async Task JoinChannel_RacingLeaveThatEmptiesChannel_JoinerIsNeverLost()
+    {
+        const int frequencyKhz = 251000;
+        const int iterations = 20_000;
+
+        var mgr = Create();
+        var joinerLost = 0;
+
+        for (var i = 0; i < iterations; i++)
+        {
+            // "leaver" is the sole occupant, so its departure empties the channel and
+            // takes the cleanup path that used to race.
+            mgr.JoinChannel(frequencyKhz, "leaver", "Leaver");
+
+            var joiner = $"joiner-{i}";
+            using var gate = new Barrier(2);
+
+            var leaveTask = Task.Run(() =>
+            {
+                gate.SignalAndWait();
+                mgr.LeaveChannel(frequencyKhz, "leaver");
+            });
+
+            var joinTask = Task.Run(() =>
+            {
+                gate.SignalAndWait();
+                mgr.JoinChannel(frequencyKhz, joiner, "Joiner");
+            });
+
+            await Task.WhenAll(leaveTask, joinTask);
+
+            // The join reported success, so the server must be able to route to it.
+            if (!mgr.GetClientsInChannel(frequencyKhz).Contains(joiner))
+                joinerLost++;
+
+            mgr.LeaveAllChannels(joiner);
+            mgr.LeaveAllChannels("leaver");
+        }
+
+        Assert.Equal(0, joinerLost);
+    }
+
+    [Fact]
+    public void ConcurrentJoinLeave_ManyClients_StateStaysConsistent()
+    {
+        const int frequencyKhz = 251000;
+        const int clients = 16;
+        const int iterations = 2_000;
+
+        var mgr = Create();
+
+        Parallel.For(0, clients, c =>
+        {
+            var clientId = $"client-{c}";
+            for (var i = 0; i < iterations; i++)
+            {
+                mgr.JoinChannel(frequencyKhz, clientId, "Viper");
+                mgr.LeaveChannel(frequencyKhz, clientId);
+            }
+        });
+
+        // Everyone left, so the channel is gone rather than lingering empty.
+        Assert.Empty(mgr.GetClientsInChannel(frequencyKhz));
+        Assert.Equal(0, mgr.GetChannelCount(frequencyKhz));
+
+        // And the manager is still usable afterwards.
+        Assert.True(mgr.JoinChannel(frequencyKhz, "late-joiner", "Maverick"));
+        Assert.Equal(["late-joiner"], mgr.GetClientsInChannel(frequencyKhz));
+    }
+
+    [Fact]
+    public async Task ConcurrentReadersAndWriters_DoNotDeadlock()
+    {
+        const int frequencyKhz = 251000;
+
+        var mgr = Create();
+        var stop = false;
+
+        var readers = Enumerable.Range(0, 4).Select(_ => Task.Run(() =>
+        {
+            while (!Volatile.Read(ref stop))
+            {
+                mgr.GetAllChannelStates();
+                mgr.GetClientsInChannel(frequencyKhz);
+                mgr.GetPeersInChannel(frequencyKhz);
+                mgr.GetClientChannels("client-0");
+                mgr.GetChannelCount(frequencyKhz);
+            }
+        })).ToArray();
+
+        var writers = Enumerable.Range(0, 4).Select(c => Task.Run(() =>
+        {
+            var clientId = $"client-{c}";
+            for (var i = 0; i < 5_000; i++)
+            {
+                mgr.JoinChannel(frequencyKhz, clientId, "Viper");
+                mgr.UpdateDisplayName(clientId, $"Viper-{i}");
+                mgr.UpdateIs3d(frequencyKhz, clientId, i % 2 == 0);
+                mgr.LeaveAllChannels(clientId);
+            }
+        })).ToArray();
+
+        // WaitAsync throws TimeoutException rather than hanging the suite if the
+        // lock discipline ever regresses into a deadlock.
+        await Task.WhenAll(writers).WaitAsync(TimeSpan.FromSeconds(60));
+        Volatile.Write(ref stop, true);
+        await Task.WhenAll(readers).WaitAsync(TimeSpan.FromSeconds(60));
+    }
 }

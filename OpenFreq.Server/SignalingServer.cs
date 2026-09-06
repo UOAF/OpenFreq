@@ -470,29 +470,40 @@ public class SignalingServer
             return;
         }
 
-        var channelCount = _channelManager.GetChannelCount(joinMsg.FrequencyKhz);
+        // Membership is tracked twice: the session's own list gates whether this client
+        // may transmit, and the channel manager's table decides who receives. They must
+        // agree, so consult both and treat disagreement as a fault to repair rather than
+        // a state to trust. (TODO: Get rid of the duplication!)
+        var inSession = session.CurrentFrequencies.ContainsKey(joinMsg.FrequencyKhz);
+        var inRouting = _channelManager.IsInChannel(joinMsg.FrequencyKhz, session.Id);
 
-        if (channelCount >= _config.MaxClientsPerChannel)
+        if (inSession && inRouting)
         {
-            await SendError(session, "Channel is full");
+            // Idempotent rejoin.
+            // A reconnect race (the RTC client auto-rejoins while the app layer also rejoins a radio channel)
+            // can send a duplicate join on the same session.
+            // Just resend the current channel state.
+            await SendChannelState(session, joinMsg.FrequencyKhz,
+                CollectChannelPeers(joinMsg.FrequencyKhz, session.Id));
             return;
         }
 
-        if (session.CurrentFrequencies.ContainsKey(joinMsg.FrequencyKhz))
+        if (inSession != inRouting)
         {
-            // Idempotent rejoin. A reconnect race (the RTC client auto-rejoins while the
-            // app layer also rejoins a radio channel) can send a duplicate join on the same session.
-            // Just resend the current channel state.
-            List<ChannelStateMessage.Peer> currentPeers = [];
-            foreach (var clientId in _channelManager.GetClientsInChannel(joinMsg.FrequencyKhz))
-            {
-                if (clientId == session.Id) continue;
-                _clients.TryGetValue(clientId, out var clientSession);
-                if (clientSession == null) continue;
-                currentPeers.Add(new ChannelStateMessage.Peer(clientSession.Id, clientSession.DisplayName ?? "Unnamed"));
-            }
-
-            await SendChannelState(session, joinMsg.FrequencyKhz, currentPeers);
+            // Left alone this is permanent and silent: the routing table is what relays
+            // audio, so a client missing from it is deaf and mute on this frequency while
+            // its UI still shows it tuned, and the rejoin above would short-circuit
+            // forever. Fall through to the full join, which reinstates both halves and
+            // re-announces the peer.
+            _logger.LogError(
+                "Channel membership desync for {DisplayName} ({ClientId}) on {Frequency:F3} MHz " +
+                "(session={InSession}, routing={InRouting}) — repairing by rejoining",
+                GetDisplayName(session), session.Id, joinMsg.FrequencyKhz / 1000d, inSession, inRouting);
+        }
+        else if (_channelManager.GetChannelCount(joinMsg.FrequencyKhz) >= _config.MaxClientsPerChannel)
+        {
+            // Capacity gates genuinely new joins only — a repair must never be turned away.
+            await SendError(session, "Channel is full");
             return;
         }
 
@@ -500,16 +511,8 @@ public class SignalingServer
 
         session.CurrentFrequencies.TryAdd(joinMsg.FrequencyKhz, ClientSession.FrequencyClientStatus.Receiving);
 
-        List<ChannelStateMessage.Peer> peers = [];
-        foreach (var clientId in _channelManager.GetClientsInChannel(joinMsg.FrequencyKhz))
-        {
-            if (clientId == session.Id) continue;
-            _clients.TryGetValue(clientId, out var clientSession);
-            if (clientSession == null) continue;
-            peers.Add(new ChannelStateMessage.Peer(clientSession.Id, clientSession.DisplayName ?? "Unnamed"));
-        }
-
-        await SendChannelState(session, joinMsg.FrequencyKhz, peers);
+        await SendChannelState(session, joinMsg.FrequencyKhz,
+            CollectChannelPeers(joinMsg.FrequencyKhz, session.Id));
 
         await BroadcastToChannel(
             joinMsg.FrequencyKhz,
@@ -520,6 +523,23 @@ public class SignalingServer
 
         if (_config.BroadcastPeerUpdates)
             RequestPeerUpdateBroadcast();
+    }
+
+    /// <summary>
+    /// The peers a client should be told about on a frequency: everyone routable there
+    /// except the client itself, skipping any whose session has since gone away.
+    /// </summary>
+    private List<ChannelStateMessage.Peer> CollectChannelPeers(int frequencyKhz, string excludeClientId)
+    {
+        List<ChannelStateMessage.Peer> peers = [];
+        foreach (var clientId in _channelManager.GetClientsInChannel(frequencyKhz))
+        {
+            if (clientId == excludeClientId) continue;
+            if (!_clients.TryGetValue(clientId, out var clientSession)) continue;
+            peers.Add(new ChannelStateMessage.Peer(clientSession.Id, clientSession.DisplayName ?? "Unnamed"));
+        }
+
+        return peers;
     }
 
     private async Task HandleLeaveChannel(ClientSession session, SignalingMessage message)
