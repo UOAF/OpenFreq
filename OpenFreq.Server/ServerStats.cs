@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using OpenFreq.Common;
 
 namespace OpenFreqServer;
 
@@ -10,32 +11,23 @@ public class ServerStats(ConcurrentDictionary<string, ClientSession> clients, Fr
 
     public int AuthenticatedClients => clients.Values.Count(c => c.IsAuthenticated);
 
-    public int ActiveTransmissions => clients.SelectMany(client => client.Value.CurrentFrequencies.Values)
-        .Count(freq => freq == ClientSession.FrequencyClientStatus.Transmitting);
+    public int ActiveTransmissions => channelManager.CountTransmitting();
 
     public TimeSpan Uptime => DateTime.UtcNow - _startTime;
 
-    public List<(int FrequencyKhz, int ClientCount, bool IsTransmitting)> GetFrequencyStats()
-    {
-        var stats = new List<(int FrequencyKhz, int ClientCount, bool IsTransmitting)>();
-        var allFrequencies = clients
-            .SelectMany(client => client.Value.CurrentFrequencies.Keys)
-            .Distinct()
-            .ToList();
-
-        foreach (var freq in allFrequencies)
-        {
-            var count = channelManager.GetChannelCount(freq);
-            var isTransmitting = clients.Values.Any(c =>
-                c.CurrentFrequencies.TryGetValue(freq, out var status) &&
-                status == ClientSession.FrequencyClientStatus.Transmitting);
-            stats.Add((freq, count, isTransmitting));
-        }
-
-        return stats.OrderBy(s => s.FrequencyKhz).ToList();
-    }
+    public List<ChannelSummary> GetFrequencyStats() => channelManager.GetChannelSummaries();
 
     public DateTime? GetLastRtpReceived(string clientId) => audioServer.GetLastRtpReceived(clientId);
+
+    /// <summary>
+    /// The frequencies a client is on and whether it is transmitting on each, ordered by
+    /// frequency so the TUI renders a stable list.
+    /// </summary>
+    public List<(int FrequencyKhz, bool IsTransmitting)> GetClientFrequencies(string clientId) =>
+        channelManager.GetClientChannelStates(clientId)
+            .OrderBy(s => s.FrequencyKhz)
+            .Select(s => (s.FrequencyKhz, s.Peer.Status == PeerData.PeerStatus.Transmitting))
+            .ToList();
 
     public List<ClientSession> GetActiveClients()
     {

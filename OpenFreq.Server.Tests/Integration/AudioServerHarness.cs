@@ -39,7 +39,6 @@ public sealed class AudioServerHarness : IDisposable
         var session = new ClientSession(id, id, null!, "127.0.0.1") { IsAuthenticated = authenticated };
         foreach (var khz in frequencies)
         {
-            session.CurrentFrequencies[khz] = ClientSession.FrequencyClientStatus.Receiving;
             Channels.JoinChannel(khz, id, id);
         }
 

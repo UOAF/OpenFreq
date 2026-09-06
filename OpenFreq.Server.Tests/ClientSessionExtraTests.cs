@@ -7,16 +7,8 @@ public class ClientSessionExtraTests
 {
     private static ClientSession Create() => new("id", "Viper", new FakeWebSocket(), "127.0.0.1");
 
-    [Fact]
-    public void CurrentFrequencies_TracksPerFrequencyStatus()
-    {
-        var s = Create();
-        s.CurrentFrequencies[251000] = ClientSession.FrequencyClientStatus.Transmitting;
-        s.CurrentFrequencies[135100] = ClientSession.FrequencyClientStatus.Receiving;
-
-        Assert.Equal(ClientSession.FrequencyClientStatus.Transmitting, s.CurrentFrequencies[251000]);
-        Assert.Equal(ClientSession.FrequencyClientStatus.Receiving, s.CurrentFrequencies[135100]);
-    }
+    // Per-frequency membership and transmit status live in FrequencyChannelManager, not on
+    // the session — see FrequencyChannelManagerTests for that coverage.
 
     [Fact]
     public void IsAuthenticated_Settable()

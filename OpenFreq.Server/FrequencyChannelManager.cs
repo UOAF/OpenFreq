@@ -3,6 +3,23 @@ using OpenFreq.Common;
 namespace OpenFreqServer;
 
 /// <summary>
+/// The outcome of resolving one inbound audio packet against channel membership.
+/// </summary>
+/// <param name="Valid">Requested frequencies the sender is actually joined to.</param>
+/// <param name="Rejected">Requested frequencies the sender is not joined to.</param>
+/// <param name="Recipients">Deduplicated clients to relay to, excluding the sender.</param>
+public readonly record struct RelayTargets(int[] Valid, int[] Rejected, string[] Recipients);
+
+// Can a brother get some sum types/tagged unions?
+public abstract record JoinChannelResult;
+public record ChannelJoined : JoinChannelResult;
+public record AlreadyInChannel : JoinChannelResult;
+public record ChannelFull : JoinChannelResult;
+
+/// <summary>One frequency's headline state, for the server's own status views.</summary>
+public readonly record struct ChannelSummary(int FrequencyKhz, int ClientCount, bool IsTransmitting);
+
+/// <summary>
 /// Manages frequency channels and tracks peer state for broadcasting
 /// </summary>
 public class FrequencyChannelManager
@@ -10,9 +27,15 @@ public class FrequencyChannelManager
     private readonly Dictionary<int, Dictionary<string, PeerData>> _channels = new();
 
     /// <summary>
-    /// Join a channel with initial peer data
+    /// Join a channel with initial peer data, admitting the client only if the channel has
+    /// room for them.
     /// </summary>
-    public bool JoinChannel(int frequencyKhz, string clientId, string displayName, bool is3d = false)
+    public JoinChannelResult JoinChannel(
+        int frequencyKhz,
+        string clientId,
+        string displayName,
+        bool is3d = false,
+        int maxClientsPerChannel = int.MaxValue)
     {
         lock (_channels)
         {
@@ -22,10 +45,17 @@ public class FrequencyChannelManager
                 _channels[frequencyKhz] = peers;
             }
 
-            // TryAdd, not Add: a duplicate join is an expected outcome that callers read
-            // off the return value, not an exception. It can only fail on the pre-existing
-            // channel path, so the dictionary created just above is never stranded empty.
-            return peers.TryAdd(clientId, new PeerData(clientId, displayName, PeerData.PeerStatus.Receiving, is3d));
+            if (peers.ContainsKey(clientId)) return new AlreadyInChannel();
+
+            if (peers.Count >= maxClientsPerChannel)
+            {
+                // Don't strand a channel we created above just to reject the join.
+                if (peers.Count == 0) _channels.Remove(frequencyKhz);
+                return new ChannelFull();
+            }
+
+            peers[clientId] = new PeerData(clientId, displayName, PeerData.PeerStatus.Receiving, is3d);
+            return new ChannelJoined();
         }
     }
 
@@ -83,28 +113,18 @@ public class FrequencyChannelManager
     }
 
     /// <summary>
-    /// Update the last-known 3D mode for a peer on a specific frequency
+    /// Update the last-known 3D mode for a peer across every channel they're in.
     /// </summary>
-    public void UpdateIs3d(int frequencyKhz, string clientId, bool is3d)
+    public void UpdateIs3d(string clientId, bool is3d)
     {
         lock (_channels)
         {
-            if (_channels.TryGetValue(frequencyKhz, out var peers) &&
-                peers.TryGetValue(clientId, out var current))
+            foreach (var peers in _channels.Values)
             {
+                if (!peers.TryGetValue(clientId, out var current)) continue;
+
                 peers[clientId] = new PeerData(current.Id, current.Name, current.Status, is3d);
             }
-        }
-    }
-
-    /// <summary>
-    /// Whether a client is currently routable on a frequency.
-    /// </summary>
-    public bool IsInChannel(int frequencyKhz, string clientId)
-    {
-        lock (_channels)
-        {
-            return _channels.TryGetValue(frequencyKhz, out var peers) && peers.ContainsKey(clientId);
         }
     }
 
@@ -122,15 +142,148 @@ public class FrequencyChannelManager
     }
 
     /// <summary>
-    /// Get all peer data in a specific channel
+    /// Whether a client is routable on any frequency at all.
     /// </summary>
-    public List<PeerData> GetPeersInChannel(int frequencyKhz)
+    public bool IsInAnyChannel(string clientId)
     {
         lock (_channels)
         {
-            return _channels.TryGetValue(frequencyKhz, out var peers)
-                ? peers.Values.ToList()
-                : [];
+            foreach (var peers in _channels.Values)
+            {
+                if (peers.ContainsKey(clientId)) return true;
+            }
+
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Record a client's transmit state and 3D mode on one frequency, and report the other
+    /// clients there — the peers that need to be told about the change.
+    /// </summary>
+    /// <returns>
+    /// The other clients on the frequency, or null if this client is not on it. Empty means
+    /// they are talking to nobody, which is not the same as not being tuned.
+    /// </returns>
+    public string[]? SetTransmissionState(int frequencyKhz, string clientId, bool transmitting, bool is3d)
+    {
+        lock (_channels)
+        {
+            if (!_channels.TryGetValue(frequencyKhz, out var peers) ||
+                !peers.TryGetValue(clientId, out var current))
+            {
+                return null;
+            }
+
+            peers[clientId] = new PeerData(
+                current.Id,
+                current.Name,
+                transmitting ? PeerData.PeerStatus.Transmitting : PeerData.PeerStatus.Receiving,
+                is3d);
+
+            return peers.Keys.Where(id => id != clientId).ToArray();
+        }
+    }
+
+    /// <summary>
+    /// Every frequency a client is on, paired with its peer entry there.
+    /// </summary>
+    public List<(int FrequencyKhz, PeerData Peer)> GetClientChannelStates(string clientId)
+    {
+        lock (_channels)
+        {
+            var result = new List<(int, PeerData)>();
+
+            foreach (var (frequency, peers) in _channels)
+            {
+                if (peers.TryGetValue(clientId, out var peer)) result.Add((frequency, peer));
+            }
+
+            return result;
+        }
+    }
+
+    /// <summary>
+    /// Every active frequency with its client count and whether anyone is talking on it,
+    /// ordered by frequency.
+    /// </summary>
+    public List<ChannelSummary> GetChannelSummaries()
+    {
+        lock (_channels)
+        {
+            var summaries = new List<ChannelSummary>(_channels.Count);
+
+            foreach (var (frequency, peers) in _channels)
+            {
+                var transmitting = false;
+                foreach (var peer in peers.Values)
+                {
+                    if (peer.Status != PeerData.PeerStatus.Transmitting) continue;
+                    transmitting = true;
+                    break;
+                }
+
+                summaries.Add(new ChannelSummary(frequency, peers.Count, transmitting));
+            }
+
+            summaries.Sort((a, b) => a.FrequencyKhz.CompareTo(b.FrequencyKhz));
+            return summaries;
+        }
+    }
+
+    /// <summary>
+    /// Total number of client/frequency pairs currently transmitting. A client talking on
+    /// two frequencies counts twice.
+    /// </summary>
+    public int CountTransmitting()
+    {
+        lock (_channels)
+        {
+            var count = 0;
+
+            foreach (var peers in _channels.Values)
+            {
+                foreach (var peer in peers.Values)
+                {
+                    if (peer.Status == PeerData.PeerStatus.Transmitting) count++;
+                }
+            }
+
+            return count;
+        }
+    }
+
+    /// <summary>
+    /// Resolves one inbound audio packet against channel membership:
+    /// which of the requested frequencies the sender may actually transmit on, which it
+    /// may not, and the deduplicated set of clients that should receive the audio.
+    /// </summary>
+    public RelayTargets ResolveRelay(string senderClientId, IReadOnlyList<int> requestedKhz)
+    {
+        lock (_channels)
+        {
+            List<int> valid = [];
+            List<int> rejected = [];
+            HashSet<string> recipients = [];
+
+            foreach (var frequencyKhz in requestedKhz)
+            {
+                if (!_channels.TryGetValue(frequencyKhz, out var peers) ||
+                    !peers.ContainsKey(senderClientId))
+                {
+                    rejected.Add(frequencyKhz);
+                    continue;
+                }
+
+                valid.Add(frequencyKhz);
+
+                foreach (var clientId in peers.Keys)
+                {
+                    if (clientId != senderClientId) recipients.Add(clientId);
+                }
+            }
+
+            return new RelayTargets([.. valid], [.. rejected], [.. recipients]);
         }
     }
 
@@ -155,32 +308,13 @@ public class FrequencyChannelManager
     }
 
     /// <summary>
-    /// Get first channel for a client (for backward compatibility)
-    /// </summary>
-    public double GetClientChannel(string clientId)
-    {
-        lock (_channels)
-        {
-            foreach (var (frequency, peers) in _channels)
-            {
-                if (peers.ContainsKey(clientId))
-                {
-                    return frequency;
-                }
-            }
-
-            return -1;
-        }
-    }
-
-    /// <summary>
     /// Get all channels a client is in
     /// </summary>
-    public List<double> GetClientChannels(string clientId)
+    public int[] GetClientChannels(string clientId)
     {
         lock (_channels)
         {
-            var channels = new List<double>();
+            List<int> channels = [];
 
             foreach (var (frequency, peers) in _channels)
             {
@@ -190,18 +324,8 @@ public class FrequencyChannelManager
                 }
             }
 
-            return channels;
+            return [.. channels];
         }
     }
 
-    /// <summary>
-    /// Get the number of peers in a channel
-    /// </summary>
-    public int GetChannelCount(int frequencyKhz)
-    {
-        lock (_channels)
-        {
-            return _channels.TryGetValue(frequencyKhz, out var peers) ? peers.Count : 0;
-        }
-    }
 }

@@ -461,9 +461,8 @@ public class TerminalGuiServer : IDisposable
                         : $"{rtpAge / 60:F0}m ago")
                     : "no RTP";
 
-                var frequencies = client.CurrentFrequencies.ToList();
-                var anyTransmitting = frequencies.Any(f =>
-                    f.Value == ClientSession.FrequencyClientStatus.Transmitting);
+                var frequencies = _stats.GetClientFrequencies(client.Id);
+                var anyTransmitting = frequencies.Any(f => f.IsTransmitting);
 
                 if (frequencies.Count == 0)
                 {
@@ -473,19 +472,17 @@ public class TerminalGuiServer : IDisposable
                 else
                 {
                     var firstFreq = frequencies[0];
-                    var firstTx = firstFreq.Value == ClientSession.FrequencyClientStatus.Transmitting;
-                    var firstStatus = firstTx ? "● TX" : "● RX";
+                    var firstStatus = firstFreq.IsTransmitting ? "● TX" : "● RX";
                     rows.Add(new ColoredRow(
-                        $"{shortDisplayName,-24} {shortId,-20} {(firstFreq.Key / 1000d).ToString("F3", CultureInfo.InvariantCulture),-12} {firstStatus,8} {wsStr,9} {rtpStr,9}",
+                        $"{shortDisplayName,-24} {shortId,-20} {(firstFreq.FrequencyKhz / 1000d).ToString("F3", CultureInfo.InvariantCulture),-12} {firstStatus,8} {wsStr,9} {rtpStr,9}",
                         anyTransmitting));
 
                     for (int i = 1; i < frequencies.Count; i++)
                     {
                         var freq = frequencies[i];
-                        var tx = freq.Value == ClientSession.FrequencyClientStatus.Transmitting;
-                        var status = tx ? "● TX" : "● RX";
+                        var status = freq.IsTransmitting ? "● TX" : "● RX";
                         rows.Add(new ColoredRow(
-                            $"{"",-24} {"",-20} {(freq.Key / 1000d).ToString("F3", CultureInfo.InvariantCulture),-12} {status,8} {"",9} {"",9}", anyTransmitting));
+                            $"{"",-24} {"",-20} {(freq.FrequencyKhz / 1000d).ToString("F3", CultureInfo.InvariantCulture),-12} {status,8} {"",9} {"",9}", anyTransmitting));
                     }
                 }
             }

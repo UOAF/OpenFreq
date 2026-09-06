@@ -44,13 +44,6 @@ public class ClientSessionTests
     }
 
     [Fact]
-    public void Constructor_CurrentFrequenciesEmpty()
-    {
-        var session = Create();
-        Assert.Empty(session.CurrentFrequencies);
-    }
-
-    [Fact]
     public void Dispose_SetsIsDisposedTrue()
     {
         var session = Create();

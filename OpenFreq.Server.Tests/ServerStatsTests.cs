@@ -46,11 +46,11 @@ public class ServerStatsTests
     [Fact]
     public void ActiveTransmissions_CountsTransmittingFrequencies()
     {
-        var (stats, clients, _) = CreateStats();
-        var a = NewSession("a");
-        a.CurrentFrequencies[251000] = ClientSession.FrequencyClientStatus.Transmitting;
-        a.CurrentFrequencies[135100] = ClientSession.FrequencyClientStatus.Receiving;
-        clients["a"] = a;
+        var (stats, clients, mgr) = CreateStats();
+        clients["a"] = NewSession("a");
+        mgr.JoinChannel(251000, "a", "a");
+        mgr.JoinChannel(135100, "a", "a");
+        mgr.SetTransmissionState(251000, "a", transmitting: true, is3d: false);
 
         Assert.Equal(1, stats.ActiveTransmissions);
     }
@@ -79,10 +79,9 @@ public class ServerStatsTests
     public void GetFrequencyStats_ReflectsChannelMembershipAndTransmitState()
     {
         var (stats, clients, mgr) = CreateStats();
-        var a = NewSession("a");
-        a.CurrentFrequencies[251000] = ClientSession.FrequencyClientStatus.Transmitting;
-        clients["a"] = a;
+        clients["a"] = NewSession("a");
         mgr.JoinChannel(251000, "a", "a");
+        mgr.SetTransmissionState(251000, "a", transmitting: true, is3d: false);
 
         var freqStats = stats.GetFrequencyStats();
 
@@ -96,10 +95,7 @@ public class ServerStatsTests
     public void GetFrequencyStats_SortedByFrequency()
     {
         var (stats, clients, mgr) = CreateStats();
-        var a = NewSession("a");
-        a.CurrentFrequencies[251000] = ClientSession.FrequencyClientStatus.Receiving;
-        a.CurrentFrequencies[135100] = ClientSession.FrequencyClientStatus.Receiving;
-        clients["a"] = a;
+        clients["a"] = NewSession("a");
         mgr.JoinChannel(251000, "a", "a");
         mgr.JoinChannel(135100, "a", "a");
 

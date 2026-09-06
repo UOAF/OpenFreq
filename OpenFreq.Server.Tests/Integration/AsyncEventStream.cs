@@ -31,6 +31,22 @@ public sealed class AsyncEventStream<T>
         }
     }
 
+    /// <summary>
+    /// Discards everything received so far. Use before provoking an event when the assertion
+    /// must be about the *next* item — <see cref="WaitForAsync"/> searches the buffer first,
+    /// so without this an earlier item can satisfy the predicate and hide a regression.
+    /// </summary>
+    /// <returns>How many items were discarded.</returns>
+    public int Drain()
+    {
+        lock (_gate)
+        {
+            var count = _buffered.Count;
+            _buffered.Clear();
+            return count;
+        }
+    }
+
     /// <summary>Wait for the next item matching <paramref name="predicate"/>, consuming it.</summary>
     public async Task<T> WaitForAsync(Func<T, bool>? predicate = null, TimeSpan? timeout = null)
     {
