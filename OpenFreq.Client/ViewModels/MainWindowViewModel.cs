@@ -500,7 +500,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
 
     private void OnFlyingStateChanged(object? sender, FlyingStateChangedEventArgs e)
     {
-        Settings.Is3dMode = e.NewFlyingState;
+        Dispatcher.UIThread.Post(() => Settings.Is3dMode = e.NewFlyingState);
     }
 
     private void FalconRadioSharedMemoryServiceOnConnectionParametersChanged(object? sender,
