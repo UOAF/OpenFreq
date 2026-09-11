@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using OpenFreqAudio;
@@ -24,7 +25,8 @@ public class SignalStrengthTracker : IDisposable
     {
         public float SnrDb { get; set; }
         public float Strength { get; set; }
-        public DateTime LastUpdate { get; set; }
+        // Stopwatch.GetTimestamp() ticks, not wall clock - only ever used to measure elapsed time.
+        public long LastUpdateTicks { get; set; }
     }
 
     public int UpdateIntervalMs { get; }
@@ -67,13 +69,13 @@ public class SignalStrengthTracker : IDisposable
             {
                 SnrDb = audioParams.ReceivedSnrDb,
                 Strength = strength,
-                LastUpdate = DateTime.UtcNow
+                LastUpdateTicks = Stopwatch.GetTimestamp()
             },
             (_, existing) =>
             {
                 existing.SnrDb = audioParams.ReceivedSnrDb;
                 existing.Strength = strength;
-                existing.LastUpdate = DateTime.UtcNow;
+                existing.LastUpdateTicks = Stopwatch.GetTimestamp();
                 return existing;
             });
     }
@@ -109,7 +111,7 @@ public class SignalStrengthTracker : IDisposable
     /// </summary>
     private void UpdateNoiseFloor(object? state)
     {
-        var now = DateTime.UtcNow;
+        var nowTicks = Stopwatch.GetTimestamp();
         var timeout = TimeSpan.FromMilliseconds(SignalTimeoutMs);
 
         foreach (var frequencyKhz in _squelchStates.Keys)
@@ -119,7 +121,7 @@ public class SignalStrengthTracker : IDisposable
                 // Check if there's a recent transmission - don't overwrite it with noise
                 _signalStrengths.TryGetValue(frequencyKhz, out var existingData);
                 bool hasRecentTransmission = existingData != null &&
-                                             (now - existingData.LastUpdate) <= timeout;
+                                             Stopwatch.GetElapsedTime(existingData.LastUpdateTicks, nowTicks) <= timeout;
 
                 if (hasRecentTransmission)
                 {
@@ -140,13 +142,13 @@ public class SignalStrengthTracker : IDisposable
                     {
                         SnrDb = variation, // ~0 dB ±1.5
                         Strength = strength, // 0-3% strength at noise floor
-                        LastUpdate = DateTime.UtcNow
+                        LastUpdateTicks = Stopwatch.GetTimestamp()
                     },
                     (_, existing) =>
                     {
                         existing.SnrDb = variation;
                         existing.Strength = strength;
-                        existing.LastUpdate = DateTime.UtcNow;
+                        existing.LastUpdateTicks = Stopwatch.GetTimestamp();
                         return existing;
                     });
             }
@@ -155,7 +157,7 @@ public class SignalStrengthTracker : IDisposable
 
     private void UpdateSignalStrengths(object? state)
     {
-        var now = DateTime.UtcNow;
+        var nowTicks = Stopwatch.GetTimestamp();
         var timeout = TimeSpan.FromMilliseconds(SignalTimeoutMs);
 
         var allFrequencies = _signalStrengths.Keys
@@ -167,7 +169,8 @@ public class SignalStrengthTracker : IDisposable
             _signalStrengths.TryGetValue(frequencyKhz, out var data);
             _squelchStates.TryGetValue(frequencyKhz, out var squelchOpen);
 
-            bool hasRecentTransmission = data != null && (now - data.LastUpdate) <= timeout;
+            bool hasRecentTransmission = data != null &&
+                                         Stopwatch.GetElapsedTime(data.LastUpdateTicks, nowTicks) <= timeout;
 
             float strength, snrDb;
 

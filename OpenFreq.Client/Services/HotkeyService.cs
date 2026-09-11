@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -208,16 +209,16 @@ public class HotkeyService : IHotkeyService
     {
         _logger.LogDebug("Joystick polling thread started");
 
-        var lastRescan = DateTime.UtcNow;
+        var lastRescan = Stopwatch.GetTimestamp();
 
         while (_cts is { Token.IsCancellationRequested: false })
         {
             try
             {
                 // Re-enumerate every 5s to pick up replugged devices
-                if ((DateTime.UtcNow - lastRescan).TotalSeconds >= 5)
+                if (Stopwatch.GetElapsedTime(lastRescan).TotalSeconds >= 5)
                 {
-                    lastRescan = DateTime.UtcNow;
+                    lastRescan = Stopwatch.GetTimestamp();
                     TryAcquireNewDevices();
                 }
 

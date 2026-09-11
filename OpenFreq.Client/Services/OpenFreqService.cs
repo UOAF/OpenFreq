@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -1458,13 +1459,14 @@ public class OpenFreqService : IOpenFreqService
     private AudioParams CalculateAudioParamsSync(FrequencyTransmission frequencyTransmission, string peerId)
     {
         var cacheKey = (peerId, frequencyTransmission.Khz);
-        var now = DateTime.UtcNow;
+        var nowTicks = Stopwatch.GetTimestamp();
         _audioParamsCache.TryGetValue(cacheKey, out var cached);
 
         // Physics only re-runs while audio is flowing, so a stale (or evicted) entry means this
         // packet opens a new talk-spurt - someone just keyed up. Worth a line of RF telemetry, and
         // reading the edge off the cache timestamp keeps it free of any state of its own.
-        var newTalkspurt = cached == null || (now - cached.LastCalculated) > TalkspurtGap;
+        var newTalkspurt = cached == null ||
+                           Stopwatch.GetElapsedTime(cached.LastCalculatedTicks, nowTicks) > TalkspurtGap;
 
         // All slots on the same frequency share the same RadioStationData (position/velocity).
         // Pick any tuned slot's key for position lookup.
@@ -1481,7 +1483,8 @@ public class OpenFreqService : IOpenFreqService
         }
 
         // Check cache
-        if (cached != null && (now - cached.LastCalculated) < _audioParamsCacheDuration)
+        if (cached != null &&
+            Stopwatch.GetElapsedTime(cached.LastCalculatedTicks, nowTicks) < _audioParamsCacheDuration)
         {
             return cached.Params;
         }
@@ -1511,7 +1514,7 @@ public class OpenFreqService : IOpenFreqService
         _audioParamsCache[cacheKey] = new AudioParamsCacheEntry
         {
             Params = audioParams,
-            LastCalculated = now
+            LastCalculatedTicks = nowTicks
         };
 
         if (newTalkspurt)
@@ -1564,9 +1567,10 @@ public class OpenFreqService : IOpenFreqService
         {
             while (await timer.WaitForNextTickAsync(cancellationToken))
             {
-                var cutoff = DateTime.UtcNow - TimeSpan.FromSeconds(30);
+                var nowTicks = Stopwatch.GetTimestamp();
+                var ttl = TimeSpan.FromSeconds(30);
                 var keysToRemove = _audioParamsCache
-                    .Where(kvp => kvp.Value.LastCalculated < cutoff)
+                    .Where(kvp => Stopwatch.GetElapsedTime(kvp.Value.LastCalculatedTicks, nowTicks) > ttl)
                     .Select(kvp => kvp.Key)
                     .ToList();
 
@@ -1686,5 +1690,6 @@ public class PeerActivityEventArgs(int frequencyKhz, PeerData peerData, bool is3
 internal class AudioParamsCacheEntry
 {
     public required AudioParams Params { get; set; }
-    public DateTime LastCalculated { get; set; }
+
+    public long LastCalculatedTicks { get; set; }
 }

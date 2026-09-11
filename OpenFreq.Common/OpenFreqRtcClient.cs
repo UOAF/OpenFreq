@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
@@ -144,8 +145,8 @@ public class OpenFreqRtcClient : IRtcClient
             SignalingMessageFactory.CreateAuthenticate(_password, MyDisplayName, OpenFreqVersion.Current));
 
         // Wait for authentication response with timeout
-        var startTime = DateTime.UtcNow;
-        while (!IsAuthenticated && !_authFailed && (DateTime.UtcNow - startTime) < timeout)
+        var startTicks = Stopwatch.GetTimestamp();
+        while (!IsAuthenticated && !_authFailed && Stopwatch.GetElapsedTime(startTicks) < timeout)
         {
             await Task.Delay(100, connectCts.Token);
         }
@@ -193,7 +194,8 @@ public class OpenFreqRtcClient : IRtcClient
     /// </summary>
     private async Task ReconnectAsync()
     {
-        var deadline = DateTime.UtcNow + ReconnectTotalBudget;
+        var startTicks = Stopwatch.GetTimestamp();
+        TimeSpan Remaining() => ReconnectTotalBudget - Stopwatch.GetElapsedTime(startTicks);
         var joinedFrequencies = _frequencyTransmissionState.Keys.ToList();
         var attempt = 0;
 
@@ -203,16 +205,16 @@ public class OpenFreqRtcClient : IRtcClient
         // this they all retry on the same tick and stampede the server back down. Spread the
         // first attempt over a few seconds so reconnects fan out.
         var initialJitter = TimeSpan.FromMilliseconds(Random.Shared.Next(0, 3000));
-        if (initialJitter < deadline - DateTime.UtcNow)
+        if (initialJitter < Remaining())
         {
             try { await Task.Delay(initialJitter); }
             catch (OperationCanceledException) { }
         }
 
-        while (!_intentionalDisconnect && DateTime.UtcNow < deadline)
+        while (!_intentionalDisconnect && Remaining() > TimeSpan.Zero)
         {
             attempt++;
-            var remaining = deadline - DateTime.UtcNow;
+            var remaining = Remaining();
             var connectTimeout = remaining < TimeSpan.FromSeconds(10) ? remaining : TimeSpan.FromSeconds(10);
 
             try
@@ -237,7 +239,7 @@ public class OpenFreqRtcClient : IRtcClient
 
             // Linear backoff capped at 5s, jittered +/-50% so retries stay de-synchronized
             // across clients, never sleeping past the overall deadline.
-            var timeLeft = deadline - DateTime.UtcNow;
+            var timeLeft = Remaining();
             if (timeLeft <= TimeSpan.Zero || _intentionalDisconnect) break;
             var baseBackoff = Math.Min(5.0, attempt);
             var backoff = TimeSpan.FromSeconds(baseBackoff * (0.5 + Random.Shared.NextDouble()));
