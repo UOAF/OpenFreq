@@ -111,6 +111,11 @@ public class OpenFreqService : IOpenFreqService
     // Cache duration - this effectively controls the rate of local physics calculations
     private readonly TimeSpan _audioParamsCacheDuration = TimeSpan.FromMilliseconds(50);
 
+    // Physics re-runs at most every _audioParamsCacheDuration while a peer holds the PTT, so a
+    // longer gap than that in the cadence means the next packet opens a new talk-spurt. Same 0.5s
+    // rule RTPJitterbuffer uses to call a released PTT.
+    private static readonly TimeSpan TalkspurtGap = TimeSpan.FromMilliseconds(500);
+
     // Cache cleanup
     private CancellationTokenSource? _cleanupCts;
 
@@ -1453,6 +1458,13 @@ public class OpenFreqService : IOpenFreqService
     private AudioParams CalculateAudioParamsSync(FrequencyTransmission frequencyTransmission, string peerId)
     {
         var cacheKey = (peerId, frequencyTransmission.Khz);
+        var now = DateTime.UtcNow;
+        _audioParamsCache.TryGetValue(cacheKey, out var cached);
+
+        // Physics only re-runs while audio is flowing, so a stale (or evicted) entry means this
+        // packet opens a new talk-spurt - someone just keyed up. Worth a line of RF telemetry, and
+        // reading the edge off the cache timestamp keeps it free of any state of its own.
+        var newTalkspurt = cached == null || (now - cached.LastCalculated) > TalkspurtGap;
 
         // All slots on the same frequency share the same RadioStationData (position/velocity).
         // Pick any tuned slot's key for position lookup.
@@ -1469,10 +1481,7 @@ public class OpenFreqService : IOpenFreqService
         }
 
         // Check cache
-        var now = DateTime.UtcNow;
-
-        if (_audioParamsCache.TryGetValue(cacheKey, out var cached) &&
-            (now - cached.LastCalculated) < _audioParamsCacheDuration)
+        if (cached != null && (now - cached.LastCalculated) < _audioParamsCacheDuration)
         {
             return cached.Params;
         }
@@ -1505,11 +1514,38 @@ public class OpenFreqService : IOpenFreqService
             LastCalculated = now
         };
 
+        if (newTalkspurt)
+            LogTalkspurtSignal(peerId, frequencyTransmission, ownPosition, audioParams);
+
 #if DEBUG
         _logger.LogDebug("Calculated audio params {AudioParams}", audioParams);
 #endif
 
         return audioParams;
+    }
+
+    /// <summary>
+    /// One line per incoming talk-spurt with the RF budget that decided whether it was audible:
+    /// received level, SNR, and the two dominant loss terms. Terrain diffraction is altitude-gated,
+    /// so the range and both MSL altitudes are what make a tester's log bucketable after the fact.
+    /// Counterpart to <see cref="LogTalkspurtLevel"/> on the send side.
+    /// </summary>
+    private void LogTalkspurtSignal(string peerId, FrequencyTransmission tx, Vector3 rxPosition,
+        AudioParams audioParams)
+    {
+        // Both positions are MSL - that is how they go into CalculateAudioParams above.
+        var dx = rxPosition.X - tx.Position!.X;
+        var dy = rxPosition.Y - tx.Position.Y;
+        var dz = rxPosition.Z - tx.Position.Z;
+        var rangeKm = Math.Sqrt(dx * dx + dy * dy + dz * dz) / 1000.0;
+
+        _logger.LogInformation(
+            "RX {FreqMhz:F3} MHz from {PeerId}: {ReceivedDb:F1} dBm, SNR {SnrDb:F1} dB, " +
+            "FSPL {FsplDb:F1} dB, terrain {TerrainDb:F1} dB, " +
+            "{RangeKm:F1} km, tx {TxAlt:F0} m / rx {RxAlt:F0} m MSL",
+            tx.Khz / 1000.0, peerId, audioParams.ReceivedDb, audioParams.ReceivedSnrDb,
+            audioParams.FreeSpaceLossDb, audioParams.TerrainLossDb,
+            rangeKm, tx.Position.Z, rxPosition.Z);
     }
 
     // Last computed physics params for this source+freq, ignoring the cache freshness.
