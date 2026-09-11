@@ -226,10 +226,10 @@ public partial class LocationViewModel : ViewModelBase, IDisposable
         // is rebuilding it.
         Dispatcher.UIThread.Post(() =>
         {
-            // If a slotId is specified, update only that channel; otherwise update all channels on the frequency.
-            var targets = (e.SlotId.HasValue
-                ? Channels.Where(c => c.Id == e.SlotId.Value)
-                : Channels.Where(c => c.FrequencyKhz == e.FrequencyKhz)).ToList();
+            // Addressed per slot: only the card that tuned this frequency updates. Cards parked on the
+            // same frequency without having joined it must stay Disconnected — otherwise PTT would
+            // start a transmission for a slot that was never tuned.
+            var targets = Channels.Where(c => c.Id == e.SlotId).ToList();
 
             foreach (var channel in targets)
             {

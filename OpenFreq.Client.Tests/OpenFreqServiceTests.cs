@@ -1,4 +1,5 @@
 using OpenFreq.Common;
+using OpenFreqClient.Models;
 using OpenFreqClient.Services.Interfaces;
 
 namespace OpenFreq.Client.Tests;
@@ -130,6 +131,28 @@ public class OpenFreqServiceTests
 
         Assert.NotNull(seen);
         Assert.Equal(Freq, seen!.FrequencyKhz);
+    }
+
+    [Fact]
+    public async Task ClientFrequencyJoined_MarksOnlyTunedSlotsConnected()
+    {
+        var h = new ServiceHarness();
+        await h.InitializeAuthenticatedAsync();
+        var tuned = Guid.NewGuid();
+        await h.Service.JoinFrequencyAsync(Freq, tuned, ServiceHarness.NewRadioStation());
+
+        var connectedSlots = new List<Guid>();
+        h.Service.FrequencyConnectionStatusChanged += (_, e) =>
+        {
+            if (e.ConnectionStatus == Channel.ChannelConnectionStatus.Connected) connectedSlots.Add(e.SlotId);
+        };
+
+        h.Client.FrequencyJoined +=
+            Raise.EventWith(new FrequencyJoinedEventArgs(Freq, new List<ChannelStateMessage.Peer>()));
+
+        // Cards can sit on this frequency without having joined it; only the slot that tuned may
+        // go Connected, or PTT would transmit on a slot the audio path can't resolve.
+        Assert.Equal(tuned, Assert.Single(connectedSlots));
     }
 
     [Fact]
