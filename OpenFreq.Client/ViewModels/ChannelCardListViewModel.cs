@@ -230,19 +230,17 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
 
     private static float ComputeGainFromBmsVolume(int rawVolume)
     {
-        // BMS knob: ~600 = loudest, 10000 = mute (inverted scale).
-        // Floor set slightly below the loudest reading (600) so the very top of the knob reliably hits max gain
-        const float dxMin = 600f;
-        const float dxMax = 10000f;
-        // Calibrated empirically to the BMS *AI-voice* loudness curve - the BMS volume knob acts as an overall-volume control, so we match the active-RMS of BMS recordings at matched knob position
-        const float dbMin = -88.75f;
-        const float dbMax = 2.0f;
+        // BMS knob: 0 = loudest, 10000 = mute (inverted scale).
+        const double dxMin = 0f;
+        const double dxMax = 10000f;
 
-        var clampedDx = Math.Clamp(rawVolume, dxMin, dxMax);
-        var t = (dxMax - clampedDx) / (dxMax - dxMin);
-        var db = dbMin + t * (dbMax - dbMin);
-        var gain = (float)Math.Pow(10.0, db / 20.0);
-        return gain < 0.00001f ? 0f : gain;
+        const double dbMin = -40f;
+        const double dbMax = 6f;
+
+        double clampedDx = Math.Clamp(rawVolume, dxMin, dxMax);
+        double t = (dxMax - clampedDx) / (dxMax - dxMin);
+        double db = dbMin + t * (dbMax - dbMin);
+        return (float)Math.Pow(10.0, db / 20.0);
     }
 
     private void OnRadioVolumeChanged(object? sender, RadioVolumeChangedEventArgs e)
