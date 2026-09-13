@@ -27,6 +27,12 @@ public interface IRtcClient : IDisposable
     bool IsConnected { get; }
     bool IsAuthenticated { get; }
 
+    /// <summary>
+    /// Supplies the in-game time of day in seconds, or null when there is no game clock. Every transmission
+    /// message, including each heartbeat, carries its current value.
+    /// </summary>
+    Func<int?>? GameTimeSeconds { get; set; }
+
     Task ConnectAsync(TimeSpan? connectTimeout = null);
     Task DisconnectAsync();
     Task JoinFrequencyAsync(int frequencyKhz);

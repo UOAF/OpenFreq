@@ -100,6 +100,10 @@ public class OpenFreqService : IOpenFreqService
     private readonly ConcurrentDictionary<(string PeerId, int FrequencyKhz), AudioParamsCacheEntry> _audioParamsCache =
         new();
 
+    // Peers whose PTT is keyed on a frequency we're on, with the display name to log them by. Heartbeats repeat
+    // "transmitting" every 333 ms, so only adding or removing an entry marks a PTT start or end.
+    private readonly ConcurrentDictionary<(string PeerId, int FrequencyKhz), string> _talkingPeers = new();
+
     // Pre-allocated sidetone conversion buffer — reused every recording callback (single-threaded).
     private float[] _sidetonePushBuffer = new float[4800]; // 100ms @ 48kHz, grows if needed
     private readonly MicLevelNormalizer _micNormalizer = new(OpenFreqRtcClient.SAMPLE_RATE);
@@ -144,8 +148,12 @@ public class OpenFreqService : IOpenFreqService
         _signalCalculatorFactory = signalCalculatorFactory;
 
         // Playback mutes whatever we're transmitting on. Pushed from inside the table's lock, so
-        // concurrent changes reach playback in the order they happened.
-        _transmissions = new ActiveTransmissions(frequencies => _playbackService?.SetTransmittingFrequencies(frequencies));
+        // concurrent changes reach playback, and the log, in the order they happened.
+        _transmissions = new ActiveTransmissions(change =>
+        {
+            _playbackService?.SetTransmittingFrequencies(change.Frequencies);
+            LogOwnPtt(change);
+        });
 
         // Initialize signal strength tracker with callback
         _signalStrengthTracker = new SignalStrengthTracker(
@@ -322,6 +330,7 @@ public class OpenFreqService : IOpenFreqService
         _logger.LogDebug("Creating new client");
         _client = _rtcClientFactory.Create(_loggerFactory,
             settings.OpenFreqServerAddress, settings.OpenFreqPassword, myDisplayName);
+        _client.GameTimeSeconds = GameTimeSeconds;
         _logger.LogDebug("Client created: {ClientHashCode}", _client.GetHashCode());
 
         // Subscribe to client events
@@ -492,6 +501,9 @@ public class OpenFreqService : IOpenFreqService
             // so must be unsubscribed here to prevent accumulation across reconnects.
             _falconSharedMemoryService.FlyingStateChanged -= OnFlyingStateChanged;
             _falconSharedMemoryService.StateChanged -= OnFalconStateChanged;
+
+            // The client events were unsubscribed above, so OnClientConnectionStateChanged won't end these.
+            EndPeerPtts(_ => true, "we disconnected");
 
             _peerStreams.Clear();
             _isInitialized = false;
@@ -1349,6 +1361,7 @@ public class OpenFreqService : IOpenFreqService
             }
 
             AfterTransmissionsEnded(ended);
+            EndPeerPtts(_ => true, "we disconnected");
         }
 
         // Open continuous capture once connected (for noise-floor tracking) / close it on drop.
@@ -1385,7 +1398,8 @@ public class OpenFreqService : IOpenFreqService
     private void OnClientFrequencyLeft(object? sender, FrequencyLeftEventArgs e)
     {
         // Per-slot disconnection and playback untune are handled in LeaveFrequencyAsync.
-        // Nothing extra needed here.
+        // Off the frequency, no transmission stops arrive for the peers still talking on it.
+        EndPeerPtts(key => key.FrequencyKhz == e.FrequencyKhz, "we left the frequency");
     }
 
     private void OnClientPeerJoined(object? sender, PeerEventArgs e)
@@ -1432,6 +1446,9 @@ public class OpenFreqService : IOpenFreqService
             }
         }
 
+        // The server sends no transmission stop for a peer that leaves while keyed.
+        EndPeerPtts(key => key == (e.PeerId, e.FrequencyKhz), "left the frequency");
+
         PeerLeft?.Invoke(this, e);
     }
 
@@ -1445,6 +1462,8 @@ public class OpenFreqService : IOpenFreqService
 
     private void OnClientPeerTransmissionStatusChanged(object? sender, PeerTransmissionEventArgs e)
     {
+        LogPeerPtt(e);
+
         OnPeerActivity(this,
             new PeerActivityEventArgs(e.FrequencyKhz,
                 new PeerData(e.PeerId, e.PeerDisplayName,
@@ -1459,6 +1478,76 @@ public class OpenFreqService : IOpenFreqService
                     : Channel.ChannelTransmissionStatus.Idle,
             e.Is3d);
     }
+
+    /// <summary>
+    /// Logs a peer's PTT start or end. Only the first "transmitting" after an end is a start; the rest are heartbeats.
+    /// </summary>
+    private void LogPeerPtt(PeerTransmissionEventArgs e)
+    {
+        var key = (e.PeerId, e.FrequencyKhz);
+        if (!e.IsTransmitting)
+        {
+            EndPeerPtts(k => k == key, "released");
+            return;
+        }
+
+        // A heartbeat already on its way when we left the frequency would add an entry that never ends.
+        if (!IsAnySlotTuned(e.FrequencyKhz)) return;
+
+        if (_talkingPeers.TryAdd(key, e.PeerDisplayName))
+        {
+            _logger.LogInformation(
+                "PTT start: {PeerName} ({PeerId}) on {FreqMhz:F3} MHz, {Mode}{GameTimeSuffix}",
+                e.PeerDisplayName, e.PeerId, e.FrequencyKhz / 1000.0, e.Is3d ? "3D" : "2D",
+                GameClock.LogSuffix(GameTimeSeconds()));
+        }
+        else
+        {
+            // Keep the end line in step with a rename during the transmission.
+            _talkingPeers[key] = e.PeerDisplayName;
+        }
+    }
+
+    /// <summary>
+    /// Ends and logs the PTT of each talking peer whose key <paramref name="matches"/>.
+    /// </summary>
+    private void EndPeerPtts(Func<(string PeerId, int FrequencyKhz), bool> matches, string reason)
+    {
+        foreach (var key in _talkingPeers.Keys.Where(matches))
+        {
+            if (!_talkingPeers.TryRemove(key, out var name)) continue;
+
+            _logger.LogInformation(
+                "PTT end: {PeerName} ({PeerId}) on {FreqMhz:F3} MHz, {Reason}{GameTimeSuffix}",
+                name, key.PeerId, key.FrequencyKhz / 1000.0, reason, GameClock.LogSuffix(GameTimeSeconds()));
+        }
+    }
+
+    /// <summary>
+    /// Logs our own PTT start or end for each frequency that <paramref name="change"/> started or stopped.
+    /// </summary>
+    private void LogOwnPtt(TransmissionChange change)
+    {
+        var gameTime = GameClock.LogSuffix(GameTimeSeconds());
+
+        foreach (var frequencyKhz in change.Started)
+            _logger.LogInformation("PTT start: own radio on {FreqMhz:F3} MHz{GameTimeSuffix}",
+                frequencyKhz / 1000.0, gameTime);
+
+        foreach (var frequencyKhz in change.Stopped)
+            _logger.LogInformation("PTT end: own radio on {FreqMhz:F3} MHz{GameTimeSuffix}",
+                frequencyKhz / 1000.0, gameTime);
+    }
+
+    /// <summary>
+    /// In-game time of day in seconds, from the source we also take our position from: BMS shared memory in
+    /// BMS mode, the Tacview stream in GCI mode. Null when that source has no time. Neither source takes a
+    /// lock, which matters because callers can hold <see cref="_signalingLock"/> or the lock inside
+    /// <see cref="_transmissions"/>.
+    /// </summary>
+    private int? GameTimeSeconds() => OwnPositionMode == IOpenFreqService.Mode.BMS
+        ? _falconSharedMemoryService.GameTimeSeconds
+        : _acmiClientService.GameTimeSeconds;
 
     /// <summary>
     /// Route received audio to playback service with RF effects
@@ -1498,7 +1587,7 @@ public class OpenFreqService : IOpenFreqService
 
             // Calculate audio params - always sync when 3D enabled, default otherwise
             var audioParams = Apply3dAudioEffects
-                ? CalculateAudioParamsSync(frequencyTransmission, e.PeerId)
+                ? CalculateAudioParamsSync(frequencyTransmission, e.PeerId, e.Metadata.DisplayName)
                 : FastPathAudioSim.GetDefaultAudioParams(frequencyTransmission.Khz);
 
             lock (_streamCreationLock)
@@ -1545,7 +1634,8 @@ public class OpenFreqService : IOpenFreqService
         }
     }
 
-    private AudioParams CalculateAudioParamsSync(FrequencyTransmission frequencyTransmission, string peerId)
+    private AudioParams CalculateAudioParamsSync(FrequencyTransmission frequencyTransmission, string peerId,
+        string? peerName)
     {
         var cacheKey = (peerId, frequencyTransmission.Khz);
         var nowTicks = Stopwatch.GetTimestamp();
@@ -1629,7 +1719,7 @@ public class OpenFreqService : IOpenFreqService
         };
 
         if (newTalkspurt)
-            LogTalkspurtSignal(peerId, frequencyTransmission, ownPosition, audioParams);
+            LogTalkspurtSignal(peerId, peerName, frequencyTransmission, ownPosition, audioParams);
 
 #if DEBUG
         _logger.LogDebug("Calculated audio params {AudioParams}", audioParams);
@@ -1642,9 +1732,10 @@ public class OpenFreqService : IOpenFreqService
     /// One line per incoming talk-spurt with the RF budget that decided whether it was audible:
     /// received level, SNR, and the two dominant loss terms. Terrain diffraction is altitude-gated,
     /// so the range and both MSL altitudes are what make a tester's log bucketable after the fact.
+    /// The talker's name and the game time let it be matched to PTT lines and in-game recordings.
     /// Counterpart to <see cref="LogTalkspurtLevel"/> on the send side.
     /// </summary>
-    private void LogTalkspurtSignal(string peerId, FrequencyTransmission tx, Vector3 rxPosition,
+    private void LogTalkspurtSignal(string peerId, string? peerName, FrequencyTransmission tx, Vector3 rxPosition,
         AudioParams audioParams)
     {
         // Both positions are MSL - that is how they go into CalculateAudioParams above.
@@ -1654,10 +1745,12 @@ public class OpenFreqService : IOpenFreqService
         var rangeKm = Math.Sqrt(dx * dx + dy * dy + dz * dz) / 1000.0;
 
         _logger.LogInformation(
-            "RX {FreqMhz:F3} MHz from {PeerId}: {ReceivedDb:F1} dBm, SNR {SnrDb:F1} dB, " +
+            "RX {FreqMhz:F3} MHz from {PeerName} ({PeerId}){GameTimeSuffix}: " +
+            "{ReceivedDb:F1} dBm, SNR {SnrDb:F1} dB, " +
             "FSPL {FsplDb:F1} dB, terrain {TerrainDb:F1} dB, " +
             "{RangeKm:F1} km, tx {TxAlt:F0} m / rx {RxAlt:F0} m MSL",
-            tx.Khz / 1000.0, peerId, audioParams.ReceivedDb, audioParams.ReceivedSnrDb,
+            tx.Khz / 1000.0, peerName ?? "Unnamed", peerId, GameClock.LogSuffix(GameTimeSeconds()),
+            audioParams.ReceivedDb, audioParams.ReceivedSnrDb,
             audioParams.FreeSpaceLossDb, audioParams.TerrainLossDb,
             rangeKm, tx.Position.Z, rxPosition.Z);
     }

@@ -39,6 +39,12 @@ public interface IAcmiClientService : IDisposable, ILifecycleService
     void AddTrackingForAircraft(string? objectId);
     void RemoveTrackingForAircraft(string? objectId);
 
+    /// <summary>
+    /// In-game time of day in seconds, from the stream's ReferenceTime and latest frame time.
+    /// Null until the current connection has reported both.
+    /// </summary>
+    int? GameTimeSeconds { get; }
+
 
     public AcmiConnectionStatus Status { get; }
 }

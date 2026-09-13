@@ -61,6 +61,7 @@ public class OpenFreqServicePhysicsTests
             new AudioPacketMetadata
             {
                 ClientId = Peer,
+                DisplayName = "Viper",
                 Frequencies =
                 [
                     new FrequencyTransmission(Freq, txPowerWatts: 10.0, ppm: 0.0,
@@ -137,5 +138,18 @@ public class OpenFreqServicePhysicsTests
 
         Assert.Equal([good, good], pushed);
         Assert.Single(Errors(log));
+    }
+
+    [Fact]
+    public async Task NewTalkspurt_RxLineHasNameAndGameTime()
+    {
+        var (h, log, _) = await ReceivingHarnessAsync();
+        h.Acmi.GameTimeSeconds.Returns(45296);
+        PhysicsReturns(h, GoodParams(snrDb: 20f));
+
+        ReceivePacket(h);
+
+        var rx = Assert.Single(log.Entries, e => e.Message.StartsWith("RX "));
+        Assert.Contains($"from Viper ({Peer}), game time 12:34:56:", rx.Message);
     }
 }

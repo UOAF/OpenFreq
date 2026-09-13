@@ -40,11 +40,22 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
 
     private const int OFFSET_HSIBITS = 232; // hsiBits (uint) at byte 232
 
-    // Consecutive polls with the flying bit clear before we accept "not flying"
+    // FlightData2 area (FlightData.h, default alignment). These offsets are the same from BMS 4.36 to 4.38.
+    private const string FLIGHTDATA2_SHARED_MEMORY = "FalconSharedMemoryArea2";
+    private const int OFFSET2_CURRENT_TIME = 68; // currentTime (int), seconds since in-game midnight
+    private const int OFFSET2_VERSION_NUM = 76; // VersionNum (int)
+    private const int CURRENT_TIME_MIN_VERSION = 3; // FlightData2 version that added currentTime
+
+    // Consecutive flight data reads with the flying bit clear before we accept "not flying"
     private const int NotFlyingDebounceSamples = 3;
 
+    // The loop ticks at 10 Hz so PTT log lines get a fresh game clock. Everything else still runs every
+    // FlightDataTickDivider ticks (2 Hz): NotFlyingDebounceSamples counts those reads, and each connect
+    // attempt scans the process list.
+    private const double PollingFrequencyHz = 10.0;
+    private const int FlightDataTickDivider = 5;
+
     private ServiceState _state = ServiceState.Stopped;
-    private double _pollingFrequencyHz = 2.0;
 
     private PeriodicTimer? _timer;
     private Task? _pollingTask;
@@ -54,6 +65,12 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
     private IntPtr _lpPrimaryBaseAddress = IntPtr.Zero;
     private IntPtr _hStringMemory = IntPtr.Zero;
     private IntPtr _lpStringBaseAddress = IntPtr.Zero;
+    private IntPtr _hFlightData2Memory = IntPtr.Zero;
+    private IntPtr _lpFlightData2BaseAddress = IntPtr.Zero;
+
+    // In-game time of day in seconds, or -1 when unknown. Not guarded by _dataLock: OpenFreqService reads it
+    // while holding its signalling lock, and ChangeState raises StateChanged while holding _dataLock.
+    private int _gameTimeSeconds = -1;
 
     private FlightPosition? _position;
     private FlightVelocity? _velocity;
@@ -111,6 +128,8 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
         }
     }
 
+    public int? GameTimeSeconds => Volatile.Read(ref _gameTimeSeconds) is >= 0 and var seconds ? seconds : null;
+
     public string? TheaterTerrainDir
     {
         get
@@ -140,7 +159,7 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
         }
 
         _cts = new CancellationTokenSource();
-        var interval = TimeSpan.FromSeconds(1.0 / _pollingFrequencyHz);
+        var interval = TimeSpan.FromSeconds(1.0 / PollingFrequencyHz);
         _timer = new PeriodicTimer(interval);
         _pollingTask = Task.Run(() => PollingLoop(_cts.Token));
         _logger.LogInformation("Started");
@@ -167,6 +186,7 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
 
     private async Task PollingLoop(CancellationToken cancellationToken)
     {
+        long tick = 0;
         while (!cancellationToken.IsCancellationRequested && _timer != null)
         {
             try
@@ -174,6 +194,12 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
                 await _timer.WaitForNextTickAsync(cancellationToken);
 
                 var currentState = State;
+
+                if (currentState == ServiceState.Connected)
+                    ReadGameTime();
+
+                if (tick++ % FlightDataTickDivider != 0)
+                    continue;
 
                 if (currentState == ServiceState.Disconnected)
                 {
@@ -290,6 +316,21 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
                 }
             }
 
+            // Optional, like the string area: it only supplies the game clock.
+            _hFlightData2Memory = Win32SharedMemory.OpenFileMapping(
+                Win32SharedMemory.SECTION_MAP_READ,
+                false,
+                FLIGHTDATA2_SHARED_MEMORY);
+
+            if (_hFlightData2Memory != IntPtr.Zero)
+            {
+                _lpFlightData2BaseAddress = Win32SharedMemory.MapViewOfFile(
+                    _hFlightData2Memory,
+                    Win32SharedMemory.SECTION_MAP_READ,
+                    0, 0,
+                    IntPtr.Zero);
+            }
+
             return true;
         }
         catch
@@ -364,6 +405,20 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
             Win32SharedMemory.CloseHandle(_hStringMemory);
             _hStringMemory = IntPtr.Zero;
         }
+
+        if (_lpFlightData2BaseAddress != IntPtr.Zero)
+        {
+            Win32SharedMemory.UnmapViewOfFile(_lpFlightData2BaseAddress);
+            _lpFlightData2BaseAddress = IntPtr.Zero;
+        }
+
+        if (_hFlightData2Memory != IntPtr.Zero)
+        {
+            Win32SharedMemory.CloseHandle(_hFlightData2Memory);
+            _hFlightData2Memory = IntPtr.Zero;
+        }
+
+        Volatile.Write(ref _gameTimeSeconds, -1);
 
         if (_bmsProcess != null)
         {
@@ -492,6 +547,24 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
         }
     }
 
+    // FlightData2 is optional, and only has currentTime from version 3 on. BMS updates it only in 3D and clears the
+    // Flying bit when the player leaves, so outside 3D currentTime is 0 or frozen at the last flight, and isn't
+    // reported. This uses the raw bit: the debounced _isFlying holds "flying" for a few reads after BMS leaves 3D.
+    private void ReadGameTime()
+    {
+        var gameTimeSeconds = -1;
+        if (_lpPrimaryBaseAddress != IntPtr.Zero && _lpFlightData2BaseAddress != IntPtr.Zero &&
+            (BitConverter.ToUInt32(ReadBytes(_lpPrimaryBaseAddress, OFFSET_HSIBITS, 4), 0) & HSI_FLYING_BIT) != 0 &&
+            BitConverter.ToInt32(ReadBytes(_lpFlightData2BaseAddress, OFFSET2_VERSION_NUM, 4), 0) >= CURRENT_TIME_MIN_VERSION)
+        {
+            int currentTime = BitConverter.ToInt32(ReadBytes(_lpFlightData2BaseAddress, OFFSET2_CURRENT_TIME, 4), 0);
+            if (currentTime is >= 0 and <= 24 * 60 * 60)
+                gameTimeSeconds = currentTime % (24 * 60 * 60);
+        }
+
+        Volatile.Write(ref _gameTimeSeconds, gameTimeSeconds);
+    }
+
     private static byte[] ReadBytes(IntPtr baseAddress, int offset, int count)
     {
         byte[] buffer = new byte[count];
@@ -537,6 +610,7 @@ public class FalconSharedMemoryService : IFalconSharedMemoryService
     public string? TheaterTerrainDir { get; }
     public string? AcNCTR { get; }
     public bool? IsFlying { get; }
+    public int? GameTimeSeconds { get; }
 #pragma warning disable CS0067
     public event EventHandler<ServiceStateChangedEventArgs>? StateChanged;
     public event EventHandler<FlyingStateChangedEventArgs>? FlyingStateChanged;

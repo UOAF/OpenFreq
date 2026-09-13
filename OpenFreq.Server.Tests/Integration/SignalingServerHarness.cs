@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenFreqServer;
 
@@ -30,7 +31,8 @@ public sealed class SignalingServerHarness : IAsyncDisposable
         int maxClientsPerChannel = 50,
         bool broadcastPeerUpdates = true,
         TimeSpan? rtpTimeout = null,
-        TimeSpan? watchdogInterval = null)
+        TimeSpan? watchdogInterval = null,
+        ILoggerFactory? loggerFactory = null)
     {
         var config = new ServerConfig
         {
@@ -43,7 +45,7 @@ public sealed class SignalingServerHarness : IAsyncDisposable
 
         var audio = new FakeAudioRelay();
         var server = new SignalingServer(
-            config, NullLoggerFactory.Instance, audio, rtpTimeout, watchdogInterval);
+            config, loggerFactory ?? NullLoggerFactory.Instance, audio, rtpTimeout, watchdogInterval);
 
         await server.StartAsync();
         return new SignalingServerHarness(audio, server);

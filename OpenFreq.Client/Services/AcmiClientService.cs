@@ -37,6 +37,13 @@ public class AcmiClientService : IAcmiClientService
     private DateTime _referenceTime = DateTime.UnixEpoch;
     private double _relativeTime;
 
+    // _referenceTime keeps its value from an earlier connection, so this tells whether the current one sent it.
+    private bool _hasReferenceTime;
+
+    // In-game time of day in ticks, or -1 when unknown. Written by the receive task and read without a lock,
+    // because OpenFreqService can read it while holding its signalling lock.
+    private long _gameTimeOfDayTicks = -1;
+
     private readonly Lock _statusLock = new();
     private AcmiConnectionStatus _status = AcmiConnectionStatus.Disconnected;
 
@@ -176,6 +183,7 @@ public class AcmiClientService : IAcmiClientService
 
         // Clear persistent buffer to avoid data leaking between connections
         _persistentBuffer.Clear();
+        ResetGameTime();
 
         Status = AcmiConnectionStatus.Disconnected;
         RaiseConnectionStatusChanged(AcmiConnectionStatus.Disconnected, "Disconnected");
@@ -189,6 +197,16 @@ public class AcmiClientService : IAcmiClientService
 
     /// <summary>Gets all aircraft currently tracked</summary>
     public IEnumerable<AcmiAircraft> GetAllAircraft() => _trackedAircraft.Values.ToList();
+
+    public int? GameTimeSeconds =>
+        Volatile.Read(ref _gameTimeOfDayTicks) is >= 0 and var ticks ? (int)(ticks / TimeSpan.TicksPerSecond) : null;
+
+    // Each connection must send its own ReferenceTime before its frame times give a game time.
+    private void ResetGameTime()
+    {
+        _hasReferenceTime = false;
+        Volatile.Write(ref _gameTimeOfDayTicks, -1);
+    }
 
     public void AddTrackingForAircraft(string? objectId)
     {
@@ -270,6 +288,7 @@ public class AcmiClientService : IAcmiClientService
                 _client?.Dispose();
                 _stream = null;
                 _client = null;
+                ResetGameTime();
             }
         }
     }
@@ -381,7 +400,7 @@ public class AcmiClientService : IAcmiClientService
         }
     }
 
-    private bool ProcessLine(string line)
+    internal bool ProcessLine(string line)
     {
         if (string.IsNullOrEmpty(line))
             return false;
@@ -397,6 +416,8 @@ public class AcmiClientService : IAcmiClientService
                 CultureInfo.InvariantCulture, out double time))
             {
                 _relativeTime = time;
+                if (_hasReferenceTime)
+                    Volatile.Write(ref _gameTimeOfDayTicks, _referenceTime.AddSeconds(time).TimeOfDay.Ticks);
                 return true;
             }
             return false;
@@ -541,6 +562,7 @@ public class AcmiClientService : IAcmiClientService
                 CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var refTime))
             {
                 _referenceTime = refTime.ToUniversalTime();
+                _hasReferenceTime = true;
             }
         }
     }

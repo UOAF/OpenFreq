@@ -243,6 +243,11 @@ public class AudioStreamServer : IAudioStreamServer
                     LogTransmittingOnFrequencies(_logger, GetDisplayName(clientId), clientId,
                         targets.Valid.Length, null);
 
+                // Receivers log the talker by this name. Take it from the session rather than the packet,
+                // since the packet name is left empty in some situations
+                // (e.g., when the session name is pulled from shared memory).
+                metadata.DisplayName = GetDisplayName(clientId);
+
                 // Already deduplicated, so a client on several of the matched frequencies
                 // gets exactly one packet (its metadata carries all of them).
                 ForwardAudioToReceivers(targets.Recipients, rtpPacket, metadata, audioData);

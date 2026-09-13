@@ -8,7 +8,7 @@ public class FrequencyChannelManagerTests
     private static FrequencyChannelManager Create() => new();
 
     /// <summary>Set transmit state without restating the 3D mode at every call site.</summary>
-    private static string[]? Transmit(FrequencyChannelManager mgr, int frequencyKhz, string clientId, bool on) =>
+    private static TransmissionUpdate? Transmit(FrequencyChannelManager mgr, int frequencyKhz, string clientId, bool on) =>
         mgr.SetTransmissionState(frequencyKhz, clientId, on, is3d: false);
 
     /// <summary>Peers on a frequency, read through the same snapshot the server broadcasts.</summary>
@@ -102,26 +102,31 @@ public class FrequencyChannelManagerTests
     }
 
     [Fact]
-    public void LeaveChannel_ExistingClient_ReturnsTrue()
+    public void LeaveChannel_ExistingClient_ReturnsItsPeerEntry()
     {
         var mgr = Create();
         mgr.JoinChannel(251000, "client-1", "Viper");
-        Assert.True(mgr.LeaveChannel(251000, "client-1"));
+
+        var removed = mgr.LeaveChannel(251000, "client-1");
+
+        Assert.NotNull(removed);
+        Assert.Equal("client-1", removed.Id);
+        Assert.Equal("Viper", removed.Name);
     }
 
     [Fact]
-    public void LeaveChannel_ClientNotInChannel_ReturnsFalse()
+    public void LeaveChannel_ClientNotInChannel_ReturnsNull()
     {
         var mgr = Create();
-        Assert.False(mgr.LeaveChannel(251000, "client-1"));
+        Assert.Null(mgr.LeaveChannel(251000, "client-1"));
     }
 
     [Fact]
-    public void LeaveChannel_WrongFrequency_ReturnsFalse()
+    public void LeaveChannel_WrongFrequency_ReturnsNull()
     {
         var mgr = Create();
         mgr.JoinChannel(251000, "client-1", "Viper");
-        Assert.False(mgr.LeaveChannel(135100, "client-1"));
+        Assert.Null(mgr.LeaveChannel(135100, "client-1"));
     }
 
     [Fact]
@@ -489,7 +494,7 @@ public class FrequencyChannelManagerTests
         mgr.JoinChannel(251000, "client-1", "Viper");
         mgr.LeaveAllChannels("client-1");
 
-        Assert.False(mgr.LeaveChannel(251000, "client-1"));
+        Assert.Null(mgr.LeaveChannel(251000, "client-1"));
     }
 
     // --- Concurrency regression tests ---------------------------------------
@@ -670,6 +675,49 @@ public class FrequencyChannelManagerTests
         Assert.Contains(PeersIn(mgr, 251000), p => p.Status == PeerData.PeerStatus.Transmitting);
         Assert.DoesNotContain(PeersIn(mgr, 135100), p => p.Status == PeerData.PeerStatus.Transmitting);
         Assert.Equal(1, mgr.CountTransmitting());
+    }
+
+    [Fact]
+    public void SetTransmissionState_ReportsAChangeOnlyWhenTheStateFlips()
+    {
+        var mgr = Create();
+        mgr.JoinChannel(251000, "client-1", "Viper");
+        mgr.JoinChannel(251000, "client-2", "Maverick");
+
+        var start = Transmit(mgr, 251000, "client-1", true);
+        var heartbeat = Transmit(mgr, 251000, "client-1", true);
+        var stop = Transmit(mgr, 251000, "client-1", false);
+
+        Assert.True(start?.Changed);
+        Assert.False(heartbeat?.Changed);
+        Assert.NotNull(stop);
+        Assert.True(stop.Value.Changed);
+        Assert.Equal(["client-2"], stop.Value.OtherClients);
+    }
+
+    [Fact]
+    public void LeaveChannel_WhileTransmitting_ReturnsTheTransmittingEntry()
+    {
+        var mgr = Create();
+        mgr.JoinChannel(251000, "client-1", "Viper");
+        Transmit(mgr, 251000, "client-1", true);
+
+        Assert.Equal(PeerData.PeerStatus.Transmitting, mgr.LeaveChannel(251000, "client-1")?.Status);
+    }
+
+    [Fact]
+    public void LeaveAllChannels_ReturnsEachEntryWithItsTransmitState()
+    {
+        var mgr = Create();
+        mgr.JoinChannel(251000, "client-1", "Viper");
+        mgr.JoinChannel(135100, "client-1", "Viper");
+        Transmit(mgr, 251000, "client-1", true);
+
+        var removed = mgr.LeaveAllChannels("client-1").OrderBy(r => r.FrequencyKhz).ToList();
+
+        Assert.Equal([135100, 251000], removed.Select(r => r.FrequencyKhz));
+        Assert.Equal([PeerData.PeerStatus.Receiving, PeerData.PeerStatus.Transmitting],
+            removed.Select(r => r.Peer.Status));
     }
 
     [Fact]

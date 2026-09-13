@@ -10,6 +10,15 @@ namespace OpenFreqServer;
 /// <param name="Recipients">Deduplicated clients to relay to, excluding the sender.</param>
 public readonly record struct RelayTargets(int[] Valid, int[] Rejected, string[] Recipients);
 
+/// <summary>
+/// The outcome of recording a client's transmit state on one frequency.
+/// </summary>
+/// <param name="OtherClients">The other clients on the frequency, who need to be told.</param>
+/// <param name="Changed">
+/// The transmit state differs from before. Clients repeat their state while transmitting, so most updates are not changes.
+/// </param>
+public readonly record struct TransmissionUpdate(string[] OtherClients, bool Changed);
+
 // Can a brother get some sum types/tagged unions?
 public abstract record JoinChannelResult;
 public record ChannelJoined : JoinChannelResult;
@@ -62,12 +71,13 @@ public class FrequencyChannelManager
     /// <summary>
     /// Leave a specific channel
     /// </summary>
-    public bool LeaveChannel(int frequencyKhz, string clientId)
+    /// <returns>The client's peer entry as it was when removed, or null if the client was not on the channel.</returns>
+    public PeerData? LeaveChannel(int frequencyKhz, string clientId)
     {
         lock (_channels)
         {
-            if (!_channels.TryGetValue(frequencyKhz, out var peers)) return false;
-            var removed = peers.Remove(clientId);
+            if (!_channels.TryGetValue(frequencyKhz, out var peers)) return null;
+            peers.Remove(clientId, out var removed);
             if (peers.Count == 0) _channels.Remove(frequencyKhz);
             return removed;
         }
@@ -76,17 +86,23 @@ public class FrequencyChannelManager
     /// <summary>
     /// Leave all channels for a client
     /// </summary>
-    public void LeaveAllChannels(string clientId)
+    /// <returns>The client's peer entries as they were when removed, one for each channel it was on.</returns>
+    public List<(int FrequencyKhz, PeerData Peer)> LeaveAllChannels(string clientId)
     {
         lock (_channels)
         {
+            var removed = new List<(int, PeerData)>();
+
             // Materialize the keys: the loop removes emptied channels from _channels.
             foreach (var frequency in _channels.Keys.ToList())
             {
                 var peers = _channels[frequency];
-                if (!peers.Remove(clientId)) continue;
+                if (!peers.Remove(clientId, out var peer)) continue;
+                removed.Add((frequency, peer));
                 if (peers.Count == 0) _channels.Remove(frequency);
             }
+
+            return removed;
         }
     }
 
@@ -162,10 +178,11 @@ public class FrequencyChannelManager
     /// clients there — the peers that need to be told about the change.
     /// </summary>
     /// <returns>
-    /// The other clients on the frequency, or null if this client is not on it. Empty means
-    /// they are talking to nobody, which is not the same as not being tuned.
+    /// The other clients on the frequency and whether the transmit state changed, or null if this
+    /// client is not on it. No other clients means they are talking to nobody, which is not the
+    /// same as not being tuned.
     /// </returns>
-    public string[]? SetTransmissionState(int frequencyKhz, string clientId, bool transmitting, bool is3d)
+    public TransmissionUpdate? SetTransmissionState(int frequencyKhz, string clientId, bool transmitting, bool is3d)
     {
         lock (_channels)
         {
@@ -175,13 +192,10 @@ public class FrequencyChannelManager
                 return null;
             }
 
-            peers[clientId] = new PeerData(
-                current.Id,
-                current.Name,
-                transmitting ? PeerData.PeerStatus.Transmitting : PeerData.PeerStatus.Receiving,
-                is3d);
+            var status = transmitting ? PeerData.PeerStatus.Transmitting : PeerData.PeerStatus.Receiving;
+            peers[clientId] = new PeerData(current.Id, current.Name, status, is3d);
 
-            return peers.Keys.Where(id => id != clientId).ToArray();
+            return new TransmissionUpdate(peers.Keys.Where(id => id != clientId).ToArray(), current.Status != status);
         }
     }
 

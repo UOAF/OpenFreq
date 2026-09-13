@@ -16,11 +16,19 @@ public class ActiveTransmissionsTests
 
     // Every set of frequencies pushed to playback, in order.
     private readonly List<int[]> _pushed = [];
+
+    // Every change reported to the callback, in order.
+    private readonly List<TransmissionChange> _reported = [];
+
     private readonly ActiveTransmissions _tx;
 
     public ActiveTransmissionsTests()
     {
-        _tx = new ActiveTransmissions(frequencies => _pushed.Add(frequencies.Order().ToArray()));
+        _tx = new ActiveTransmissions(change =>
+        {
+            _pushed.Add(change.Frequencies.Order().ToArray());
+            _reported.Add(change);
+        });
     }
 
     // What playback is muting now.
@@ -163,5 +171,20 @@ public class ActiveTransmissionsTests
         });
 
         Assert.Equal(_tx.TransmittingSlots().Select(s => s.FrequencyKhz).Order(), Muted);
+    }
+
+    [Fact]
+    public void Callback_ReportsOnlyChangesToTheFrequencies()
+    {
+        _tx.Start(SlotA, Uhf);
+        _tx.Start(SlotB, Uhf); // Uhf is already transmitting.
+        _tx.EndAll();
+
+        Assert.Equal(2, _reported.Count);
+        Assert.Equal([Uhf], _reported[0].Started);
+        Assert.Empty(_reported[0].Stopped);
+        Assert.Empty(_reported[1].Started);
+        Assert.Equal([Uhf], _reported[1].Stopped);
+        Assert.Empty(_reported[1].Frequencies);
     }
 }

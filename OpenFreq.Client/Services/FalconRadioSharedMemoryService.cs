@@ -21,9 +21,14 @@ namespace OpenFreq.Client.Services;
 public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
 {
     private ServiceState _state = ServiceState.Stopped;
-    private double _pollingFrequencyHz = 10.0;
 
-    private PeriodicTimer? _rccTimer; // 3 Hz for RCC (radio data)
+    // BMS writes RCC once per sim loop pass (once per frame in 3D), so the loop ticks at 60 Hz to see PTT changes within
+    // about a frame. Only the PTT flags are read on every tick. Opening RCC and the full read, which parses strings and
+    // allocates, still run every RccFullReadTickDivider ticks (10 Hz).
+    private const double RccPollingFrequencyHz = 60.0;
+    private const int RccFullReadTickDivider = 6;
+
+    private PeriodicTimer? _rccTimer; // RCC (radio data), see RccPollingFrequencyHz
     private PeriodicTimer? _rcsTimer; // 1 Hz for RCS status updates
     private Task? _rccPollingTask;
     private Task? _rcsPollingTask;
@@ -222,7 +227,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
     {
         _cts = new CancellationTokenSource();
 
-        var rccInterval = TimeSpan.FromSeconds(1.0 / _pollingFrequencyHz);
+        var rccInterval = TimeSpan.FromSeconds(1.0 / RccPollingFrequencyHz);
         _rccTimer = new PeriodicTimer(rccInterval);
         _rccPollingTask = Task.Run(() => RccPollingLoop(_cts.Token));
 
@@ -351,11 +356,19 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
 
     private async Task RccPollingLoop(CancellationToken ct)
     {
+        long tick = 0;
         while (!ct.IsCancellationRequested)
         {
             try
             {
                 await _rccTimer!.WaitForNextTickAsync(ct);
+
+                if (tick++ % RccFullReadTickDivider != 0)
+                {
+                    if (_lpRccBaseAddress != IntPtr.Zero)
+                        ReadPtt();
+                    continue;
+                }
 
                 // If not yet connected to RCC shared memory, try to open it
                 if (_lpRccBaseAddress == IntPtr.Zero)
@@ -403,6 +416,34 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
                 _logger.LogError(ex, "RCC polling error");
             }
         }
+    }
+
+    /// <summary>
+    /// Reads only the PTT flags, between full reads. It updates the stored channels too, so the next full read doesn't
+    /// report the same change again.
+    /// </summary>
+    private void ReadPtt()
+    {
+        List<RadioPttChangedEventArgs>? changes = null;
+        lock (_dataLock)
+        {
+            // Until the first full read after RCC opens, the stored channels can be from an earlier BMS session.
+            if (!_initialReadDone) return;
+
+            foreach (var channel in _radioChannels.Values)
+            {
+                var pttDepressed = RadioControlParser.ParsePttDepressed(_lpRccBaseAddress, channel.RadioType);
+                if (pttDepressed == channel.PttDepressed) continue;
+
+                (changes ??= []).Add(new RadioPttChangedEventArgs(channel.RadioType, channel.PttDepressed, pttDepressed));
+                channel.PttDepressed = pttDepressed;
+            }
+        }
+
+        // Raised after releasing _dataLock, for the same reason as TryReadRadioData's events.
+        if (changes == null) return;
+        foreach (var args in changes)
+            Raise(PttChanged, args);
     }
 
     private async Task RcsUpdateLoop(CancellationToken cancellationToken)

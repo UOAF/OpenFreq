@@ -41,6 +41,11 @@ public interface IFalconSharedMemoryService : IDisposable, ILifecycleService
     bool? IsFlying { get; }
 
     /// <summary>
+    /// In-game time of day in seconds (null if disconnected, not in 3D, or if BMS does not report it)
+    /// </summary>
+    int? GameTimeSeconds { get; }
+
+    /// <summary>
     /// Event fired when service state changes
     /// </summary>
     event EventHandler<ServiceStateChangedEventArgs>? StateChanged;

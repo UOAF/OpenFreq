@@ -60,4 +60,26 @@ public class AudioPacketMetadataTests
         Assert.Equal(2, freq.Position.Y);
         Assert.Equal(3, freq.Position.Z);
     }
+
+    [Fact]
+    public void JsonRoundTrip_PreservesDisplayName()
+    {
+        var md = new AudioPacketMetadata { ClientId = "c1", DisplayName = "Viper 1-1" };
+
+        var json = JsonSerializer.Serialize(md, OpenFreqJsonContext.Default.AudioPacketMetadata);
+        var back = JsonSerializer.Deserialize(json, OpenFreqJsonContext.Default.AudioPacketMetadata);
+
+        Assert.NotNull(back);
+        Assert.Equal("Viper 1-1", back.DisplayName);
+    }
+
+    [Fact]
+    public void Json_NoDisplayName_IsNotWritten()
+    {
+        // Senders leave the name to the server, so their packets should not carry an empty field.
+        var json = JsonSerializer.Serialize(new AudioPacketMetadata { ClientId = "c1" },
+            OpenFreqJsonContext.Default.AudioPacketMetadata);
+
+        Assert.DoesNotContain("\"name\"", json);
+    }
 }

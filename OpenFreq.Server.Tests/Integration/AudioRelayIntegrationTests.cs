@@ -64,6 +64,24 @@ public class AudioRelayIntegrationTests
     }
 
     [Fact]
+    public async Task Relay_StampsSenderDisplayNameFromSession()
+    {
+        using var harness = AudioServerHarness.Start();
+        using var alice = harness.AddClient("alice", Freq);
+        using var bob = harness.AddClient("bob", Freq);
+        await RegisterEndpoint(bob);
+        harness.Clients["alice"].DisplayName = "Viper 1-1";
+
+        // The sender's own "name" must not reach receivers.
+        alice.SendRawExtension(
+            $$"""{"id":"alice","name":"Mallory","frequencies":[{"khz":{{Freq}}}]}""", Audio(9));
+
+        var received = await bob.ReceiveRtp();
+        Assert.NotNull(received);
+        Assert.Equal("Viper 1-1", ParseMetadata(received!).DisplayName);
+    }
+
+    [Fact]
     public async Task Relay_RenumbersSequencePerReceiverFromZero()
     {
         using var harness = AudioServerHarness.Start();

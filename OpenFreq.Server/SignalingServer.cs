@@ -70,11 +70,24 @@ public class SignalingServer
             new EventId(5, nameof(LeaveCurrentChannel)),
             "{DisplayName} ({ClientId}) left frequency {Frequency:F3} MHz");
 
+    // Debug: clients repeat "transmitting" every 333 ms. LogPttStart and LogPttEnd record the changes.
     private static readonly Action<ILogger, string, string, bool, double, int, Exception?> LogTransmissionState =
         LoggerMessage.Define<string, string, bool, double, int>(
-            LogLevel.Information,
+            LogLevel.Debug,
             new EventId(6, nameof(HandleTransmission)),
             "{DisplayName} ({ClientId}) transmission: {IsTransmitting} on {Frequency:F3} MHz, broadcasting to {PeerCount} peer(s)");
+
+    private static readonly Action<ILogger, string, string, double, string, string, Exception?> LogPttStart =
+        LoggerMessage.Define<string, string, double, string, string>(
+            LogLevel.Information,
+            new EventId(9, nameof(HandleTransmission)),
+            "PTT start: {DisplayName} ({ClientId}) on {Frequency:F3} MHz, {Mode}{GameTimeSuffix}");
+
+    private static readonly Action<ILogger, string, string, double, string, string, Exception?> LogPttEnd =
+        LoggerMessage.Define<string, string, double, string, string>(
+            LogLevel.Information,
+            new EventId(10, nameof(HandleTransmission)),
+            "PTT end: {DisplayName} ({ClientId}) on {Frequency:F3} MHz, {Reason}{GameTimeSuffix}");
 
     private static readonly Action<ILogger, string, string, Exception?> LogClientCleanedUp =
         LoggerMessage.Define<string, string>(
@@ -542,7 +555,8 @@ public class SignalingServer
         if (transmissionMsg == null) return;
 
         var frequencyKhz = transmissionMsg.FrequencyKhz;
-        _channelManager.LeaveChannel(frequencyKhz, session.Id);
+        if (_channelManager.LeaveChannel(frequencyKhz, session.Id) is { Status: PeerData.PeerStatus.Transmitting })
+            LogTransmissionEnded(session, frequencyKhz, "left the frequency");
 
         await BroadcastToChannel(
             frequencyKhz,
@@ -561,7 +575,9 @@ public class SignalingServer
 
         foreach (var frequency in frequencies)
         {
-            _channelManager.LeaveChannel(frequency, session.Id);
+            // Only CleanupClient calls this, so a transmission still in progress ends with the connection.
+            if (_channelManager.LeaveChannel(frequency, session.Id) is { Status: PeerData.PeerStatus.Transmitting })
+                LogTransmissionEnded(session, frequency, "disconnected");
 
             await BroadcastToChannel(
                 frequency,
@@ -587,23 +603,46 @@ public class SignalingServer
         // out as allPeersStatus reports who is talking. It used to say "receiving" for
         // everyone forever, which fought the per-event updates clients apply on top: any
         // peer-list broadcast landing mid-transmission cleared the sender's TX indicator.
-        var peersInChannel = _channelManager.SetTransmissionState(
-            transmissionMsg.FrequencyKhz, session.Id, transmissionMsg.Transmitting, transmissionMsg.Is3d);
+        if (_channelManager.SetTransmissionState(
+                transmissionMsg.FrequencyKhz, session.Id, transmissionMsg.Transmitting, transmissionMsg.Is3d)
+            is not { } update) return;
 
-        if (peersInChannel is null) return;
+        session.LastGameTimeSeconds = transmissionMsg.GameTimeSeconds;
+        var displayName = GetDisplayName(session);
 
-        LogTransmissionState(_logger, GetDisplayName(session), session.Id, transmissionMsg.Transmitting,
-            transmissionMsg.FrequencyKhz / 1000d, peersInChannel.Length, null);
+        LogTransmissionState(_logger, displayName, session.Id, transmissionMsg.Transmitting,
+            transmissionMsg.FrequencyKhz / 1000d, update.OtherClients.Length, null);
+
+        if (update.Changed)
+        {
+            if (transmissionMsg.Transmitting)
+            {
+                LogPttStart(_logger, displayName, session.Id, transmissionMsg.FrequencyKhz / 1000d,
+                    transmissionMsg.Is3d ? "3D" : "2D", GameClock.LogSuffix(transmissionMsg.GameTimeSeconds), null);
+            }
+            else
+            {
+                LogTransmissionEnded(session, transmissionMsg.FrequencyKhz, "released");
+            }
+        }
 
         await BroadcastToChannel(
             transmissionMsg.FrequencyKhz,
             session.Id,
             SignalingMessageFactory.CreateTransmissionEvent(
                 session.Id,
+                displayName,
                 transmissionMsg.FrequencyKhz,
                 transmissionMsg.Transmitting,
                 transmissionMsg.Is3d));
     }
+
+    /// <summary>
+    /// Logs the end of a client's transmission, at the game time from its latest transmission message.
+    /// </summary>
+    private void LogTransmissionEnded(ClientSession session, int frequencyKhz, string reason) =>
+        LogPttEnd(_logger, GetDisplayName(session), session.Id, frequencyKhz / 1000d, reason,
+            GameClock.LogSuffix(session.LastGameTimeSeconds), null);
 
     private Task HandleModeUpdate(ClientSession session, SignalingMessage message)
     {
@@ -767,7 +806,12 @@ public class SignalingServer
             // Not redundant with the above: that loop awaits a broadcast per channel, and the
             // client's own message pump runs concurrently (this can be called fire-and-forget
             // from the idle watchdog), so a join can land in one of those gaps. Sweep again.
-            _channelManager.LeaveAllChannels(clientId);
+            foreach (var (frequency, peer) in _channelManager.LeaveAllChannels(clientId))
+            {
+                if (peer.Status == PeerData.PeerStatus.Transmitting)
+                    LogTransmissionEnded(session, frequency, "disconnected");
+            }
+
             _audioServer.RemoveSession(clientId);
 
             if (session.WebSocket.State == WebSocketState.Open)

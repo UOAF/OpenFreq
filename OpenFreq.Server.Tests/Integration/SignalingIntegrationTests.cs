@@ -120,6 +120,7 @@ public class SignalingIntegrationTests
 
         var tx = await bob.PeerTransmission.WaitForAsync(e => e.IsTransmitting);
         Assert.Equal(alice.PeerId, tx.PeerId);
+        Assert.Equal("Alice", tx.PeerDisplayName);
         Assert.Equal(Freq, tx.FrequencyKhz);
         Assert.True(tx.Is3d);
 
@@ -127,6 +128,59 @@ public class SignalingIntegrationTests
 
         var stopped = await bob.PeerTransmission.WaitForAsync(e => !e.IsTransmitting);
         Assert.Equal(alice.PeerId, stopped.PeerId);
+    }
+
+    [Fact]
+    public async Task Transmission_LogsOnePttStartAndEnd_WithNameAndGameTime()
+    {
+        var log = new CapturingLoggerFactory();
+        await using var server = await SignalingServerHarness.StartAsync(loggerFactory: log);
+        await using var alice = RtcClientHarness.Create(server, "Alice");
+        await using var bob = RtcClientHarness.Create(server, "Bob");
+        await alice.ConnectAsync();
+        await bob.ConnectAsync();
+        alice.Client.GameTimeSeconds = () => 45296;
+
+        await alice.Client.JoinFrequencyAsync(Freq);
+        await alice.FrequencyJoined.WaitForAsync(e => e.FrequencyKhz == Freq);
+        await bob.Client.JoinFrequencyAsync(Freq);
+        await bob.FrequencyJoined.WaitForAsync(e => e.FrequencyKhz == Freq);
+
+        await alice.Client.StartTransmissionAsync(Freq, is3d: true);
+
+        // The start, then two heartbeats that repeat it.
+        for (var i = 0; i < 3; i++)
+            await bob.PeerTransmission.WaitForAsync(e => e.IsTransmitting);
+
+        await alice.Client.StopTransmissionAsync(Freq, is3d: true);
+        await bob.PeerTransmission.WaitForAsync(e => !e.IsTransmitting);
+
+        var start = Assert.Single(log.Messages, m => m.StartsWith("PTT start"));
+        Assert.Equal($"PTT start: Alice ({alice.PeerId}) on 251.000 MHz, 3D, game time 12:34:56", start);
+        var end = Assert.Single(log.Messages, m => m.StartsWith("PTT end"));
+        Assert.Equal($"PTT end: Alice ({alice.PeerId}) on 251.000 MHz, released, game time 12:34:56", end);
+    }
+
+    [Fact]
+    public async Task Transmission_EndedByDisconnect_LogsPttEnd()
+    {
+        var log = new CapturingLoggerFactory();
+        await using var server = await SignalingServerHarness.StartAsync(loggerFactory: log);
+        await using var alice = RtcClientHarness.Create(server, "Alice");
+        await alice.ConnectAsync();
+        var alicePeerId = alice.PeerId;
+        alice.Client.GameTimeSeconds = () => 45296;
+
+        await alice.Client.JoinFrequencyAsync(Freq);
+        await alice.FrequencyJoined.WaitForAsync(e => e.FrequencyKhz == Freq);
+        await alice.Client.StartTransmissionAsync(Freq, is3d: false);
+        await log.WaitForAsync(m => m.StartsWith("PTT start"));
+
+        // No stop message: the server has to end the transmission itself when it cleans up the client.
+        await alice.Client.DisconnectAsync();
+
+        var end = await log.WaitForAsync(m => m.StartsWith("PTT end"));
+        Assert.Equal($"PTT end: Alice ({alicePeerId}) on 251.000 MHz, disconnected, game time 12:34:56", end);
     }
 
     [Fact]

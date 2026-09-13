@@ -80,6 +80,8 @@ public class OpenFreqRtcClient : IRtcClient
 
     public bool IsAuthenticated { get; private set; }
 
+    public Func<int?>? GameTimeSeconds { get; set; }
+
     public OpenFreqRtcClient(ILoggerFactory loggerFactory, string serverIp, string password, string? myDisplayName)
     {
         _loggerFactory = loggerFactory;
@@ -338,6 +340,7 @@ public class OpenFreqRtcClient : IRtcClient
             throw new InvalidOperationException("Not authenticated");
         }
 
+        var gameTime = GameTimeSeconds?.Invoke();
         long transmissionId;
         Task send;
         lock (_lock)
@@ -349,7 +352,7 @@ public class OpenFreqRtcClient : IRtcClient
 
             transmissionId = ++_lastTransmissionId;
             _joinedFrequencies[frequencyKhz] = transmissionId;
-            send = QueueSend(SignalingMessageFactory.CreateTransmission(frequencyKhz, true, is3d));
+            send = QueueSend(SignalingMessageFactory.CreateTransmission(frequencyKhz, true, is3d, gameTime));
         }
 
         await send;
@@ -369,6 +372,7 @@ public class OpenFreqRtcClient : IRtcClient
             throw new InvalidOperationException("Not authenticated");
         }
 
+        var gameTime = GameTimeSeconds?.Invoke();
         Task send;
         lock (_lock)
         {
@@ -380,7 +384,7 @@ public class OpenFreqRtcClient : IRtcClient
             // Clearing the id ends the heartbeat, which checks it under this lock, so no "still
             // transmitting" can be queued behind this stop.
             _joinedFrequencies[frequencyKhz] = 0;
-            send = QueueSend(SignalingMessageFactory.CreateTransmission(frequencyKhz, false, is3d));
+            send = QueueSend(SignalingMessageFactory.CreateTransmission(frequencyKhz, false, is3d, gameTime));
         }
 
         await send;
@@ -463,6 +467,7 @@ public class OpenFreqRtcClient : IRtcClient
     {
         while (!_cts.Token.IsCancellationRequested)
         {
+            var gameTime = GameTimeSeconds?.Invoke();
             Task send;
             lock (_lock)
             {
@@ -472,7 +477,7 @@ public class OpenFreqRtcClient : IRtcClient
                     break;
                 }
 
-                send = QueueSend(SignalingMessageFactory.CreateTransmission(frequencyKhz, true, is3d));
+                send = QueueSend(SignalingMessageFactory.CreateTransmission(frequencyKhz, true, is3d, gameTime));
             }
 
             await send;

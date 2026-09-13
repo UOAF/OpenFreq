@@ -15,17 +15,17 @@ namespace OpenFreqClient.Services;
 internal sealed class ActiveTransmissions
 {
     private readonly Lock _lock = new();
-    private readonly Action<IReadOnlySet<int>> _onFrequenciesChanged;
+    private readonly Action<TransmissionChange> _onFrequenciesChanged;
 
     // Slot → the frequency it's transmitting on. Replaced wholesale under _lock. Readers take the
     // current snapshot without locking.
     private ImmutableDictionary<Guid, int> _bySlot = ImmutableDictionary<Guid, int>.Empty;
 
     /// <param name="onFrequenciesChanged">
-    /// Receives the set of transmitting frequencies whenever it changes. Called under the lock, so
+    /// Receives each change to the set of transmitting frequencies. Called under the lock, so
     /// concurrent changes are reported in the order they happened.
     /// </param>
-    public ActiveTransmissions(Action<IReadOnlySet<int>> onFrequenciesChanged)
+    public ActiveTransmissions(Action<TransmissionChange> onFrequenciesChanged)
     {
         _onFrequenciesChanged = onFrequenciesChanged;
     }
@@ -96,18 +96,21 @@ internal sealed class ActiveTransmissions
         var after = next.Values.ToHashSet();
 
         _bySlot = next;
-        if (!before.SetEquals(after))
-            _onFrequenciesChanged(after);
-
-        return new TransmissionChange(previous.IsEmpty, next.IsEmpty,
+        var change = new TransmissionChange(previous.IsEmpty, next.IsEmpty, after,
             Started: after.Except(before).ToList(), Stopped: before.Except(after).ToList());
+
+        if (!before.SetEquals(after))
+            _onFrequenciesChanged(change);
+
+        return change;
     }
 }
 
 /// <summary>What one change to <see cref="ActiveTransmissions"/> did.</summary>
 /// <param name="WasIdle">Nothing was transmitting before the change.</param>
 /// <param name="IsIdle">Nothing is transmitting after it.</param>
+/// <param name="Frequencies">The frequencies transmitting after it.</param>
 /// <param name="Started">Frequencies that began transmitting.</param>
 /// <param name="Stopped">Frequencies that stopped transmitting.</param>
 internal sealed record TransmissionChange(
-    bool WasIdle, bool IsIdle, IReadOnlyList<int> Started, IReadOnlyList<int> Stopped);
+    bool WasIdle, bool IsIdle, IReadOnlySet<int> Frequencies, IReadOnlyList<int> Started, IReadOnlyList<int> Stopped);

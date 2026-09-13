@@ -49,6 +49,9 @@ public class AudioTransmissionMessage
     [JsonPropertyName("transmitting")] public bool Transmitting { get; set; }
 
     [JsonPropertyName("3d")] public bool Is3d { get; set; }
+
+    /// <summary>The sender's in-game time of day in seconds, or null when it has no game clock.</summary>
+    [JsonPropertyName("gameTime")] public int? GameTimeSeconds { get; set; }
 }
 
 /// <summary>

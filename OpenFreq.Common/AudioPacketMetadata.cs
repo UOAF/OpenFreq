@@ -11,6 +11,13 @@ public class AudioPacketMetadata
     public required string ClientId { get; set; }
 
     /// <summary>
+    /// The sender's display name. The server sets it on relay from its own session, and replaces any value
+    /// the sender put here.
+    /// </summary>
+    [JsonPropertyName("name")]
+    public string? DisplayName { get; set; }
+
+    /// <summary>
     /// Frequencies being transmitted on with per-frequency markers
     /// </summary>
     [JsonPropertyName("frequencies")]
