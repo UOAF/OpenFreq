@@ -420,56 +420,6 @@ public class HotkeyService : IHotkeyService
         _logger.LogDebug("DirectInput stopped and cleaned up");
     }
 
-    public List<JoystickDeviceInfo> GetAvailableJoysticks()
-    {
-        var result = new List<JoystickDeviceInfo>();
-
-        if (_directInput == null)
-        {
-            return result;
-        }
-
-        try
-        {
-            var devices = _directInput.GetDevices(DeviceClass.GameControl, DeviceEnumerationFlags.AttachedOnly);
-
-            foreach (var deviceInstance in devices)
-            {
-                try
-                {
-                    // Try to get button count from capabilities
-                    var device = _directInput.CreateDevice(deviceInstance.InstanceGuid);
-                    var caps = device.Capabilities;
-
-                    result.Add(new JoystickDeviceInfo
-                    {
-                        InstanceGuid = deviceInstance.InstanceGuid,
-                        DeviceName = deviceInstance.InstanceName,
-                        ProductName = deviceInstance.ProductName,
-                        ButtonCount = caps.ButtonCount
-                    });
-
-                    device.Dispose();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogDebug(ex, "Error getting joystick info for {DeviceName}", deviceInstance.ProductName);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error enumerating joystick devices");
-        }
-
-        return result;
-    }
-
-    public bool IsJoystickConnected(Guid deviceInstanceGuid)
-    {
-        return _joystickDevices.Any(d => d.DeviceInfo.InstanceGuid == deviceInstanceGuid);
-    }
-
     // Win32 API import for getting desktop window handle
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern IntPtr GetDesktopWindow();

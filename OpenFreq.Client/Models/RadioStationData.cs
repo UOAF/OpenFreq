@@ -1,4 +1,3 @@
-using System;
 using CommunityToolkit.Mvvm.ComponentModel;
 using OpenFreq.Common;
 using OpenFreqAudio;

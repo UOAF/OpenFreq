@@ -9,11 +9,6 @@ public enum RadioType
     Guard = 2    // GUARD
 }
 
-public enum RadioDeviceType
-{
-    MAIN = 0
-}
-
 [Flags]
 public enum ClientStatusFlags
 {

@@ -15,7 +15,6 @@ using FalconBmsDataService.Services;
 using FalconRadioService.Models;
 using FalconRadioService.Services;
 using Microsoft.Extensions.Logging;
-using NetTopologySuite.Index.Quadtree;
 using OpenFreq.Client.Models;
 using OpenFreq.Common;
 using OpenFreq.Services.Acmi;
@@ -507,7 +506,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
             var channelIsPowerOn = _falconRadioSharedMemoryService.GetRadioChannel(e.RadioType)?.IsOn ?? false;
 
             // Try to change an existing frequency - this should be the case in 99% of the time
-            if (FalconLocation.ChangeChannelFrequency(e.OldFrequencyKhz, e.NewFrequencyKhz, channelIsPowerOn))
+            if (FalconLocation.ChangeChannelFrequency(e.OldFrequencyKhz, e.NewFrequencyKhz))
             {
                 // Explicitly join the channel that was just updated if it's powered on
                 // 9999 is BMS's "radio off" parking frequency - never join it
@@ -631,28 +630,6 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         catch (Exception ex)
         {
             Console.WriteLine($"Failed to join frequency {frequencyKhz / 1000d:F3}: {ex.Message}");
-        }
-    }
-
-    public async Task LeaveFrequencyAsync(int frequencyKhz, Guid slotId)
-    {
-        if (!_openFreqService.IsAuthenticated) return;
-
-        try
-        {
-            await _openFreqService.LeaveFrequencyAsync(frequencyKhz, slotId);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Failed to leave frequency {frequencyKhz / 1000d:F3}: {ex.Message}");
-        }
-    }
-
-    public async Task LeaveAllChannelsAsync()
-    {
-        foreach (var location in Locations)
-        {
-            await location.LeaveAllChannelsAsync();
         }
     }
 

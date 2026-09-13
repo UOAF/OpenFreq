@@ -1,4 +1,3 @@
-using OpenFreq.Common;
 using OpenFreqAudio;
 
 namespace OpenFreq.Common.Tests;

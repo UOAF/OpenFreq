@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using OpenFreq.Client.Models;
 using OpenFreq.Common;
-using OpenFreqAudio;
 
 namespace OpenFreqClient.Services.Interfaces;
 
@@ -18,7 +17,6 @@ public interface IOpenFreqService : IDisposable
     string? PeerId { get; }
     int RecordingDeviceIndex { get; set; }
     int PlaybackDeviceIndex { get; set; }
-    int AudioParamsUpdateFrequency { get; set; }
     bool Apply3dAudioEffects { get; set; }
     bool SidetoneEnabled { get; set; }
     bool MicNormalizationEnabled { get; set; }
@@ -87,9 +85,6 @@ public interface IOpenFreqService : IDisposable
 
     void SetVolume(int frequencyKhz, Guid slotId, float volumeValue);
     void SetPan(int frequencyKhz, Guid slotId, int pan);
-
-    void EnableFrequency(int frequencyKhz, Guid slotId);
-    void DisableFrequency(int frequencyKhz, Guid slotId);
 
     void SetSquelch(int frequencyKhz, Guid slotId, bool isSquelchClosed);
 

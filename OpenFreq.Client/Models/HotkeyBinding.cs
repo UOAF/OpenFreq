@@ -148,19 +148,6 @@ public class JoystickButtonBinding : HotkeyBinding
         return Equals(obj as HotkeyBinding);
     }
 }
-
-/// <summary>
-/// Information about an available joystick device
-/// </summary>
-public class JoystickDeviceInfo
-{
-    public Guid InstanceGuid { get; set; }
-    public string DeviceName { get; set; } = string.Empty;
-    public int ButtonCount { get; set; }
-    public string ProductName { get; set; } = string.Empty;
-
-    public override string ToString() => $"{DeviceName} ({ButtonCount} buttons)";
-}
 #endif
 
 /// <summary>

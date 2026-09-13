@@ -25,21 +25,6 @@ public static class AcmiHeightmapConverter
     }
 
     /// <summary>
-    /// Converts Heightmap coordinates to ACMI coordinates
-    /// </summary>
-    /// <param name="x">Heightmap X in METERS</param>
-    /// <param name="y">Heightmap Y in METERS</param>
-    /// <param name="altitudeMeters">Altitude in meters</param>
-    /// <returns>(u, v, altitudeMeters) - all in METERS</returns>
-    public static (double u, double v, double altitudeMeters) FromHeightmap(double x, double y, double altitudeMeters)
-    {
-        var u = x;
-        var v = THEATRE_SIZE_METERS - y;
-
-        return (u, v, altitudeMeters);
-    }
-
-    /// <summary>
     /// Converts aircraft true airspeed and orientation into a 3D velocity vector in world coordinates.
     /// </summary>
     /// <param name="airSpeedMach">Air Speed in Mach</param>

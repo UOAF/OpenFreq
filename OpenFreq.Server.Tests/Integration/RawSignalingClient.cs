@@ -18,8 +18,6 @@ public sealed class RawSignalingClient : IAsyncDisposable
 
     private readonly ClientWebSocket _ws = new();
 
-    public WebSocketState State => _ws.State;
-
     public Task ConnectAsync(Uri uri) => _ws.ConnectAsync(uri, CancellationToken.None);
 
     public Task SendAsync(SignalingMessage message)
@@ -121,24 +119,6 @@ public sealed class RawSignalingClient : IAsyncDisposable
         catch (TimeoutException)
         {
             // expected
-        }
-    }
-
-    /// <summary>Wait for the server to close the socket (used after policy-violation cases).</summary>
-    public async Task<bool> WaitForCloseAsync(TimeSpan? timeout = null)
-    {
-        try
-        {
-            await ReceiveAsync(timeout ?? DefaultTimeout);
-            return false;
-        }
-        catch (WebSocketException)
-        {
-            return true;
-        }
-        catch (TimeoutException)
-        {
-            return false;
         }
     }
 

@@ -150,7 +150,7 @@ public partial class LocationViewModel : ViewModelBase, IDisposable
     public ChannelCardViewModel CreateChannel(int frequencyKhz, string name, bool isInEditMode = true,
         RadioType? bmsRadioType = null)
     {
-        var channel = new ChannelCardViewModel(_openFreqService, _hotkeyService, name, frequencyKhz, isInEditMode,
+        var channel = new ChannelCardViewModel(_hotkeyService, name, frequencyKhz, isInEditMode,
             RadioStationData, this,
             Settings);
         channel.Name = name;
@@ -337,7 +337,7 @@ public partial class LocationViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public bool ChangeChannelFrequency(int oldFreqKhz, int newFreqKhz, bool joined)
+    public bool ChangeChannelFrequency(int oldFreqKhz, int newFreqKhz)
     {
         var oldChannel =
             Channels.FirstOrDefault(c => c.FrequencyKhz == oldFreqKhz);
@@ -356,8 +356,7 @@ public partial class LocationViewModel : ViewModelBase, IDisposable
         }
 
         OnChannelUpdated(this,
-            new ChannelUpdatedMessage(oldChannel.Id, oldFreqKhz, newFreqKhz, oldChannel.ConnectionStatus,
-                oldChannel.Pan, true));
+            new ChannelUpdatedMessage(oldChannel.Id, oldFreqKhz, newFreqKhz, oldChannel.Pan, true));
 
         // Note: Join will be handled by OnBmsFrequencyChanged which explicitly joins for non-9999 frequencies
 
@@ -420,11 +419,6 @@ public partial class LocationViewModel : ViewModelBase, IDisposable
     {
         EditMode = false;
         CreateChannel(225000, $"Channel #{Channels.Count + 1}");
-    }
-
-    [RelayCommand]
-    public void JoinAll()
-    {
     }
 
     [RelayCommand]
@@ -614,18 +608,6 @@ public partial class LocationViewModel : ViewModelBase, IDisposable
     {
         WeakReferenceMessenger.Default.Send(
             new LocationDeleteRequestedMessage(Id));
-    }
-
-    public List<int> GetAllFrequenciesOfLocation(Channel.ChannelType? filterChannelType = null)
-    {
-        var query = Channels.AsEnumerable();
-
-        if (filterChannelType is not null)
-            query = query.Where(c => c.Type == filterChannelType);
-
-        return query
-            .Select(c => c.FrequencyKhz)
-            .ToList();
     }
 
     protected bool Equals(LocationViewModel other)

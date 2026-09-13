@@ -7,17 +7,12 @@ namespace FalconRadioService.Services;
 
 public interface IFalconRadioSharedMemoryService : IDisposable, ILifecycleService
 {
-    // Service state
-    ServiceState State { get; }
-    double PollingFrequencyHz { get; set; }
-
     // True while another client (IVC or another OpenFreq instance) owns the radio mutex, so we don't.
     bool HasConflict { get; }
 
     // Current data (thread-safe)
     string? LogbookName { get; }
     RadioChannel? GetRadioChannel(RadioType radioType);
-    RadioDevice? GetRadioDevice(RadioDeviceType deviceType);
     ConnectionParameters? ConnectionParameters { get; }
 
     // Client status management

@@ -4,9 +4,8 @@
     <type fullname="OpenFreq.Client.Services.FalconSharedMemoryService" preserve="all" />
     <type fullname="OpenFreq.Client.Services.FalconRadioSharedMemoryService" preserve="all" />
 
-    <!-- Win32 P/Invoke wrappers + MEMORY_BASIC_INFORMATION struct -->
+    <!-- Win32 P/Invoke wrappers -->
     <type fullname="OpenFreq.Client.NativeMethods.Win32SharedMemory" preserve="all" />
-    <type fullname="OpenFreq.Client.NativeMethods.Win32SharedMemory/MEMORY_BASIC_INFORMATION" preserve="all" />
     <type fullname="OpenFreq.Client.NativeMethods.Win32RadioMemory" preserve="all" />
 
     <!-- Hotkey service — SharpHook + DirectInput P/Invoke on Windows -->

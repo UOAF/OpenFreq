@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -36,23 +35,6 @@ public partial class ChannelPeerViewModel : ViewModelBase
         : new Thickness(0);
 
     public FontWeight PeerFontWeight => IsOwnUser ? FontWeight.Bold : FontWeight.Normal;
-
-    private sealed class IdEqualityComparer : IEqualityComparer<ChannelPeerViewModel>
-    {
-        public bool Equals(ChannelPeerViewModel? x, ChannelPeerViewModel? y)
-        {
-            if (ReferenceEquals(x, y)) return true;
-            if (x is null) return false;
-            if (y is null) return false;
-            if (x.GetType() != y.GetType()) return false;
-            return x.Id == y.Id;
-        }
-
-        public int GetHashCode(ChannelPeerViewModel obj)
-        {
-            return obj.Id.GetHashCode();
-        }
-    }
 
     protected bool Equals(ChannelPeerViewModel other)
     {

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using OpenFreq.Client.Models;
@@ -27,13 +26,6 @@ public interface IHotkeyService : IDisposable, ILifecycleService
     void UnregisterHotkeys(HotkeyType type);
 
     Task<HotkeyBinding?> CaptureNextHotkeyAsync(CancellationToken cancellationToken = default);
-
-
-#if WINDOWS
-    // Joystick-specific methods (Windows only)
-    List<JoystickDeviceInfo> GetAvailableJoysticks();
-    bool IsJoystickConnected(Guid deviceInstanceGuid);
-#endif
 
     public enum HotkeyType
     {

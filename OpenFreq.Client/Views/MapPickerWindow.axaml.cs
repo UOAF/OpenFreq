@@ -9,7 +9,6 @@ namespace OpenFreqClient.Views;
 
 public partial class MapPickerWindow : Window
 {
-    private readonly string _selectedTheaterName = null!;
     private readonly MapPickerViewModel _viewModel;
     public (double lat, double lon)? SelectedPosition { get; private set; }
 
@@ -24,7 +23,6 @@ public partial class MapPickerWindow : Window
     /// </summary>
     public MapPickerWindow(double initialLat, double initialLon, SettingsViewModel settings, IOpenFreqService? openFreqService = null) : this()
     {
-        _selectedTheaterName = settings.SelectedTheater;
         _viewModel = new MapPickerViewModel(initialLat, initialLon, settings, openFreqService);
         _viewModel.PositionConfirmed += OnPositionConfirmed;
         DataContext = _viewModel;
@@ -41,7 +39,6 @@ public partial class MapPickerWindow : Window
     /// </summary>
     public MapPickerWindow(double initialLat, double initialLon, double initialHeading, SettingsViewModel settings, string? callsign = null) : this()
     {
-        _selectedTheaterName = settings.SelectedTheater;
         _viewModel = new MapPickerViewModel(initialLat, initialLon, initialHeading, settings, callsign);
         DataContext = _viewModel;
 

@@ -1,5 +1,3 @@
-using OpenFreq.Common;
-
 namespace OpenFreq.Common.Tests;
 
 public class EventArgsTests

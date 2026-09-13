@@ -1,6 +1,5 @@
 using OpenFreq.Client.Models;
 using OpenFreqClient.Models;
-using OpenFreqClient.Services.Interfaces;
 using OpenFreqClient.ViewModels;
 
 namespace OpenFreq.Client.Tests;

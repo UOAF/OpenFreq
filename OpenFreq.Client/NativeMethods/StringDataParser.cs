@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -132,56 +131,5 @@ public static class StringDataParser
         {
             return (null, null);
         }
-    }
-
-    /// <summary>
-    /// Gets all strings from the StringData shared memory (for debugging)
-    /// </summary>
-    public static Dictionary<uint, string> ParseAllStrings(IntPtr baseAddress)
-    {
-        var result = new Dictionary<uint, string>();
-
-        if (baseAddress == IntPtr.Zero)
-            return result;
-
-        try
-        {
-            int offset = 0;
-
-            uint versionNum = (uint)Marshal.ReadInt32(baseAddress, offset);
-            offset += 4;
-
-            uint noOfStrings = (uint)Marshal.ReadInt32(baseAddress, offset);
-            offset += 4;
-
-            uint dataSize = (uint)Marshal.ReadInt32(baseAddress, offset);
-            offset += 4;
-
-            for (int i = 0; i < noOfStrings; i++)
-            {
-                uint strId = (uint)Marshal.ReadInt32(baseAddress, offset);
-                offset += 4;
-
-                uint strLength = (uint)Marshal.ReadInt32(baseAddress, offset);
-                offset += 4;
-
-                byte[] stringBytes = new byte[strLength];
-                Marshal.Copy(baseAddress + offset, stringBytes, 0, (int)strLength);
-
-                string value = Encoding.UTF8.GetString(stringBytes).TrimEnd('\0');
-                result[strId] = value;
-
-                offset += (int)strLength + 1;
-            }
-        }
-
-#pragma warning disable RCS1075
-        catch (Exception)
-        {
-            // Return partial results
-        }
-#pragma warning restore RCS1075
-
-        return result;
     }
 }

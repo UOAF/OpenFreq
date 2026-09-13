@@ -46,10 +46,8 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
     // Current state data
     private string? _logbookName;
     private readonly Dictionary<RadioType, RadioChannel> _radioChannels = new();
-    private readonly Dictionary<RadioDeviceType, RadioDevice> _radioDevices = new();
     private ConnectionParameters? _connectionParameters;
 
-    private ConnectionParameters? _previousConnectionParameters;
     private bool _initialReadDone = false;
 
     private readonly object _dataLock = new();
@@ -72,25 +70,6 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
         _logger = logger;
     }
 
-    public ServiceState State
-    {
-        get
-        {
-            lock (_dataLock) return _state;
-        }
-    }
-
-    public double PollingFrequencyHz
-    {
-        get => _pollingFrequencyHz;
-        set
-        {
-            if (value <= 0)
-                throw new ArgumentException("Polling frequency must be positive", nameof(value));
-            _pollingFrequencyHz = value;
-        }
-    }
-
     // Latched so the UI can surface the conflict even if Start() ran (and fired RadioClientConflict)
     // before the view model subscribed — e.g. during startup config load.
     public bool HasConflict { get; private set; }
@@ -109,16 +88,6 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
         {
             return _radioChannels.TryGetValue(radioType, out var channel)
                 ? channel.Clone()
-                : null;
-        }
-    }
-
-    public RadioDevice? GetRadioDevice(RadioDeviceType deviceType)
-    {
-        lock (_dataLock)
-        {
-            return _radioDevices.TryGetValue(deviceType, out var device)
-                ? device.Clone()
                 : null;
         }
     }
@@ -465,22 +434,6 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
         }
     }
 
-    private bool IsFalconBmsRunning()
-    {
-        IntPtr hMutex = Win32RadioMemory.OpenMutex(
-            Win32RadioMemory.SYNCHRONIZE,
-            false,
-            Win32RadioMemory.FALCON_SEMAPHORE);
-
-        if (hMutex != IntPtr.Zero)
-        {
-            Win32RadioMemory.CloseHandle(hMutex);
-            return true;
-        }
-
-        return false;
-    }
-
     private bool TryOpenRccSharedMemory()
     {
         if (_lpRccBaseAddress != IntPtr.Zero)
@@ -556,13 +509,6 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
                 channels[radioType] = RadioControlParser.ParseRadioChannel(_lpRccBaseAddress, radioType);
             }
 
-            // Read radio devices
-            var devices = new Dictionary<RadioDeviceType, RadioDevice>();
-            foreach (RadioDeviceType deviceType in Enum.GetValues<RadioDeviceType>())
-            {
-                devices[deviceType] = RadioControlParser.ParseRadioDevice(_lpRccBaseAddress, deviceType);
-            }
-
             // Update state and detect changes
             lock (_dataLock)
             {
@@ -597,12 +543,6 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
                     _radioChannels[radioType] = newChannel;
                 }
 
-                // Update devices
-                foreach (var kvp in devices)
-                {
-                    _radioDevices[kvp.Key] = kvp.Value;
-                }
-
                 // Detect connection parameter changes
                 if (_connectionParameters != null && _initialReadDone)
                 {
@@ -629,7 +569,6 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
                 }
 
                 _connectionParameters = connParams;
-                _previousConnectionParameters = connParams.Clone();
 
                 if (!_initialReadDone)
                 {
@@ -757,16 +696,9 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
 // Stub implementation for non-Windows platforms
 public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
 {
-    public ServiceState State { get; }
-    public double PollingFrequencyHz { get; set; }
     public bool HasConflict => false;
     public string? LogbookName { get; }
     public RadioChannel? GetRadioChannel(RadioType radioType)
-    {
-        throw new NotImplementedException();
-    }
-
-    public RadioDevice? GetRadioDevice(RadioDeviceType deviceType)
     {
         throw new NotImplementedException();
     }

@@ -81,28 +81,6 @@ public static class RadioControlParser
         }
     }
 
-    public static RadioDevice ParseRadioDevice(IntPtr baseAddress, RadioDeviceType deviceType)
-    {
-        if (baseAddress == IntPtr.Zero)
-            return new RadioDevice(deviceType);
-
-        try
-        {
-            int offset = OFFSET_DEVICES + ((int)deviceType * 4);
-
-            var device = new RadioDevice(deviceType)
-            {
-                IntercomVolume = Marshal.ReadInt32(baseAddress, offset)
-            };
-
-            return device;
-        }
-        catch
-        {
-            return new RadioDevice(deviceType);
-        }
-    }
-
     public static string ParseLogbookName(IntPtr baseAddress)
     {
         if (baseAddress == IntPtr.Zero)

@@ -42,9 +42,6 @@ public class AudioStreamServer : IAudioStreamServer
     // Single receive task for all clients
     private Task? _receiveTask;
 
-    // Backpressure configuration
-    private const int MaxPendingSendsPerClient = 3;
-
     // Pre-built minimal RTP pong packet sent back on every client keepalive to maintain
     // the server→client NAT mapping even during long silent periods.
     private static readonly byte[] _keepalivePong = new RtpPacket
@@ -71,12 +68,6 @@ public class AudioStreamServer : IAudioStreamServer
             LogLevel.Debug,
             new EventId(2, nameof(ForwardAudioToReceivers)),
             "{DisplayName} ({ClientId}) transmitting on {FrequencyCount} frequency(ies)");
-
-    private static readonly Action<ILogger, string, string, int, int, Exception?> LogSessionRemoved =
-        LoggerMessage.Define<string, string, int, int>(
-            LogLevel.Information,
-            new EventId(4, nameof(RemoveSession)),
-            "Removed session for {DisplayName} ({ClientId}) - Sent: {Sent}, Dropped: {Dropped}");
 
     private static readonly Action<ILogger, string, string, string, Exception?> LogEndpointMapped =
         LoggerMessage.Define<string, string, string>(
@@ -254,7 +245,7 @@ public class AudioStreamServer : IAudioStreamServer
 
                 // Already deduplicated, so a client on several of the matched frequencies
                 // gets exactly one packet (its metadata carries all of them).
-                ForwardAudioToReceivers(targets.Recipients, clientId, rtpPacket, metadata, audioData);
+                ForwardAudioToReceivers(targets.Recipients, rtpPacket, metadata, audioData);
             }
 
             catch (SocketException ex)
@@ -371,7 +362,6 @@ public class AudioStreamServer : IAudioStreamServer
     /// </summary>
     private void ForwardAudioToReceivers(
         IEnumerable<string> receiverClientIds,
-        string sourceClientId,
         RtpPacket originalRtpPacket,
         AudioPacketMetadata metadata,
         byte[] audioData)
@@ -482,18 +472,6 @@ public class ReceiverRtpState
     public long PacketsSent { get; set; }
 }
 
-/// <summary>
-/// RTP statistics for a receiver
-/// </summary>
-[SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
-public class ReceiverRtpStats
-{
-    public string ClientId { get; set; } = "";
-    public uint Ssrc { get; set; }
-    public long PacketsSent { get; set; }
-    public ushort CurrentSequence { get; set; }
-}
-
 [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
 public class AudioStreamSession
 {
@@ -501,14 +479,4 @@ public class AudioStreamSession
     public int Port { get; set; }
     public IPEndPoint? RemoteEndPoint { get; set; }
     public DateTime LastReceived { get; set; } = DateTime.UtcNow;
-}
-
-[SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
-public class ClientStreamStats
-{
-    public string ClientId { get; set; } = string.Empty;
-    public int SentPackets { get; set; }
-    public int DroppedPackets { get; set; }
-    public int PendingSends { get; set; }
-    public DateTime LastSendTime { get; set; }
 }

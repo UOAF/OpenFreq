@@ -1,5 +1,4 @@
 using System.Text.Json;
-using OpenFreq.Common;
 
 namespace OpenFreq.Common.Tests;
 

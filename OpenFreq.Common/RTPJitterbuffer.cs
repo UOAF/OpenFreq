@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Common.Rtp;
 
@@ -96,7 +95,7 @@ public class RtpJitterBuffer
     private int _packetsDuplicate;
     private int _packetsPlayed;
 
-    public RtpJitterBuffer(ILogger<RtpJitterBuffer> logger, int sampleRate = OpenFreqRtcClient.SAMPLE_RATE, int maxBufferPackets = 200)
+    public RtpJitterBuffer(ILogger<RtpJitterBuffer> logger, int maxBufferPackets = 200)
     {
         _logger = logger;
         _packetsLate = 0;

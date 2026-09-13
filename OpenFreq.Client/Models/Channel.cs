@@ -1,15 +1,7 @@
 namespace OpenFreqClient.Models;
 
-public class Channel
+public static class Channel
 {
-    /// <summary>
-    /// Frequency in KHz
-    /// </summary>
-    public int FrequencyKhz { get; set; }
-
-    public string? Name { get; set; }
-    public float RxDb { get; set; }
-
     public enum ChannelType
     {
         UHF, VHF, Custom

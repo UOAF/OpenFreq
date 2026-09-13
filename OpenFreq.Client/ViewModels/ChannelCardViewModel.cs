@@ -7,7 +7,6 @@ using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using FalconBmsDataService.Models;
 using OpenFreq.Client.Models;
-using OpenFreqAudio;
 using OpenFreqClient.Models;
 using OpenFreqClient.Services;
 using OpenFreqClient.Services.Interfaces;
@@ -91,8 +90,6 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty] public partial bool IsEditing { get; set; }
 
-    [ObservableProperty] private bool _channelWasChanged;
-
     // Hotkey binding
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HotkeyDisplay), nameof(HasPttHotkey))]
@@ -141,7 +138,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     }
 
 
-    public ChannelCardViewModel(IOpenFreqService openFreqService, IHotkeyService hotkeyService, string name,
+    public ChannelCardViewModel(IHotkeyService hotkeyService, string name,
         int frequencyKhz, bool isInEditMode,
         RadioStationData radioStationData,
         LocationViewModel parentLocationViewModel, SettingsViewModel settings, bool isEditable = true,
@@ -183,7 +180,6 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
                 Id,
                 _originalFrequencyKhz,
                 FrequencyKhz,
-                ConnectionStatus,
                 Pan,
                 _parentLocationViewModel.IsBmsLocation
             );
@@ -250,20 +246,6 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     }
 
     [RelayCommand]
-    private void ClearPttHotkey()
-    {
-        if (PttHotKey == null) return;
-        _hotkeyService.UnregisterHotkey(IHotkeyService.HotkeyType.Ptt, PttHotKey, Id);
-        PttHotKey = null;
-    }
-
-    partial void OnFrequencyKhzChanged(int value)
-    {
-        _channelWasChanged = true;
-    }
-
-
-    [RelayCommand]
     public void DeleteChannel()
     {
         WeakReferenceMessenger.Default.Send(new ChannelDeleteRequestedMessage(Id, FrequencyKhz));
@@ -280,8 +262,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
 
         // mute only the transmitting frequency
         var mutedFrequencies = new List<int> { FrequencyKhz };
-        WeakReferenceMessenger.Default.Send(new StartTransmissionMessage(Id, FrequencyKhz, RadioStationData,
-            mutedFrequencies));
+        WeakReferenceMessenger.Default.Send(new StartTransmissionMessage(Id, FrequencyKhz, mutedFrequencies));
     }
 
     public void StopTransmission()
@@ -293,7 +274,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
         if (Settings is { ModeIsGci: false, Is3dMode: true })
             return;
 
-        WeakReferenceMessenger.Default.Send(new StopTransmissionMessage(Id, FrequencyKhz));
+        WeakReferenceMessenger.Default.Send(new StopTransmissionMessage(FrequencyKhz));
     }
 
     partial void OnPanChanged(int value)
@@ -342,20 +323,14 @@ public class ChannelUpdatedMessage(
     Guid channelId,
     int oldFrequencyKhz,
     int newFrequencyKhz,
-    Channel.ChannelConnectionStatus oldConnectionStatus,
     int currentPan,
     bool isBmsChannel)
 {
     public Guid ChannelId { get; } = channelId;
     public int OldFrequencyKhz { get; } = oldFrequencyKhz;
     public int NewFrequencyKhz { get; } = newFrequencyKhz;
-    public Channel.ChannelConnectionStatus OldConnectionStatus { get; } = oldConnectionStatus;
     public bool IsBmsChannel { get; } = isBmsChannel;
     public int CurrentPan { get; } = currentPan;
-
-    public bool NeedsReconnect => !IsBmsChannel &&
-                                  OldFrequencyKhz != NewFrequencyKhz &&
-                                  OldConnectionStatus == Channel.ChannelConnectionStatus.Connected;
 }
 
 public class ChannelJoinLeaveRequestedMessage(
@@ -383,18 +358,15 @@ public class SquelchEnabledDisabledMessage(
 public class StartTransmissionMessage(
     Guid channelId,
     int frequencyKhz,
-    RadioStationData radioStationData,
     List<int> mutedRadioChannels)
 {
     public Guid ChannelId { get; } = channelId;
     public int FrequencyKhz { get; } = frequencyKhz;
-    public RadioStationData RadioStationData { get; } = radioStationData;
     public List<int> MutedRadioChannels { get; } = mutedRadioChannels;
 }
 
-public class StopTransmissionMessage(Guid channelId, int frequencyKhz)
+public class StopTransmissionMessage(int frequencyKhz)
 {
-    public Guid ChannelId { get; } = channelId;
     public int FrequencyKhz { get; } = frequencyKhz;
 }
 

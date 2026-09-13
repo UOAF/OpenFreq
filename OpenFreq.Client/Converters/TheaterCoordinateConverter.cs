@@ -151,32 +151,6 @@ namespace OpenFreq.Utilities
         }
 
         /// <summary>
-        /// Converts heightmap X/Y coordinates to latitude and longitude for the specified theater.
-        /// </summary>
-        /// <param name="theaterName">Name of the theater (e.g., "Korea KTO")</param>
-        /// <param name="x">X coordinate in meters</param>
-        /// <param name="y">Y coordinate in meters</param>
-        /// <param name="sourceCoordinateSystem">The coordinate system X and Y is located in</param>
-        /// <returns>Tuple of (latitude, longitude) in decimal degrees</returns>
-        /// <exception cref="ArgumentException">Thrown when theater name is not found</exception>
-        public static (double latitude, double longitude) XYToLatLon(string theaterName, double x, double y,
-            CoordinateSystem sourceCoordinateSystem)
-        {
-            if (!Theaters.TryGetValue(theaterName, out var theater))
-            {
-                throw new ArgumentException(
-                    $"Theater '{theaterName}' not found. Available theaters: {string.Join(", ", Theaters.Keys)}");
-            }
-
-            if (sourceCoordinateSystem == CoordinateSystem.BMS_HEIGHTMAP_COORDINATE_SYTEM)
-            {
-                y = HEIGHTMAP_SIZE_M - y;
-            }
-
-            return theater.InverseTransform(x, y);
-        }
-
-        /// <summary>
         /// Gets the center lat/lon for the specified theater.
         /// </summary>
         public static (double latitude, double longitude) GetCenterLatLon(string theaterName)
@@ -204,11 +178,6 @@ namespace OpenFreq.Utilities
         }
 
         /// <summary>
-        /// Gets all available theater names.
-        /// </summary>
-        public static IEnumerable<string> GetAvailableTheaters() => Theaters.Keys;
-
-        /// <summary>
         /// Registers a dynamically-detected theater (e.g., from BMS installation scan).
         /// No-op if name is already registered.
         /// </summary>
@@ -216,9 +185,6 @@ namespace OpenFreq.Utilities
         {
             Theaters.TryAdd(theater.Name, new Theater(theater.Name, theater.ProjString, theater.CenterLat, theater.CenterLon));
         }
-
-        // For UI bindings
-        public static readonly IEnumerable<string> AllTheaters = ["Korea KTO", "Balkans", "HTO", "ITO"];
 
         [GeneratedRegex(@"[+-]?\d+(\.\d+)?[eE][+-]?\d+")]
         private static partial Regex MyRegex();

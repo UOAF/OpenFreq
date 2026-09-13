@@ -14,7 +14,6 @@ public class ChannelCardViewModelTests
 
     private static ChannelCardViewModel CreateVm(int frequencyKhz = Freq)
         => new(
-            Substitute.For<IOpenFreqService>(),
             Substitute.For<IHotkeyService>(),
             name: "Ch1",
             frequencyKhz: frequencyKhz,
