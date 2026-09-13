@@ -1,5 +1,6 @@
 using FalconBmsDataService.Services;
 using FalconRadioService.Services;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenFreq.Client.Models;
 using OpenFreq.Common;
@@ -28,7 +29,8 @@ internal sealed class ServiceHarness
 
     public OpenFreqService Service { get; }
 
-    public ServiceHarness()
+    /// <param name="logger">The service's logger. Defaults to a null logger.</param>
+    public ServiceHarness(ILogger<OpenFreqService>? logger = null)
     {
         var rtcFactory = Substitute.For<IRtcClientFactory>();
         rtcFactory.Create(default!, default!, default!, default).ReturnsForAnyArgs(Client);
@@ -40,7 +42,7 @@ internal sealed class ServiceHarness
         signalFactory.Create(default!, default, default, default, default, default!).ReturnsForAnyArgs(SignalCalculator);
 
         Service = new OpenFreqService(
-            Falcon, FalconRadio, NullLogger<OpenFreqService>.Instance, NullLoggerFactory.Instance, Acmi,
+            Falcon, FalconRadio, logger ?? NullLogger<OpenFreqService>.Instance, NullLoggerFactory.Instance, Acmi,
             rtcFactory, playbackFactory, signalFactory);
     }
 
