@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -174,6 +175,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
     /// </summary>
     private bool TryAcquireOwnership()
     {
+        ServiceStateChangedEventArgs? stateChange;
         lock (_dataLock)
         {
             if (_state != ServiceState.Stopped)
@@ -209,9 +211,11 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
                 throw new InvalidOperationException("Failed to create RCS shared memory");
             }
 
-            ChangeState(ServiceState.RcsCreated);
-            return true;
+            stateChange = SetState(ServiceState.RcsCreated);
         }
+
+        Raise(StateChanged, stateChange);
+        return true;
     }
 
     private void StartPollingLoops()
@@ -289,10 +293,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
 
         CleanupResources();
 
-        lock (_dataLock)
-        {
-            ChangeState(ServiceState.Stopped);
-        }
+        ChangeState(ServiceState.Stopped);
 
         _logger.LogInformation("Stopped");
     }
@@ -375,10 +376,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
                     _logger.LogInformation("RCC shared memory opened, initial data read");
 
                     // Now that we have data, change state to Connected
-                    lock (_dataLock)
-                    {
-                        ChangeState(ServiceState.Connected);
-                    }
+                    ChangeState(ServiceState.Connected);
 
                     // Continue to next iteration to start regular polling
                     continue;
@@ -393,10 +391,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
                     // Close our handle and try to reopen on next iteration
                     CloseRccSharedMemory();
 
-                    lock (_dataLock)
-                    {
-                        ChangeState(ServiceState.RcsCreated);
-                    }
+                    ChangeState(ServiceState.RcsCreated);
                 }
             }
             catch (OperationCanceledException)
@@ -509,7 +504,10 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
                 channels[radioType] = RadioControlParser.ParseRadioChannel(_lpRccBaseAddress, radioType);
             }
 
-            // Update state and detect changes
+            // Update state and detect changes. Events are raised only after the lock is released: subscribers take
+            // other locks (ChannelCardListViewModel's _channelImportLock) that threads calling GetRadioChannel
+            // already hold, so raising them under _dataLock takes the two locks in opposite orders and can deadlock.
+            var pendingEvents = new List<Action>();
             lock (_dataLock)
             {
                 var previousLogbookName = _logbookName;
@@ -537,7 +535,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
 
                     if (_radioChannels.TryGetValue(radioType, out var oldChannel) && _initialReadDone)
                     {
-                        DetectRadioChanges(oldChannel, newChannel);
+                        DetectRadioChanges(oldChannel, newChannel, pendingEvents);
                     }
 
                     _radioChannels[radioType] = newChannel;
@@ -546,7 +544,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
                 // Detect connection parameter changes
                 if (_connectionParameters != null && _initialReadDone)
                 {
-                    DetectConnectionParameterChanges(_connectionParameters, connParams);
+                    DetectConnectionParameterChanges(_connectionParameters, connParams, pendingEvents);
                 }
                 else if (!_initialReadDone && connParams.AttemptingToConnect &&
                          !string.IsNullOrEmpty(connParams.Address))
@@ -577,6 +575,9 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
                 }
             }
 
+            foreach (var raise in pendingEvents)
+                raise();
+
             return true;
         }
         catch (Exception ex)
@@ -586,36 +587,38 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
         }
     }
 
-    private void DetectRadioChanges(RadioChannel oldChannel, RadioChannel newChannel)
+    // Queues an event for each change. The caller raises them after releasing _dataLock.
+    private void DetectRadioChanges(RadioChannel oldChannel, RadioChannel newChannel, List<Action> pendingEvents)
     {
         var radioType = oldChannel.RadioType;
 
         if (oldChannel.Frequency != newChannel.Frequency)
         {
-            FrequencyChanged?.Invoke(this, new RadioFrequencyChangedEventArgs(
-                radioType, oldChannel.Frequency, newChannel.Frequency));
+            var args = new RadioFrequencyChangedEventArgs(radioType, oldChannel.Frequency, newChannel.Frequency);
+            pendingEvents.Add(() => Raise(FrequencyChanged, args));
         }
 
         if (oldChannel.RxVolume != newChannel.RxVolume)
         {
-            VolumeChanged?.Invoke(this, new RadioVolumeChangedEventArgs(
-                radioType, oldChannel.RxVolume, newChannel.RxVolume));
+            var args = new RadioVolumeChangedEventArgs(radioType, oldChannel.RxVolume, newChannel.RxVolume);
+            pendingEvents.Add(() => Raise(VolumeChanged, args));
         }
 
         if (oldChannel.PttDepressed != newChannel.PttDepressed)
         {
-            PttChanged?.Invoke(this, new RadioPttChangedEventArgs(
-                radioType, oldChannel.PttDepressed, newChannel.PttDepressed));
+            var args = new RadioPttChangedEventArgs(radioType, oldChannel.PttDepressed, newChannel.PttDepressed);
+            pendingEvents.Add(() => Raise(PttChanged, args));
         }
 
         if (oldChannel.IsOn != newChannel.IsOn)
         {
-            PowerChanged?.Invoke(this, new RadioPowerChangedEventArgs(
-                radioType, oldChannel.IsOn, newChannel.IsOn));
+            var args = new RadioPowerChangedEventArgs(radioType, oldChannel.IsOn, newChannel.IsOn);
+            pendingEvents.Add(() => Raise(PowerChanged, args));
         }
     }
 
-    private void DetectConnectionParameterChanges(ConnectionParameters oldParams, ConnectionParameters newParams)
+    private void DetectConnectionParameterChanges(ConnectionParameters oldParams, ConnectionParameters newParams,
+        List<Action> pendingEvents)
     {
         // Check if any significant parameters changed
         if (oldParams.Address != newParams.Address ||
@@ -626,12 +629,11 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
             oldParams.AttemptingToConnect != newParams.AttemptingToConnect ||
             oldParams.TerminateClient != newParams.TerminateClient)
         {
-            // Fire async via Task.Run so the polling thread is not blocked while holding
-            // _dataLock. The handler calls ConnectWithTimeoutAsync(...).Wait() which takes
-            // up to 2.5 s — keeping that inside the lock would starve GetRadioChannel
-            // callers (e.g. ImportBmsRadioChannels on the authenticated callback).
+            // Queued after this read's radio events, so its handlers start once those have run. Fired via Task.Run so
+            // the polling thread isn't blocked: the handler calls ConnectWithTimeoutAsync(...).Wait(), which takes
+            // up to 2.5 s.
             var args = new ConnectionParametersChangedEventArgs(oldParams, newParams);
-            Task.Run(() => ConnectionParametersChanged?.Invoke(this, args));
+            pendingEvents.Add(() => Task.Run(() => ConnectionParametersChanged?.Invoke(this, args)));
         }
     }
 
@@ -664,15 +666,50 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
         }
     }
 
+    // Takes _dataLock itself and raises StateChanged after releasing it, so don't call it with the lock held.
     private void ChangeState(ServiceState newState)
+    {
+        ServiceStateChangedEventArgs? stateChange;
+        lock (_dataLock)
+        {
+            stateChange = SetState(newState);
+        }
+
+        Raise(StateChanged, stateChange);
+    }
+
+    // Requires _dataLock. Returns the change, or null if there wasn't one, for the caller to raise after releasing
+    // the lock.
+    private ServiceStateChangedEventArgs? SetState(ServiceState newState)
     {
         var oldState = _state;
         if (oldState == newState)
-            return;
+            return null;
 
         _state = newState;
         _logger.LogInformation("State: {OldState} → {NewState}", oldState, newState);
-        StateChanged?.Invoke(this, new ServiceStateChangedEventArgs(oldState, newState));
+        return new ServiceStateChangedEventArgs(oldState, newState);
+    }
+
+    // Raises an event with _dataLock released, one subscriber at a time. A subscriber that throws is logged and the
+    // rest still run; letting it escape the RCC read would make the polling loop treat it as BMS closing.
+    private void Raise<TArgs>(EventHandler<TArgs>? handler, TArgs? args,
+        [CallerArgumentExpression(nameof(handler))] string eventName = "") where TArgs : class
+    {
+        if (handler == null || args == null)
+            return;
+
+        foreach (EventHandler<TArgs> subscriber in handler.GetInvocationList())
+        {
+            try
+            {
+                subscriber(this, args);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "{Event} subscriber threw", eventName);
+            }
+        }
     }
 
     public void Dispose()

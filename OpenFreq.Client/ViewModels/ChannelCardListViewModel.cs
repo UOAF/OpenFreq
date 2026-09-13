@@ -541,20 +541,24 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         }
 
         // Fallback - for some reason there is no channel on the old frequency, create a new one
-        lock (_channelImportLock)
-        {
-            _logger.LogWarning("OnBmsFrequencyChanged for an unknown frequency : {NewFrequencyKhz}", e.NewFrequencyKhz);
-            var channelIsPowerOn = _falconRadioSharedMemoryService.GetRadioChannel(e.RadioType)?.IsOn ?? false;
+        _logger.LogWarning("OnBmsFrequencyChanged for an unknown frequency : {NewFrequencyKhz}", e.NewFrequencyKhz);
+        var radioIsOn = _falconRadioSharedMemoryService.GetRadioChannel(e.RadioType)?.IsOn ?? false;
 
-            var newChannel = Dispatcher.UIThread.InvokeAsync(() =>
+        // Post rather than wait. This runs on the RCC polling thread, and blocking it on the UI thread while holding
+        // _channelImportLock deadlocks with ImportBmsRadioChannels, which takes that lock on the UI thread.
+        Dispatcher.UIThread.Post(() =>
+        {
+            lock (_channelImportLock)
             {
+                if (FalconLocation == null) return;
+
                 var channel = FalconLocation.CreateChannel(
                     e.NewFrequencyKhz,
                     BmsLocationName,
                     false);
 
                 // Only join if the radio is powered on AND it's not the 9999 parking frequency
-                if (channelIsPowerOn && e.NewFrequencyKhz != IFalconRadioSharedMemoryService.BmsRadioOffFrequency)
+                if (radioIsOn && e.NewFrequencyKhz != IFalconRadioSharedMemoryService.BmsRadioOffFrequency)
                 {
                     channel.Join();
                 }
@@ -563,29 +567,20 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                     channel.Leave();
                 }
 
-                return channel;
-            }).GetAwaiter().GetResult();
-
-            // Only call JoinFrequencyAsync if the radio is powered on and not 9999
-            if (channelIsPowerOn && e.NewFrequencyKhz != IFalconRadioSharedMemoryService.BmsRadioOffFrequency)
-            {
-                JoinFrequencyAsync(newChannel.FrequencyKhz, newChannel.Id, FalconLocation.RadioStationData)
-                    .Wait(TimeSpan.FromMilliseconds(500));
+                switch (e.RadioType)
+                {
+                    case RadioType.Radio1:
+                        channel.Pan = _settings.BmsRadio1Pan;
+                        break;
+                    case RadioType.Radio2:
+                        channel.Pan = _settings.BmsRadio2Pan;
+                        break;
+                    case RadioType.Guard:
+                        channel.Pan = _settings.BmsRadio1Pan;
+                        break;
+                }
             }
-
-            switch (e.RadioType)
-            {
-                case RadioType.Radio1:
-                    newChannel.Pan = _settings.BmsRadio1Pan;
-                    break;
-                case RadioType.Radio2:
-                    newChannel.Pan = _settings.BmsRadio2Pan;
-                    break;
-                case RadioType.Guard:
-                    newChannel.Pan = _settings.BmsRadio1Pan;
-                    break;
-            }
-        }
+        });
     }
 
 
@@ -614,20 +609,6 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         catch (Exception ex)
         {
             Console.WriteLine($"Failed to stop transmission: {ex.Message}");
-        }
-    }
-
-    public async Task JoinFrequencyAsync(int frequencyKhz, Guid slotId, RadioStationData radioStationData)
-    {
-        if (!_openFreqService.IsAuthenticated) return;
-
-        try
-        {
-            await _openFreqService.JoinFrequencyAsync(frequencyKhz, slotId, radioStationData);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Failed to join frequency {frequencyKhz / 1000d:F3}: {ex.Message}");
         }
     }
 
