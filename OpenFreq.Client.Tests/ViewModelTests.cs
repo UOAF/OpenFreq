@@ -1,3 +1,8 @@
+using FalconBmsDataService.Models;
+using FalconBmsDataService.Services;
+using FalconRadioService.Models;
+using FalconRadioService.Services;
+using Microsoft.Extensions.Logging;
 using OpenFreq.Client.Models;
 using OpenFreqClient.Models;
 using OpenFreqClient.Services.Interfaces;
@@ -272,5 +277,99 @@ public class ChannelCardListViewModelTests
         vm.ToggleLocationPanelCommand.Execute(null);
 
         Assert.Equal(!before, vm.IsLocationPanelExpanded);
+    }
+
+    private static readonly TimeSpan WaitLimit = TimeSpan.FromSeconds(5);
+
+    [Fact]
+    public async Task BmsPttRelease_WaitsForTheStartToComplete_WithoutBlockingThePollingLoop()
+    {
+        var bms = new FlyingBmsRadio1();
+        var startCalled = new TaskCompletionSource();
+        var start = new TaskCompletionSource();
+        bms.OpenFreq.StartTransmissionAsync(bms.Radio1.FrequencyKhz, bms.Radio1.Id)
+            .Returns(_ =>
+            {
+                startCalled.TrySetResult();
+                return start.Task;
+            });
+        var stopCalled = new TaskCompletionSource();
+        bms.OpenFreq.StopTransmissionAsync(bms.Radio1.Id)
+            .Returns(_ =>
+            {
+                stopCalled.TrySetResult();
+                return Task.CompletedTask;
+            });
+
+        // Raised on another thread, so a handler that waits for the start fails the test instead of hanging it.
+        await Task.Run(() =>
+        {
+            bms.Press();
+            bms.Release();
+        }).WaitAsync(WaitLimit);
+
+        await startCalled.Task.WaitAsync(WaitLimit);
+        await Task.Delay(100);
+        Assert.False(stopCalled.Task.IsCompleted);
+
+        start.SetResult();
+        await stopCalled.Task.WaitAsync(WaitLimit);
+    }
+
+    [Fact]
+    public async Task BmsPtt_FailedStart_IsLogged_AndTheReleaseStillRuns()
+    {
+        var bms = new FlyingBmsRadio1();
+        bms.OpenFreq.StartTransmissionAsync(Arg.Any<int>(), Arg.Any<Guid>())
+            .Returns(Task.FromException(new InvalidOperationException("Not authenticated")));
+        var stopCalled = new TaskCompletionSource();
+        bms.OpenFreq.StopTransmissionAsync(bms.Radio1.Id)
+            .Returns(_ =>
+            {
+                stopCalled.TrySetResult();
+                return Task.CompletedTask;
+            });
+
+        bms.Press();
+        bms.Release();
+
+        await stopCalled.Task.WaitAsync(WaitLimit);
+        Assert.Contains(bms.Logger.Entries,
+            entry => entry is { Level: LogLevel.Error, Message: "BMS PTT start on Radio1 failed" });
+    }
+
+    /// <summary>A view model in BMS flight, with a connected card for Radio 1.</summary>
+    private sealed class FlyingBmsRadio1
+    {
+        public IOpenFreqService OpenFreq { get; } = VmFactory.OpenFreq();
+        public IFalconRadioSharedMemoryService Rcc { get; } = Substitute.For<IFalconRadioSharedMemoryService>();
+        public CapturingLogger<ChannelCardListViewModel> Logger { get; } = new();
+        public ChannelCardViewModel Radio1 { get; }
+
+        public FlyingBmsRadio1()
+        {
+            var hotkey = VmFactory.Hotkey();
+            hotkey.PttKeysPaused.Returns(true);
+            var falcon = Substitute.For<IFalconSharedMemoryService>();
+            falcon.IsFlying.Returns(true);
+            var vm = VmFactory.ChannelCardList(OpenFreq, hotkey, Rcc, falcon, Logger);
+
+            // CreateChannel adds the card through the UI dispatcher, which doesn't run in tests.
+            var location = VmFactory.Location(RadioStationData.RadioStationType.BMS, OpenFreq);
+            Radio1 = new ChannelCardViewModel(hotkey, "Radio 1", 251_000, false, location.RadioStationData, location,
+                location.Settings)
+            {
+                BmsRadioType = RadioType.Radio1,
+                ConnectionStatus = Channel.ChannelConnectionStatus.Connected
+            };
+            location.Channels.Add(Radio1);
+            vm.FalconLocation = location;
+        }
+
+        public void Press() =>
+            Rcc.PttChanged += Raise.EventWith(new RadioPttChangedEventArgs(RadioType.Radio1, false, true));
+
+        public void Release() =>
+            Rcc.PttChanged += Raise.EventWith(new RadioPttChangedEventArgs(RadioType.Radio1, true, false));
     }
 }

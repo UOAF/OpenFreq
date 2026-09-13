@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using FalconBmsDataService.Services;
 using FalconRadioService.Services;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenFreq.Client.Models;
 using OpenFreq.Services.Acmi;
@@ -42,16 +43,21 @@ internal static class VmFactory
             openFreq ?? OpenFreq(),
             hotkey ?? Hotkey());
 
-    public static ChannelCardListViewModel ChannelCardList(IOpenFreqService? openFreq = null)
+    public static ChannelCardListViewModel ChannelCardList(
+        IOpenFreqService? openFreq = null,
+        IHotkeyService? hotkey = null,
+        IFalconRadioSharedMemoryService? falconRadio = null,
+        IFalconSharedMemoryService? falcon = null,
+        ILogger<ChannelCardListViewModel>? logger = null)
     {
         var of = openFreq ?? OpenFreq();
         return new ChannelCardListViewModel(
             of,
-            Hotkey(),
+            hotkey ?? Hotkey(),
             Substitute.For<IAcmiClientService>(),
-            NullLogger<ChannelCardListViewModel>.Instance,
-            Substitute.For<IFalconRadioSharedMemoryService>(),
-            Substitute.For<IFalconSharedMemoryService>(),
+            logger ?? NullLogger<ChannelCardListViewModel>.Instance,
+            falconRadio ?? Substitute.For<IFalconRadioSharedMemoryService>(),
+            falcon ?? Substitute.For<IFalconSharedMemoryService>(),
             Settings(of));
     }
 

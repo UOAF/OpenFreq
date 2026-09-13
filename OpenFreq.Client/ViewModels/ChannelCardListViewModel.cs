@@ -38,9 +38,12 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
     private readonly SettingsViewModel _settings;
 
     private const string BmsLocationName = "BMS Channels";
-    public LocationViewModel? FalconLocation { get; private set; }
+    public LocationViewModel? FalconLocation { get; internal set; }
 
     private readonly Lock _channelImportLock = new();
+
+    private readonly Lock _bmsPttLock = new();
+    private Task _bmsPttTail = Task.CompletedTask;
 
     // Last-logged BMS volume signature — dedupes the volume diagnostic so it only
     // logs when raw/gain values actually change (no per-poll spam).
@@ -473,14 +476,48 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
 
         var channel = FalconLocation.Channels.FirstOrDefault(c => c.BmsRadioType == e.RadioType);
         if (channel == null || channel.ConnectionStatus == Channel.ChannelConnectionStatus.Disconnected) return;
+
+        // Read the frequency now. A retune can change it before the queued start runs.
+        var frequencyKhz = channel.FrequencyKhz;
+        var slotId = channel.Id;
         switch (e)
         {
             case { OldPtt: false, NewPtt: true }:
-                _openFreqService.StartTransmissionAsync(channel.FrequencyKhz, channel.Id).Wait();
+                QueueBmsPtt(e.RadioType, "start", () => _openFreqService.StartTransmissionAsync(frequencyKhz, slotId));
                 break;
             case { OldPtt: true, NewPtt: false }:
-                _openFreqService.StopTransmissionAsync(channel.Id).Wait();
+                QueueBmsPtt(e.RadioType, "stop", () => _openFreqService.StopTransmissionAsync(slotId));
                 break;
+        }
+    }
+
+    /// <summary>
+    /// Runs BMS PTT changes on the thread pool, one at a time, in the order that the RCC polling loop saw them.
+    /// If the polling loop waited for each websocket send, it would read the next PTT change late.
+    /// </summary>
+    /// <remarks>
+    /// Each change waits until the previous change is complete, not only until it has started. The RTC client raises
+    /// <see cref="IRtcClient.TransmissionStateChanged"/> after each send completes. If a start and a stop overlap,
+    /// those events can arrive in the wrong order, and the card then stays in the transmitting status.
+    /// </remarks>
+    private void QueueBmsPtt(RadioType radioType, string action, Func<Task> change)
+    {
+        lock (_bmsPttLock)
+        {
+            var previous = _bmsPttTail;
+            _bmsPttTail = Task.Run(async () =>
+            {
+                // This never throws, because each change catches its own exception.
+                await previous;
+                try
+                {
+                    await change();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "BMS PTT {Action} on {RadioType} failed", action, radioType);
+                }
+            });
         }
     }
 
