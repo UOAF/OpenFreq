@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using OpenFreq.Client.Models;
 using OpenFreq.Common;
@@ -78,8 +77,8 @@ public interface IOpenFreqService : IDisposable
     bool IsFrequencyJoined(int frequencyKhz, Guid slotId);
     Task JoinFrequencyAsync(int frequencyKhz, Guid slotId, RadioStationData radioStationData);
     Task LeaveFrequencyAsync(int frequencyKhz, Guid slotId);
-    Task StartTransmissionAsync(int frequencyKhz, Guid slotId, List<int> mutedFrequencies);
-    Task StopTransmissionAsync(int frequencyKhz);
+    Task StartTransmissionAsync(int frequencyKhz, Guid slotId);
+    Task StopTransmissionAsync(Guid slotId);
     Task UpdateDisplayNameAsync(string newDisplayName);
     Task NotifyModeAsync(bool is3d);
 

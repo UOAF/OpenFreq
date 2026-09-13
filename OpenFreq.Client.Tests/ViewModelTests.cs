@@ -1,5 +1,6 @@
 using OpenFreq.Client.Models;
 using OpenFreqClient.Models;
+using OpenFreqClient.Services.Interfaces;
 using OpenFreqClient.ViewModels;
 
 namespace OpenFreq.Client.Tests;
@@ -214,6 +215,41 @@ public class LocationViewModelTests
 
         Assert.Equal(!before, vm.EditMode);
     }
+
+    [Fact]
+    public void SavingAnEditedCard_JoinsWithItsOwnLocation()
+    {
+        var (openFreq, other, owner) = TwoLocations();
+        var card = CardIn(owner, isInEditMode: true);
+
+        card.FrequencyKhz = 251_000;
+        card.ToggleEditing();
+
+        openFreq.Received(1).JoinFrequencyAsync(251_000, card.Id, owner.RadioStationData);
+        openFreq.DidNotReceive().JoinFrequencyAsync(Arg.Any<int>(), Arg.Any<Guid>(), other.RadioStationData);
+    }
+
+    [Fact]
+    public void JoiningACard_JoinsOnce()
+    {
+        var (openFreq, _, owner) = TwoLocations();
+        var card = CardIn(owner);
+
+        card.Join();
+
+        openFreq.Received(1).JoinFrequencyAsync(Arg.Any<int>(), Arg.Any<Guid>(), Arg.Any<RadioStationData>());
+    }
+
+    private static (IOpenFreqService OpenFreq, LocationViewModel Other, LocationViewModel Owner) TwoLocations()
+    {
+        var openFreq = VmFactory.OpenFreq();
+        openFreq.IsAuthenticated.Returns(true);
+        return (openFreq, VmFactory.Location(openFreq: openFreq), VmFactory.Location(openFreq: openFreq));
+    }
+
+    private static ChannelCardViewModel CardIn(LocationViewModel location, bool isInEditMode = false)
+        => new(VmFactory.Hotkey(), "Ch1", 225_000, isInEditMode, location.RadioStationData, location,
+            location.Settings);
 }
 
 public class ChannelCardListViewModelTests

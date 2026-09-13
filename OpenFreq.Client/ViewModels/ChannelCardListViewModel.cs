@@ -475,13 +475,11 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         if (channel == null || channel.ConnectionStatus == Channel.ChannelConnectionStatus.Disconnected) return;
         switch (e)
         {
-            // mute only the transmitting frequency
             case { OldPtt: false, NewPtt: true }:
-                var mutedFrequencies = new List<int> { channel.FrequencyKhz };
-                _openFreqService.StartTransmissionAsync(channel.FrequencyKhz, channel.Id, mutedFrequencies).Wait();
+                _openFreqService.StartTransmissionAsync(channel.FrequencyKhz, channel.Id).Wait();
                 break;
             case { OldPtt: true, NewPtt: false }:
-                _openFreqService.StopTransmissionAsync(channel.FrequencyKhz).Wait();
+                _openFreqService.StopTransmissionAsync(channel.Id).Wait();
                 break;
         }
     }
@@ -597,7 +595,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
 
         try
         {
-            await _openFreqService.StartTransmissionAsync(msg.FrequencyKhz, msg.ChannelId, msg.MutedRadioChannels);
+            await _openFreqService.StartTransmissionAsync(msg.FrequencyKhz, msg.ChannelId);
         }
         catch (Exception ex)
         {
@@ -611,7 +609,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
 
         try
         {
-            await _openFreqService.StopTransmissionAsync(msg.FrequencyKhz);
+            await _openFreqService.StopTransmissionAsync(msg.ChannelId);
         }
         catch (Exception ex)
         {

@@ -35,8 +35,7 @@ public interface IPlaybackService
     void SetFrequencyVolume(int frequencyKhz, Guid slotId, float volume);
     void SetFrequencyPan(int frequencyKhz, Guid slotId, int pan);
 
-    void AddTransmittingFrequencies(IEnumerable<int> frequencies);
-    void RemoveTransmittingFrequencies(IEnumerable<int> frequencies);
+    void SetTransmittingFrequencies(IReadOnlySet<int> frequencies);
 
     void StartPushStream(string streamId, int sampleRate, int channels, AudioParams audioParams);
     bool PushAudioData(string streamId, Memory<short> audioData, AmbientNoiseType ambientNoise = AmbientNoiseType.None);
@@ -93,10 +92,8 @@ public sealed class RadioPlaybackAdapter : IPlaybackService
     public void SetFrequencyPan(int frequencyKhz, Guid slotId, int pan)
         => _inner.SetFrequencyPan(frequencyKhz, slotId, pan);
 
-    public void AddTransmittingFrequencies(IEnumerable<int> frequencies)
-        => _inner.AddTransmittingFrequencies(frequencies);
-    public void RemoveTransmittingFrequencies(IEnumerable<int> frequencies)
-        => _inner.RemoveTransmittingFrequencies(frequencies);
+    public void SetTransmittingFrequencies(IReadOnlySet<int> frequencies)
+        => _inner.SetTransmittingFrequencies(frequencies);
 
     public void StartPushStream(string streamId, int sampleRate, int channels, AudioParams audioParams)
         => _inner.StartPushStream(streamId, sampleRate, channels, audioParams);

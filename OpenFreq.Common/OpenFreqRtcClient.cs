@@ -53,9 +53,18 @@ public class OpenFreqRtcClient : IRtcClient
     // it succeeds or this total budget elapses, after which it gives up and reports Disconnected.
     private static readonly TimeSpan ReconnectTotalBudget = TimeSpan.FromSeconds(60);
 
-    // Transmission state
-    private readonly Dictionary<int, bool> _frequencyTransmissionState = new();
-    private readonly Dictionary<int, HashSet<string>> _frequencyPeers = new();
+    // Guards _joinedFrequencies, _lastTransmissionId and _sendTail. Each message is queued under it
+    // together with the state change behind it, so messages go out in the order those changes happened.
+    private readonly Lock _lock = new();
+
+    // Frequencies we've joined. The value is 0 while idle, or the id of the transmission in progress;
+    // a heartbeat keeps running only while its own transmission is current.
+    private readonly Dictionary<int, long> _joinedFrequencies = new();
+    private long _lastTransmissionId;
+
+    // The most recently queued send. Each send waits for the one before it, so messages reach the
+    // socket one at a time and in the order they were queued.
+    private Task _sendTail = Task.CompletedTask;
 
     private readonly ILogger<OpenFreqRtcClient> _logger;
     private readonly ILoggerFactory _loggerFactory;
@@ -196,7 +205,6 @@ public class OpenFreqRtcClient : IRtcClient
     {
         var startTicks = Stopwatch.GetTimestamp();
         TimeSpan Remaining() => ReconnectTotalBudget - Stopwatch.GetElapsedTime(startTicks);
-        var joinedFrequencies = _frequencyTransmissionState.Keys.ToList();
         var attempt = 0;
 
         OnConnectionStateChanged(ConnectionState.Connecting);
@@ -222,13 +230,24 @@ public class OpenFreqRtcClient : IRtcClient
                 await ConnectInternalAsync(connectTimeout);
 
                 // Channel membership lives on the server and is dropped when the socket dies,
-                // so re-send a join for every frequency we were on before the drop.
-                foreach (var frequencyKhz in joinedFrequencies)
-                    await SendMessageAsync(SignalingMessageFactory.CreateJoin(frequencyKhz));
+                // so re-send a join for every frequency we're on. Read the list and queue the joins
+                // together, so a join or leave made since authenticating isn't undone by a stale rejoin.
+                Task rejoins;
+                int rejoinCount;
+                lock (_lock)
+                {
+                    var frequencies = _joinedFrequencies.Keys.ToList();
+                    rejoinCount = frequencies.Count;
+                    rejoins = Task.WhenAll(frequencies
+                        .Select(frequencyKhz => QueueSend(SignalingMessageFactory.CreateJoin(frequencyKhz)))
+                        .ToList());
+                }
+
+                await rejoins;
 
                 _logger.LogInformation(
                     "Reconnected after {Attempts} attempt(s); rejoined {Count} frequency(ies)",
-                    attempt, joinedFrequencies.Count);
+                    attempt, rejoinCount);
                 return;
             }
             catch (Exception ex)
@@ -277,14 +296,14 @@ public class OpenFreqRtcClient : IRtcClient
             throw new InvalidOperationException("Not authenticated");
         }
 
-        await SendMessageAsync(SignalingMessageFactory.CreateJoin(frequencyKhz));
-
-        if (!_frequencyPeers.ContainsKey(frequencyKhz))
+        Task send;
+        lock (_lock)
         {
-            _frequencyPeers[frequencyKhz] = new HashSet<string>();
+            _joinedFrequencies.TryAdd(frequencyKhz, 0);
+            send = QueueSend(SignalingMessageFactory.CreateJoin(frequencyKhz));
         }
 
-        _frequencyTransmissionState[frequencyKhz] = false;
+        await send;
     }
 
     /// <summary>
@@ -297,10 +316,15 @@ public class OpenFreqRtcClient : IRtcClient
             throw new InvalidOperationException("Not authenticated");
         }
 
-        await SendMessageAsync(SignalingMessageFactory.CreateLeave(frequencyKhz));
+        Task send;
+        lock (_lock)
+        {
+            // Also ends any heartbeat on this frequency.
+            _joinedFrequencies.Remove(frequencyKhz);
+            send = QueueSend(SignalingMessageFactory.CreateLeave(frequencyKhz));
+        }
 
-        _frequencyPeers.Remove(frequencyKhz);
-        _frequencyTransmissionState.Remove(frequencyKhz);
+        await send;
         OnFrequencyLeft(frequencyKhz);
     }
 
@@ -314,18 +338,25 @@ public class OpenFreqRtcClient : IRtcClient
             throw new InvalidOperationException("Not authenticated");
         }
 
-        if (!_frequencyTransmissionState.ContainsKey(frequencyKhz))
+        long transmissionId;
+        Task send;
+        lock (_lock)
         {
-            throw new InvalidOperationException($"Not joined on frequency {frequencyKhz}");
+            if (!_joinedFrequencies.ContainsKey(frequencyKhz))
+            {
+                throw new InvalidOperationException($"Not joined on frequency {frequencyKhz}");
+            }
+
+            transmissionId = ++_lastTransmissionId;
+            _joinedFrequencies[frequencyKhz] = transmissionId;
+            send = QueueSend(SignalingMessageFactory.CreateTransmission(frequencyKhz, true, is3d));
         }
 
-        _frequencyTransmissionState[frequencyKhz] = true;
-
-        await SendMessageAsync(SignalingMessageFactory.CreateTransmission(frequencyKhz, true, is3d));
+        await send;
         OnTransmissionStateChanged(frequencyKhz, true);
 
         // Start heartbeat for this frequency
-        _ = Task.Run(() => TransmissionHeartbeatAsync(frequencyKhz, is3d), _cts.Token);
+        _ = Task.Run(() => TransmissionHeartbeatAsync(frequencyKhz, transmissionId, is3d), _cts.Token);
     }
 
     /// <summary>
@@ -338,14 +369,21 @@ public class OpenFreqRtcClient : IRtcClient
             throw new InvalidOperationException("Not authenticated");
         }
 
-        if (!_frequencyTransmissionState.ContainsKey(frequencyKhz))
+        Task send;
+        lock (_lock)
         {
-            return;
+            if (!_joinedFrequencies.ContainsKey(frequencyKhz))
+            {
+                return;
+            }
+
+            // Clearing the id ends the heartbeat, which checks it under this lock, so no "still
+            // transmitting" can be queued behind this stop.
+            _joinedFrequencies[frequencyKhz] = 0;
+            send = QueueSend(SignalingMessageFactory.CreateTransmission(frequencyKhz, false, is3d));
         }
 
-        _frequencyTransmissionState[frequencyKhz] = false;
-
-        await SendMessageAsync(SignalingMessageFactory.CreateTransmission(frequencyKhz, false, is3d));
+        await send;
         OnTransmissionStateChanged(frequencyKhz, false);
     }
 
@@ -421,16 +459,23 @@ public class OpenFreqRtcClient : IRtcClient
         OnConnectionStateChanged(ConnectionState.Disconnected, DisconnectReason.UserRequested);
     }
 
-    private async Task TransmissionHeartbeatAsync(int frequencyKhz, bool is3d)
+    private async Task TransmissionHeartbeatAsync(int frequencyKhz, long transmissionId, bool is3d)
     {
         while (!_cts.Token.IsCancellationRequested)
         {
-            if (!_frequencyTransmissionState.TryGetValue(frequencyKhz, out var isTransmitting) || !isTransmitting)
+            Task send;
+            lock (_lock)
             {
-                break;
+                // Stopped, left, or replaced by a newer start on this frequency, which runs its own heartbeat.
+                if (!_joinedFrequencies.TryGetValue(frequencyKhz, out var current) || current != transmissionId)
+                {
+                    break;
+                }
+
+                send = QueueSend(SignalingMessageFactory.CreateTransmission(frequencyKhz, true, is3d));
             }
 
-            await SendMessageAsync(SignalingMessageFactory.CreateTransmission(frequencyKhz, true, is3d));
+            await send;
             await Task.Delay(333, _cts.Token); // ~3 times per second
         }
     }
@@ -560,11 +605,6 @@ public class OpenFreqRtcClient : IRtcClient
                     var joined = SignalingMessageFactory.DeserializePayload<PeerJoinedMessage>(message.Payload);
                     if (joined != null)
                     {
-                        if (_frequencyPeers.TryGetValue(joined.FrequencyKhz, out var peers))
-                        {
-                            peers.Add(joined.PeerId);
-                        }
-
                         OnPeerJoined(joined.PeerId, joined.PeerDisplayName, joined.FrequencyKhz);
                     }
 
@@ -574,11 +614,6 @@ public class OpenFreqRtcClient : IRtcClient
                     var left = SignalingMessageFactory.DeserializePayload<PeerLeftMessage>(message.Payload);
                     if (left != null)
                     {
-                        if (_frequencyPeers.TryGetValue(left.FrequencyKhz, out var peers))
-                        {
-                            peers.Remove(left.PeerId);
-                        }
-
                         OnPeerLeft(left.PeerId, left.FrequencyKhz);
                     }
 
@@ -600,8 +635,6 @@ public class OpenFreqRtcClient : IRtcClient
                     var channelState = SignalingMessageFactory.DeserializePayload<ChannelStateMessage>(message.Payload);
                     if (channelState != null)
                     {
-                        _frequencyPeers[channelState.FrequencyKhz] =
-                            new HashSet<string>(channelState.Peers.Select(p => p.Id).ToList());
                         OnFrequencyJoined(channelState.FrequencyKhz, channelState.Peers);
                     }
 
@@ -625,15 +658,51 @@ public class OpenFreqRtcClient : IRtcClient
     }
 
 
-    public async Task SendMessageAsync(SignalingMessage message)
+    /// <summary>
+    /// Queues a message behind every message queued before it. The returned task completes once the
+    /// message has been sent, or dropped because the connection it was queued for is gone.
+    /// </summary>
+    public Task SendMessageAsync(SignalingMessage message)
     {
-        if (_webSocket?.State != WebSocketState.Open) return;
+        lock (_lock)
+        {
+            return QueueSend(message);
+        }
+    }
+
+    // Caller holds _lock.
+    private Task QueueSend(SignalingMessage message)
+    {
+        var socket = _webSocket;
+        var previous = _sendTail;
+
+        // Task.Run so the send never starts on the caller's thread while it holds _lock.
+        _sendTail = Task.Run(async () =>
+        {
+            try
+            {
+                await previous;
+            }
+            catch
+            {
+                // That send's failure was reported to its own caller. It mustn't stall the queue.
+            }
+
+            await SendNowAsync(socket, message);
+        });
+        return _sendTail;
+    }
+
+    private async Task SendNowAsync(ClientWebSocket? socket, SignalingMessage message)
+    {
+        // Drop messages queued for a connection that has since closed or been replaced by a reconnect.
+        if (socket == null || socket != _webSocket || socket.State != WebSocketState.Open) return;
 
         try
         {
             var json = JsonSerializer.Serialize(message, OpenFreqJsonContext.Default.SignalingMessage);
             var buffer = Encoding.UTF8.GetBytes(json);
-            await _webSocket.SendAsync(new ArraySegment<byte>(buffer), WebSocketMessageType.Text, true, _cts.Token);
+            await socket.SendAsync(new ArraySegment<byte>(buffer), WebSocketMessageType.Text, true, _cts.Token);
         }
         catch (Exception ex)
         {

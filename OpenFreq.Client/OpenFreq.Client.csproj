@@ -67,6 +67,10 @@
     </ItemGroup>
 
     <ItemGroup>
+      <InternalsVisibleTo Include="OpenFreq.Client.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
       <TrimmerRootDescriptor Include="TrimmerRoots.xml" />
     </ItemGroup>
 
