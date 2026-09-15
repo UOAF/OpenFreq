@@ -49,11 +49,8 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
     // Consecutive flight data reads with the flying bit clear before we accept "not flying"
     private const int NotFlyingDebounceSamples = 3;
 
-    // The loop ticks at 10 Hz so PTT log lines get a fresh game clock. Everything else still runs every
-    // FlightDataTickDivider ticks (2 Hz): NotFlyingDebounceSamples counts those reads, and each connect
-    // attempt scans the process list.
+    // 10 Hz keeps our position fresh for radio physics, and gives PTT log lines a fresh game clock.
     private const double PollingFrequencyHz = 10.0;
-    private const int FlightDataTickDivider = 5;
 
     private ServiceState _state = ServiceState.Stopped;
 
@@ -184,7 +181,6 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
 
     private async Task PollingLoop(CancellationToken cancellationToken)
     {
-        long tick = 0;
         while (!cancellationToken.IsCancellationRequested && _timer != null)
         {
             try
@@ -192,12 +188,6 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
                 await _timer.WaitForNextTickAsync(cancellationToken);
 
                 var currentState = State;
-
-                if (currentState == ServiceState.Connected)
-                    ReadGameTime();
-
-                if (tick++ % FlightDataTickDivider != 0)
-                    continue;
 
                 if (currentState == ServiceState.Disconnected)
                 {
@@ -224,6 +214,8 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
                         }
                         continue;
                     }
+
+                    ReadGameTime();
 
                     // Read data
                     if (!TryReadFlightData())
