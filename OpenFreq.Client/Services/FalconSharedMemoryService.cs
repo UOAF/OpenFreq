@@ -79,9 +79,8 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
     private string? _acNctr;
     private readonly object _dataLock = new();
     private bool _disposed;
-    private bool _wasFlying;
-    private bool _isFlying;
-    private int _notFlyingSamples;
+    // How many samples in a row have we not been flying (in 3D)? Used to debounce
+    private int _notFlyingSamples = NotFlyingDebounceSamples;
     private readonly ILogger<FalconSharedMemoryService> _logger = logger;
 
     public event EventHandler<ServiceStateChangedEventArgs>? StateChanged;
@@ -124,7 +123,7 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
         {
             if (_state != ServiceState.Connected) return null;
             lock (_dataLock)
-                return _isFlying;
+                return _notFlyingSamples < NotFlyingDebounceSamples;
         }
     }
 
@@ -176,8 +175,7 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
         lock (_dataLock)
         {
             // Reset so the next Start() re-signals a false -> true transition
-            _wasFlying = false;
-            _notFlyingSamples = 0;
+            _notFlyingSamples = NotFlyingDebounceSamples;
             ChangeState(ServiceState.Stopped);
         }
 
@@ -452,42 +450,24 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
             uint hsiBits = BitConverter.ToUInt32(ReadBytes(_lpPrimaryBaseAddress, OFFSET_HSIBITS, 4), 0);
             bool rawIsFlying = (hsiBits & HSI_FLYING_BIT) != 0;
 
-            // Debounce the flying -> not-flying state
-            bool isFlying;
-            if (rawIsFlying)
+            bool isFlying, wasFlying;
+            // Lock not strictly needed since reads and writes of int are atomic in C#,
+            // nor do we need atomic read-modify-write here since we're the only writer,
+            // but to match the style of everything else:
+            lock (_dataLock)
             {
-                _notFlyingSamples = 0;
-                isFlying = true;
-            }
-            else if (!_wasFlying)
-            {
-                isFlying = false;
-            }
-            else if (++_notFlyingSamples >= NotFlyingDebounceSamples)
-            {
-                isFlying = false;
-            }
-            else
-            {
-                _logger.LogDebug(
-                    "Flying bit clear ({Sample}/{Needed}) - holding In-game until debounce completes",
-                    _notFlyingSamples, NotFlyingDebounceSamples);
-                isFlying = true;
+                // Debounce the flying -> not-flying state:
+                wasFlying = _notFlyingSamples < NotFlyingDebounceSamples;
+                _notFlyingSamples = rawIsFlying ? 0 : Math.Min(_notFlyingSamples + 1, NotFlyingDebounceSamples);
+                isFlying = _notFlyingSamples < NotFlyingDebounceSamples;
             }
 
-            bool flyingChanged = isFlying != _wasFlying;
-            var previousFlying = _wasFlying;
-
-            _wasFlying = isFlying;
-            if (isFlying)
-                _notFlyingSamples = 0;
-
-            if (flyingChanged)
+            if (isFlying != wasFlying)
             {
-                _logger.LogInformation("Flying state changed: {Old} -> {New}", previousFlying, isFlying);
+                _logger.LogInformation("Flying state changed: {Old} -> {New}", wasFlying, isFlying);
                 try
                 {
-                    FlyingStateChanged?.Invoke(this, new FlyingStateChangedEventArgs(previousFlying, isFlying));
+                    FlyingStateChanged?.Invoke(this, new FlyingStateChangedEventArgs(wasFlying, isFlying));
                 }
                 catch (Exception ex)
                 {
@@ -522,7 +502,6 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
                 // For some reason BMS switches x & y in shmem, correct this
                 _position = new FlightPosition((int)y, (int)x, (int)z);
                 _velocity = new FlightVelocity(yDot, xDot, zDot);
-                _isFlying = isFlying;
             }
 
             if (aircraftInfoChanged)
@@ -549,7 +528,7 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
 
     // FlightData2 is optional, and only has currentTime from version 3 on. BMS updates it only in 3D and clears the
     // Flying bit when the player leaves, so outside 3D currentTime is 0 or frozen at the last flight, and isn't
-    // reported. This uses the raw bit: the debounced _isFlying holds "flying" for a few reads after BMS leaves 3D.
+    // reported. This uses the raw bit: the debounced state holds "flying" for a few reads after BMS leaves 3D.
     private void ReadGameTime()
     {
         var gameTimeSeconds = -1;
