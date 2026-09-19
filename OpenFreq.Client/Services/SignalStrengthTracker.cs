@@ -218,21 +218,6 @@ public class SignalStrengthTracker : IDisposable
         const float maxSnr = 40f;
         float strength = ((snr - minSnr) / (maxSnr - minSnr)) * 100f;
 
-        // Apply quality degradation based on dropout/fade rates
-        float qualityFactor = 1.0f;
-
-        if (audioParams.DropoutRate > 0.1f)
-        {
-            qualityFactor *= Math.Max(0.5f, 1.0f - (audioParams.DropoutRate * 0.3f));
-        }
-
-        if (audioParams.DeepFadeRate > 0.05f)
-        {
-            qualityFactor *= Math.Max(0.6f, 1.0f - (audioParams.DeepFadeRate * 0.5f));
-        }
-
-        strength *= qualityFactor;
-
         return Math.Clamp(strength, 0f, 100f);
     }
 

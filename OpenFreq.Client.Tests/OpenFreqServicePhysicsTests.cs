@@ -107,8 +107,6 @@ public class OpenFreqServicePhysicsTests
     [InlineData(nameof(AudioParams.ReceivedSnrDb))]
     [InlineData(nameof(AudioParams.FreeSpaceLossDb))]
     [InlineData(nameof(AudioParams.TerrainLossDb))]
-    [InlineData(nameof(AudioParams.DropoutRate))]
-    [InlineData(nameof(AudioParams.DeepFadeRate))]
     [InlineData(nameof(AudioParams.TuneOffsetPPM))]
     public async Task NaNInAnyField_BeforeAnyGoodParams_FallsBackToDefaults(string field)
     {

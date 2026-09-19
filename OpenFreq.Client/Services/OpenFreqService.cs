@@ -1758,7 +1758,6 @@ public class OpenFreqService : IOpenFreqService
     private static bool IsFinite(AudioParams p) =>
         float.IsFinite(p.ReceivedDb) && float.IsFinite(p.ReceivedSnrDb) &&
         float.IsFinite(p.FreeSpaceLossDb) && float.IsFinite(p.TerrainLossDb) &&
-        float.IsFinite(p.DropoutRate) && float.IsFinite(p.DeepFadeRate) &&
         float.IsFinite(p.TuneOffsetPPM);
 
     /// <summary>
@@ -1771,12 +1770,10 @@ public class OpenFreqService : IOpenFreqService
         _logger.LogError(
             "Rejected non-finite audio params for {FreqMhz:F3} MHz from {PeerId}, keeping the last good ones: " +
             "ReceivedDb {ReceivedDb}, ReceivedSnrDb {ReceivedSnrDb}, FreeSpaceLossDb {FreeSpaceLossDb}, " +
-            "TerrainLossDb {TerrainLossDb}, DropoutRate {DropoutRate}, DeepFadeRate {DeepFadeRate}, " +
-            "TuneOffsetPPM {TuneOffsetPpm}. Inputs: tx position {TxPosition} m, tx velocity {TxVelocity} m/s, " +
+            "TerrainLossDb {TerrainLossDb}, TuneOffsetPPM {TuneOffsetPpm}. Inputs: tx position {TxPosition} m, tx velocity {TxVelocity} m/s, " +
             "{TxPowerWatts} W, {Ppm} ppm; rx position {RxPosition} m, rx velocity {RxVelocity} m/s, " +
             "rx sensitivity {RxSensitivityDbm} dBm",
-            tx.Khz / 1000.0, peerId, p.ReceivedDb, p.ReceivedSnrDb, p.FreeSpaceLossDb, p.TerrainLossDb,
-            p.DropoutRate, p.DeepFadeRate, p.TuneOffsetPPM,
+            tx.Khz / 1000.0, peerId, p.ReceivedDb, p.ReceivedSnrDb, p.FreeSpaceLossDb, p.TerrainLossDb, p.TuneOffsetPPM,
             tx.Position, tx.Velocity, tx.TxPowerWatts, tx.Ppm, rxPosition, rxVelocity, rxSensitivityDbm);
     }
 
