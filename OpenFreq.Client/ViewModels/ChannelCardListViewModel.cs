@@ -189,10 +189,10 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                 AltitudeFt = 30000
             });
 
-        var lobby1 = location.CreateChannel(1234, "BMS Lobby 1", false);
+        var lobby1 = location.CreateChannel(339750, "BMS Lobby 1", false);
         lobby1.PttHotKey = new KeyboardBinding(KeyCode.VcF1);
 
-        var lobby2 = location.CreateChannel(339750, "BMS Lobby 2", false);
+        var lobby2 = location.CreateChannel(1234, "BMS Lobby 2", false);
         lobby2.PttHotKey = new KeyboardBinding(KeyCode.VcF2);
 
         SelectedLocation = location;

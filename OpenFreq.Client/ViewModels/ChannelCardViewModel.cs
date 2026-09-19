@@ -129,7 +129,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     public void BmsLobby1Clicked()
     {
         Name = "BMS Lobby 1";
-        FrequencyKhz = 1234;
+        FrequencyKhz = 339750;
         PttHotKey = new KeyboardBinding(KeyCode.VcF1);
         ToggleEditing();
     }
@@ -138,7 +138,7 @@ public partial class ChannelCardViewModel : ViewModelBase, IDisposable
     public void BmsLobby2Clicked()
     {
         Name = "BMS Lobby 2";
-        FrequencyKhz = 339750;
+        FrequencyKhz = 1234;
         PttHotKey = new KeyboardBinding(KeyCode.VcF2);
         ToggleEditing();
     }
