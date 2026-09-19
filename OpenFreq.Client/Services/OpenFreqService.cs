@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -51,6 +52,12 @@ public class OpenFreqService : IOpenFreqService
 
     // Keyed by (frequencyKhz, slotId) so multiple radio sets can tune the same frequency independently.
     private readonly ConcurrentDictionary<(int FreqKhz, Guid SlotId), TunedFrequencyData> _tunedSlots = new();
+
+    // The location whose ambient SFX the capture puts on our own voice: the last one we transmitted
+    // from, or before that, the first one we tuned. The capture plays those SFX continuously,
+    // so it needs one before we first key up.
+    private RadioStationData? _ownVoiceStation;
+    private readonly Lock _ownVoiceStationLock = new();
 
     private bool IsAnySlotTuned(int frequencyKhz) =>
         _tunedSlots.Keys.Any(k => k.FreqKhz == frequencyKhz);
@@ -253,16 +260,16 @@ public class OpenFreqService : IOpenFreqService
     /// <summary>When true, capture auto-starts on entering game mode (flight) and auto-stops on leaving it.</summary>
     public bool AutoRecordInGameMode { get; set; }
 
-    /// <summary>When true, own voice in the capture gets the full radio FX (AGC/squelch/SFX); when false it stays clean.</summary>
-    public bool ApplyOwnVoiceSfx
+    /// <summary>Wet/dry blend (0..1) of the ambient SFX on own voice in the capture. The radio tone stays at 0.</summary>
+    public double OwnVoiceSfxVolume
     {
         get => field;
         set
         {
             field = value;
-            if (_playbackService != null) _playbackService.OwnVoiceSfxEnabled = value;
+            if (_playbackService != null) _playbackService.OwnVoiceSfxVolume = (float)value;
         }
-    } = true;
+    } = 1.0;
 
     /// <summary>Selects the capture output: file or playback device.</summary>
     public IOpenFreqService.CaptureSink Sink { get; set; } = IOpenFreqService.CaptureSink.File;
@@ -379,7 +386,8 @@ public class OpenFreqService : IOpenFreqService
         _playbackService.SidetoneEnabled = SidetoneEnabled;
         _playbackService.SidetoneVolume = (float)SidetoneVolume;
         _playbackService.AmbientNoiseVolume = (float)AmbientNoiseVolume;
-        _playbackService.OwnVoiceSfxEnabled = ApplyOwnVoiceSfx;
+        _playbackService.OwnVoiceSfxVolume = (float)OwnVoiceSfxVolume;
+        UpdateOwnVoiceAmbient();
         _isInitialized = true;
 
         _falconSharedMemoryService.FlyingStateChanged += OnFlyingStateChanged;
@@ -532,8 +540,40 @@ public class OpenFreqService : IOpenFreqService
     }
 
     /// <summary>
-    /// Start a combined session recording (incoming as heard + own voice rendered as if heard
-    /// from the same position) to a timestamped Ogg Opus .ogg file. No-op if already recording or the
+    /// Make <paramref name="station"/> the source of our own voice's ambient SFX in the capture,
+    /// and follow its preset from then on. With <paramref name="onlyIfUnset"/>, keep the current
+    /// station if we already have one.
+    /// </summary>
+    private void SetOwnVoiceStation(RadioStationData station, bool onlyIfUnset = false)
+    {
+        lock (_ownVoiceStationLock)
+        {
+            if (ReferenceEquals(station, _ownVoiceStation) || (onlyIfUnset && _ownVoiceStation != null)) return;
+            if (_ownVoiceStation != null) _ownVoiceStation.PropertyChanged -= OnOwnVoiceStationChanged;
+            _ownVoiceStation = station;
+            station.PropertyChanged += OnOwnVoiceStationChanged;
+        }
+
+        UpdateOwnVoiceAmbient();
+    }
+
+    private void OnOwnVoiceStationChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(RadioStationData.Preset)) UpdateOwnVoiceAmbient();
+    }
+
+    private void UpdateOwnVoiceAmbient()
+    {
+        lock (_ownVoiceStationLock)
+        {
+            if (_playbackService != null && _ownVoiceStation != null)
+                _playbackService.OwnVoiceAmbient = _ownVoiceStation.Preset.AmbientNoiseType;
+        }
+    }
+
+    /// <summary>
+    /// Start a combined session recording (incoming as heard + own voice with the radio tone)
+    /// to a timestamped Ogg Opus .ogg file. No-op if already recording or the
     /// playback subsystem is not initialized.
     /// </summary>
     public void StartRecording()
@@ -673,6 +713,7 @@ public class OpenFreqService : IOpenFreqService
 
                 // Set up local audio state BEFORE sending the join to the server
                 _tunedSlots.TryAdd((frequencyKhz, slotId), new TunedFrequencyData(radioStationData));
+                SetOwnVoiceStation(radioStationData, onlyIfUnset: true);
                 _signalStrengthTracker.SetSquelchState(frequencyKhz, false);
                 _playbackService?.TuneFrequency(frequencyKhz, slotId);
 
@@ -788,9 +829,10 @@ public class OpenFreqService : IOpenFreqService
         lock (_signalingLock)
         {
             // A leave may have untuned the slot since the check above.
-            if (_tunedSlots.ContainsKey((frequencyKhz, slotId)))
+            if (_tunedSlots.TryGetValue((frequencyKhz, slotId), out var tuned))
             {
                 change = _transmissions.Start(slotId, frequencyKhz);
+                SetOwnVoiceStation(tuned.RadioStation);
 
                 // On the idle → transmitting edge, mark the start time.
                 if (change.WasIdle) _client.MarkTransmitStartTime();
@@ -1213,16 +1255,6 @@ public class OpenFreqService : IOpenFreqService
                         radioStationData.RadioStation.Preset.TxPower_UHF_W, radioStationData.RadioStation.Ppm,
                         position, velocity, radioStationData.RadioStation.Preset.AmbientNoiseType));
                 }
-            }
-
-            // Tell the recorder how to render our own voice "as if heard from the same position":
-            // default (zero-distance) params for the transmitting radio + its ambient SFX.
-            if (wantRecord && frequenciesData.Count > 0)
-            {
-                var first = frequenciesData[0];
-                _playbackService!.SetOwnVoiceRecordParams(
-                    FastPathAudioSim.GetDefaultAudioParams(first.frequencyKhz, (float)first.ppm),
-                    first.ambientNoiseType);
             }
 
             _client?.SendAudio(audioData, frequenciesData, Apply3dAudioEffects);

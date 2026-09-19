@@ -65,9 +65,15 @@
                 SelectedIndex="{Binding Settings.MonitorDeviceIndex}"
                 HorizontalAlignment="Stretch" />
 
-      <CheckBox Content="Apply SFX to my voice"
-                IsChecked="{Binding Settings.ApplyOwnVoiceSfx}"
-                Margin="0,12,0,4" />
+      <TextBlock Classes="InputLabel" Margin="0,12,0,4">
+        <Run Text="SFX on my voice: " />
+        <Run Text="{Binding Settings.OwnVoiceSfxVolume, StringFormat={}{0:P0}}" />
+      </TextBlock>
+      <Slider Minimum="0" Maximum="1"
+              Value="{Binding Settings.OwnVoiceSfxVolume}"
+              TickFrequency="0.05"
+              IsSnapToTickEnabled="True"
+              Margin="0,0,0,4" />
 
 
     </StackPanel>

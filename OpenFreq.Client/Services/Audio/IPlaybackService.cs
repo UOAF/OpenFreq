@@ -19,7 +19,8 @@ public interface IPlaybackService
     float MasterVolume { get; set; }
     float AmbientNoiseVolume { get; set; }
     bool Apply3dEffects { get; set; }
-    bool OwnVoiceSfxEnabled { get; set; }
+    float OwnVoiceSfxVolume { get; set; }
+    AmbientNoiseType OwnVoiceAmbient { get; set; }
     bool IsRecording { get; }
     bool IsMonitoring { get; }
     bool IsCapturing { get; }
@@ -52,7 +53,6 @@ public interface IPlaybackService
 
     void PushSidetone(ReadOnlySpan<float> samples);
     void PushOwnVoiceForRecording(ReadOnlySpan<float> samples);
-    void SetOwnVoiceRecordParams(AudioParams p, AmbientNoiseType ambient);
 }
 
 /// <summary>Adapter forwarding <see cref="IPlaybackService"/> to a real <see cref="RadioPlayback"/>.</summary>
@@ -73,7 +73,8 @@ public sealed class RadioPlaybackAdapter : IPlaybackService
     public float MasterVolume { get => _inner.MasterVolume; set => _inner.MasterVolume = value; }
     public float AmbientNoiseVolume { get => _inner.AmbientNoiseVolume; set => _inner.AmbientNoiseVolume = value; }
     public bool Apply3dEffects { get => _inner.Apply3dEffects; set => _inner.Apply3dEffects = value; }
-    public bool OwnVoiceSfxEnabled { get => _inner.OwnVoiceSfxEnabled; set => _inner.OwnVoiceSfxEnabled = value; }
+    public float OwnVoiceSfxVolume { get => _inner.OwnVoiceSfxVolume; set => _inner.OwnVoiceSfxVolume = value; }
+    public AmbientNoiseType OwnVoiceAmbient { get => _inner.OwnVoiceAmbient; set => _inner.OwnVoiceAmbient = value; }
     public bool IsRecording => _inner.IsRecording;
     public bool IsMonitoring => _inner.IsMonitoring;
     public bool IsCapturing => _inner.IsCapturing;
@@ -113,8 +114,6 @@ public sealed class RadioPlaybackAdapter : IPlaybackService
 
     public void PushSidetone(ReadOnlySpan<float> samples) => _inner.PushSidetone(samples);
     public void PushOwnVoiceForRecording(ReadOnlySpan<float> samples) => _inner.PushOwnVoiceForRecording(samples);
-    public void SetOwnVoiceRecordParams(AudioParams p, AmbientNoiseType ambient)
-        => _inner.SetOwnVoiceRecordParams(p, ambient);
 }
 
 /// <summary>

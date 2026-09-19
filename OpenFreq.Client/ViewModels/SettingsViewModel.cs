@@ -101,8 +101,8 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
         get => !StreamToDevice;
         set { if (value) StreamToDevice = false; }
     }
-    /// <summary>When true, own voice in the capture gets the full radio FX; when false it stays clean.</summary>
-    [ObservableProperty] public partial bool ApplyOwnVoiceSfx { get; set; } = true;
+    /// <summary>Wet/dry blend (0..1) of the ambient SFX on own voice in the capture. The radio tone stays at 0.</summary>
+    [ObservableProperty] public partial double OwnVoiceSfxVolume { get; set; } = 1.0;
     /// <summary>List index into <see cref="PlaybackDeviceNames"/> for the monitor/stream output device.</summary>
     [ObservableProperty] public partial int MonitorDeviceIndex { get; set; }
     [ObservableProperty] public partial string MonitorDeviceName { get; set; } = string.Empty;
@@ -381,7 +381,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(RecordToFile));
     }
 
-    partial void OnApplyOwnVoiceSfxChanged(bool value) => _openFreqService.ApplyOwnVoiceSfx = value;
+    partial void OnOwnVoiceSfxVolumeChanged(double value) => _openFreqService.OwnVoiceSfxVolume = value;
 
     partial void OnMonitorDeviceIndexChanged(int value)
     {
@@ -441,7 +441,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
         if (!string.IsNullOrWhiteSpace(settings.RecordingPath))
             RecordingPath = settings.RecordingPath;
         StreamToDevice = settings.CaptureSink == IOpenFreqService.CaptureSink.Device;
-        ApplyOwnVoiceSfx = settings.ApplyOwnVoiceSfx;
+        OwnVoiceSfxVolume = settings.OwnVoiceSfxVolume;
         if (settings.DarkMode.HasValue)
         {
             IsDarkMode = settings.DarkMode.Value;
@@ -634,7 +634,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
                 ? IOpenFreqService.CaptureSink.Device
                 : IOpenFreqService.CaptureSink.File,
             MonitorDeviceName = MonitorDeviceName,
-            ApplyOwnVoiceSfx = ApplyOwnVoiceSfx,
+            OwnVoiceSfxVolume = OwnVoiceSfxVolume,
             DarkMode = IsDarkMode,
             Left = _left,
             Top = _top,

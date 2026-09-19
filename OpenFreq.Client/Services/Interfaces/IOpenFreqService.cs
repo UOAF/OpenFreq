@@ -38,8 +38,8 @@ public interface IOpenFreqService : IDisposable
     int MonitorDeviceIndex { get; set; }
     /// <summary>When true, capture auto-starts on entering game mode (flight) and auto-stops on leaving it.</summary>
     bool AutoRecordInGameMode { get; set; }
-    /// <summary>When true, own voice in the capture gets the full radio FX (AGC/squelch/SFX); when false it stays clean.</summary>
-    bool ApplyOwnVoiceSfx { get; set; }
+    /// <summary>Wet/dry blend (0..1) of the ambient SFX on own voice in the capture. The radio tone stays at 0.</summary>
+    double OwnVoiceSfxVolume { get; set; }
     /// <summary>Directory recordings are written to. Created if missing. Blank → "recordings" next to the executable.</summary>
     string RecordingPath { get; set; }
     /// <summary>True while a capture (file or device) is in progress.</summary>

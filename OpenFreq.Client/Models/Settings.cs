@@ -48,7 +48,7 @@ public class OpenFreqSettings
     public string RecordingPath { get; set; } = "";
     public IOpenFreqService.CaptureSink CaptureSink { get; set; } = IOpenFreqService.CaptureSink.File;
     public string MonitorDeviceName { get; set; } = "";
-    public bool ApplyOwnVoiceSfx { get; set; } = true;
+    public double OwnVoiceSfxVolume { get; set; } = 1.0;
     public bool? DarkMode { get; set; }
     public bool MinimizeOnConnect { get; set; } = true;
 }
