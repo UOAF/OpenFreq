@@ -256,4 +256,66 @@ public class RtpJitterBufferTests
         Assert.Equal(0, rescuedRuns);
         Assert.Equal(new[] { 0, 0, 0 }, byBlindHighWater);
     }
+
+    [Fact]
+    public void TalkspurtEnd_IsNotCountedAsLoss()
+    {
+        // Three blind frames, then the cap resyncs and nothing ever follows. The talker
+        // stopped, so none of those frames is a lost packet.
+        var (buf, now) = BufferMidConcealment(blindFrames: 3);
+        buf.GetReadyPackets(now); // hits the cap and resyncs
+
+        var (_, lost, _, _, _, lossPercent, _, _, _) = buf.GetStatistics();
+
+        Assert.Equal(0, lost);
+        Assert.Equal(0.0, lossPercent);
+    }
+
+    [Fact]
+    public void RescuedRun_ChargesItsBlindFramesToLoss()
+    {
+        // One blind frame, then real audio resumes past it. That slot never played.
+        var (buf, now) = BufferMidConcealment(blindFrames: 1);
+
+        buf.AddPacket(MakePacket(seq: 3, timestamp: 2 * SamplesPerFrame));
+        Assert.IsType<RtpJitterBuffer.PacketsReady>(buf.GetReadyPackets(now));
+
+        var (_, lost, _, _, _, _, _, _, _) = buf.GetStatistics();
+
+        Assert.Equal(1, lost);
+    }
+
+    [Fact]
+    public void ProvenGap_CountsAsLossImmediately()
+    {
+        var buf = CreateBuffer();
+        buf.AddPacket(MakePacket(seq: 1, timestamp: 0));
+
+        long now = Stopwatch.GetTimestamp() + Stopwatch.Frequency * 10;
+        Assert.IsType<RtpJitterBuffer.PacketsReady>(buf.GetReadyPackets(now));
+
+        // A packet three slots on proves the two slots between it and the cursor are holes.
+        buf.AddPacket(MakePacket(seq: 4, timestamp: 3 * SamplesPerFrame));
+        Assert.IsType<RtpJitterBuffer.ConcealmentNeeded>(buf.GetReadyPackets(now));
+        Assert.IsType<RtpJitterBuffer.ConcealmentNeeded>(buf.GetReadyPackets(now));
+
+        var (_, lost, _, _, _, _, _, _, _) = buf.GetStatistics();
+
+        Assert.Equal(2, lost);
+    }
+
+    [Fact]
+    public void BlindFrames_ArePromotedToLoss_WhenALaterPacketProvesTheGap()
+    {
+        // Conceal one frame blind, then a packet past the gap arrives. The blind frame
+        // was a real hole after all, so it joins the proven one.
+        var (buf, now) = BufferMidConcealment(blindFrames: 1);
+
+        buf.AddPacket(MakePacket(seq: 4, timestamp: 3 * SamplesPerFrame));
+        Assert.IsType<RtpJitterBuffer.ConcealmentNeeded>(buf.GetReadyPackets(now));
+
+        var (_, lost, _, _, _, _, _, _, _) = buf.GetStatistics();
+
+        Assert.Equal(2, lost);
+    }
 }

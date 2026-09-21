@@ -98,6 +98,11 @@ public class RtpJitterBuffer
     private readonly int[] _rescuesByBlindHighWater = new int[MAX_BLIND_CONCEAL_FRAMES];
     private int _rescuedRuns;
 
+    // Blind concealment is speculative: nothing past the gap has arrived yet, so the
+    // talker may have stopped. Hold those frames here until the run ends, then charge
+    // them to loss if real audio resumed, and discard them if it did not.
+    private int _runBlindConceals;
+
     // Statistics
     private int _packetsReceived;
     private int _packetsLost;
@@ -362,6 +367,9 @@ public class RtpJitterBuffer
                     if (_concealmentRunLength >= cap)
                     {
                         _lastReleasedPt = null;
+                        // Nothing ever arrived past the gap, so the talker stopped.
+                        // Those blind frames were not lost packets, so drop them.
+                        _runBlindConceals = 0;
                         _concealmentRunLength = 0;
                         // This run resynced rather than being rescued, so it is not
                         // evidence either way about the blind cap.
@@ -371,7 +379,18 @@ public class RtpJitterBuffer
                     }
                     else
                     {
-                        if (!provenGap) _blindHighWater = _concealmentRunLength;
+                        if (provenGap)
+                        {
+                            // A packet past this slot already arrived, so this slot is a real
+                            // hole. Whatever this run concealed blind never arrived either.
+                            _packetsLost += 1 + _runBlindConceals;
+                            _runBlindConceals = 0;
+                        }
+                        else
+                        {
+                            _blindHighWater = _concealmentRunLength;
+                            _runBlindConceals++;
+                        }
 
                         // If N+1 is already in the buffer, pass its payload so the
                         // decoder can use LBRR FEC to recover N instead of pure PLC.
@@ -387,7 +406,6 @@ public class RtpJitterBuffer
                         // Advance cursor and tell the drain thread to generate FEC/PLC.
                         _lastReleasedPt = nextExpectedPt;
                         _concealmentRunLength++;
-                        _packetsLost++;
                         return new ConcealmentNeeded(fecPayload);
                     }
                 }
@@ -449,6 +467,9 @@ public class RtpJitterBuffer
             _rescuedRuns++;
             if (_blindHighWater >= 0) _rescuesByBlindHighWater[_blindHighWater]++;
         }
+        // Real audio resumed past the concealed slots, so those slots never played.
+        _packetsLost += _runBlindConceals;
+        _runBlindConceals = 0;
         _concealmentRunLength = 0;
         _blindHighWater = -1;
         return new PacketsReady(readies);
