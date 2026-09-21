@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using OpenFreq.Client.Models;
 using OpenFreq.Common;
@@ -75,6 +76,8 @@ public interface IOpenFreqService : IDisposable
     Task ConnectAsync(TimeSpan? connectTimeout = null);
     Task DisconnectAsync();
     bool IsFrequencyJoined(int frequencyKhz, Guid slotId);
+    /// <summary>Every frequency this slot currently holds. A healthy slot holds one or none.</summary>
+    IReadOnlyList<int> GetJoinedFrequencies(Guid slotId);
     Task JoinFrequencyAsync(int frequencyKhz, Guid slotId, RadioStationData radioStationData);
     Task LeaveFrequencyAsync(int frequencyKhz, Guid slotId);
     Task StartTransmissionAsync(int frequencyKhz, Guid slotId);

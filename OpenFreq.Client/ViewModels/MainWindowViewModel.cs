@@ -526,6 +526,9 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
             // causes SetBlockingError(true) → VoiceDoLogic returns immediately → SetChannelsFor3d()
             // is never called → RCC is never updated → OpenFreq reads stale frequencies/power states.
             _falconRadioSharedMemoryService.RemoveClientStatus(ClientStatusFlags.ErrorMask);
+            // ExitReceived acknowledges an earlier request to end voice comms.
+            // It must not survive into a new connection.
+            _falconRadioSharedMemoryService.RemoveClientStatus(ClientStatusFlags.ExitReceived);
             _falconRadioSharedMemoryService.AddClientStatus(ClientStatusFlags.ClientActive);
             _falconRadioSharedMemoryService.AddClientStatus(ClientStatusFlags.TryingToConnect);
             Settings.OpenFreqPassword = e.NewParameters.Password;

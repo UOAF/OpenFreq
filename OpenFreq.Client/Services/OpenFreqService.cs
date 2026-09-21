@@ -671,6 +671,9 @@ public class OpenFreqService : IOpenFreqService
         return _tunedSlots.ContainsKey((frequencyKhz, slotId));
     }
 
+    public IReadOnlyList<int> GetJoinedFrequencies(Guid slotId) =>
+        _tunedSlots.Keys.Where(k => k.SlotId == slotId).Select(k => k.FreqKhz).ToList();
+
     /// <summary>
     /// Join a frequency channel for a specific radio slot.
     /// The signalling server is joined only on the first slot; subsequent slots on the same
