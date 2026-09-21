@@ -308,7 +308,8 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         foreach (var type in Enum.GetValues<RadioType>())
         {
             var radioChannel = _falconRadioSharedMemoryService.GetRadioChannel(type);
-            if (radioChannel == null || radioChannel.RxVolume <= 0) continue;
+            // BMS scales RxVolume from 0, the loudest, to 10000, the quietest.
+            if (radioChannel == null || radioChannel.RxVolume < 0) continue;
             var gain = ComputeGainFromBmsVolume(radioChannel.RxVolume);
             foreach (var channel in FalconLocation.Channels.Where(c => c.BmsRadioType == type).ToList())
             {
