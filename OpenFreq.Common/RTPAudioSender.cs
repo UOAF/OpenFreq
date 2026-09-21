@@ -18,8 +18,6 @@ namespace OpenFreq.Common;
 public class RtpAudioSender : IDisposable
 {
     private readonly ILogger<RtpAudioSender> _logger;
-    private const int OPUS_FRAME_SIZE = OpenFreqRtcClient.OPUS_SAMPLES_PER_FRAME;
-
 
     private readonly UdpClient _udpClient;
     public UdpClient UdpClient => _udpClient;
@@ -28,7 +26,7 @@ public class RtpAudioSender : IDisposable
 #pragma warning disable CS0618 // Do not use the factory - it does not work with Linux
     // VOIP mode enables SILK codec and in-band FEC (LBRR).
     private readonly OpusEncoder _opusEncoder = new OpusEncoder(
-            OpenFreqRtcClient.SAMPLE_RATE,
+            AudioFormat.SampleRate,
             1,
             OpusApplication.OPUS_APPLICATION_VOIP
         );
@@ -112,7 +110,7 @@ public class RtpAudioSender : IDisposable
         // Loses some precision for large dt - if timestamps are wonky,
         // consider (double)((decimal)dt / Stopwatch.Frequency)
         double dtSeconds = (double)dt / Stopwatch.Frequency;
-        double dtSamples = dtSeconds * OpenFreqRtcClient.SAMPLE_RATE;
+        double dtSamples = dtSeconds * AudioFormat.SampleRate;
         _timestamp = (uint)(dtSamples % uint.MaxValue);
     }
 
@@ -131,8 +129,8 @@ public class RtpAudioSender : IDisposable
     private void SendThreadProc()
     {
         ushort sequence = 0;
-        var drainbuf = new short[OPUS_FRAME_SIZE];
-        var encoded = new byte[OPUS_FRAME_SIZE * 2];
+        var drainbuf = new short[AudioFormat.OpusSamplesPerFrame];
+        var encoded = new byte[AudioFormat.OpusSamplesPerFrame * 2];
         var encspan = new Memory<byte>();
 
         while (true)
@@ -191,7 +189,7 @@ public class RtpAudioSender : IDisposable
                 // Socket closed during shutdown — exit cleanly.
                 return;
             }
-            _timestamp += OPUS_FRAME_SIZE;
+            _timestamp += AudioFormat.OpusSamplesPerFrame;
             sequence++;
         }
     }

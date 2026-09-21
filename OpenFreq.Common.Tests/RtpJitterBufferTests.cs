@@ -192,4 +192,68 @@ public class RtpJitterBufferTests
         Assert.Equal(1, played);
         Assert.Equal(0, buffered);
     }
+
+    /// <summary>
+    /// Release the first packet so the playout cursor is set, then hold the clock far
+    /// enough ahead that every later slot is overdue. Each call then conceals one slot.
+    /// </summary>
+    private static (RtpJitterBuffer buf, long now) BufferMidConcealment(int blindFrames)
+    {
+        var buf = CreateBuffer();
+        buf.AddPacket(MakePacket(seq: 1, timestamp: 0));
+
+        long now = Stopwatch.GetTimestamp() + Stopwatch.Frequency * 10;
+        Assert.IsType<RtpJitterBuffer.PacketsReady>(buf.GetReadyPackets(now));
+
+        for (int i = 0; i < blindFrames; ++i)
+            Assert.IsType<RtpJitterBuffer.ConcealmentNeeded>(buf.GetReadyPackets(now));
+
+        return (buf, now);
+    }
+
+    [Fact]
+    public void BlindConcealmentUse_RescueCountsAtTheBudgetItNeeded()
+    {
+        // Three blind frames, then a real packet at the next slot. That rescue only
+        // happened because the blind budget allowed a third frame, so a blind cap of 2
+        // would have resynced instead. Index 2 is where that shows up.
+        var (buf, now) = BufferMidConcealment(blindFrames: 3);
+
+        buf.AddPacket(MakePacket(seq: 5, timestamp: 4 * SamplesPerFrame));
+        Assert.IsType<RtpJitterBuffer.PacketsReady>(buf.GetReadyPackets(now));
+
+        var (rescuedRuns, byBlindHighWater) = buf.GetBlindConcealmentUse();
+        Assert.Equal(1, rescuedRuns);
+        Assert.Equal(new[] { 0, 0, 1 }, byBlindHighWater);
+    }
+
+    [Fact]
+    public void BlindConcealmentUse_ShortRunCountsLower()
+    {
+        // One blind frame, then the real packet. Any blind cap of 1 or more keeps this.
+        var (buf, now) = BufferMidConcealment(blindFrames: 1);
+
+        buf.AddPacket(MakePacket(seq: 3, timestamp: 2 * SamplesPerFrame));
+        Assert.IsType<RtpJitterBuffer.PacketsReady>(buf.GetReadyPackets(now));
+
+        var (rescuedRuns, byBlindHighWater) = buf.GetBlindConcealmentUse();
+        Assert.Equal(1, rescuedRuns);
+        Assert.Equal(new[] { 1, 0, 0 }, byBlindHighWater);
+    }
+
+    [Fact]
+    public void BlindConcealmentUse_ResyncIsNotARescue()
+    {
+        // Run past the cap so the buffer gives up and drops the cursor. Audio that
+        // resumes afterwards did not rescue anything, so it is no evidence either way.
+        var (buf, now) = BufferMidConcealment(blindFrames: 3);
+        buf.GetReadyPackets(now); // one more: hits the cap and resyncs
+
+        buf.AddPacket(MakePacket(seq: 9, timestamp: 8 * SamplesPerFrame));
+        buf.GetReadyPackets(now);
+
+        var (rescuedRuns, byBlindHighWater) = buf.GetBlindConcealmentUse();
+        Assert.Equal(0, rescuedRuns);
+        Assert.Equal(new[] { 0, 0, 0 }, byBlindHighWater);
+    }
 }

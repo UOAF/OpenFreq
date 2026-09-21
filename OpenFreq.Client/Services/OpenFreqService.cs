@@ -113,7 +113,7 @@ public class OpenFreqService : IOpenFreqService
 
     // Pre-allocated sidetone conversion buffer — reused every recording callback (single-threaded).
     private float[] _sidetonePushBuffer = new float[4800]; // 100ms @ 48kHz, grows if needed
-    private readonly MicLevelNormalizer _micNormalizer = new(OpenFreqRtcClient.SAMPLE_RATE);
+    private readonly MicLevelNormalizer _micNormalizer = new(AudioFormat.SampleRate);
 
     // TX level telemetry, accumulated across the current talk-spurt and logged once when PTT drops.
     // Written only from the BASS record callback (single-threaded), read again after the callback
@@ -992,7 +992,7 @@ public class OpenFreqService : IOpenFreqService
             RecordingDeviceIndex, deviceName);
 
         _recordHandle = Bass.RecordStart(
-            OpenFreqRtcClient.SAMPLE_RATE,
+            AudioFormat.SampleRate,
             1,
             BassFlags.RecordPause,
             Period: 2,
@@ -1145,7 +1145,7 @@ public class OpenFreqService : IOpenFreqService
             "TX level over {DurationMs}ms: mic peak {RawPeak:F1} dBFS rms {RawRms:F1} dBFS | " +
             "sent peak {SentPeak:F1} dBFS rms {SentRms:F1} dBFS | " +
             "normalizer {NormalizerState}, gain {Gain:F3}, gate {Gate:F1} dBFS",
-            samples * 1000 / OpenFreqRtcClient.SAMPLE_RATE,
+            samples * 1000 / AudioFormat.SampleRate,
             ToDbFs(_txRawPeak), ToDbFs(rawRms),
             ToDbFs(_txSentPeak), ToDbFs(sentRms),
             MicNormalizationEnabled ? "on" : "off",
@@ -1450,7 +1450,7 @@ public class OpenFreqService : IOpenFreqService
 
         _playbackService?.StartPushStream(
             streamId,
-            OpenFreqRtcClient.SAMPLE_RATE,
+            AudioFormat.SampleRate,
             1,
             audioParams
         );
@@ -1634,7 +1634,7 @@ public class OpenFreqService : IOpenFreqService
 
                     _playbackService?.StartPushStream(
                         streamId,
-                        OpenFreqRtcClient.SAMPLE_RATE,
+                        AudioFormat.SampleRate,
                         1,
                         audioParams);
 

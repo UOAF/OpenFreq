@@ -171,7 +171,7 @@ public class TestClientWrapper : IDisposable
         }
 
         // Initialize playback stream
-        _playbackStream = Bass.CreateStream(OpenFreqRtcClient.SAMPLE_RATE, 1, BassFlags.Default, StreamProcedureType.Push);
+        _playbackStream = Bass.CreateStream(AudioFormat.SampleRate, 1, BassFlags.Default, StreamProcedureType.Push);
         if (_playbackStream == 0)
         {
             throw new Exception($"Failed to create playback stream: {Bass.LastError}");
@@ -241,7 +241,7 @@ public class TestClientWrapper : IDisposable
         Bass.CurrentRecordingDevice = 0;
 
         // Start recording with callback that sends via client
-        _recordHandle = Bass.RecordStart(OpenFreqRtcClient.SAMPLE_RATE, 1, BassFlags.RecordPause, RecordProcedure);
+        _recordHandle = Bass.RecordStart(AudioFormat.SampleRate, 1, BassFlags.RecordPause, RecordProcedure);
         if (_recordHandle == 0)
         {
             Console.WriteLine($"Failed to start recording: {Bass.LastError}");

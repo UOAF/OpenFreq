@@ -12,10 +12,6 @@ namespace OpenFreq.Common;
 
 public class OpenFreqRtcClient : IRtcClient
 {
-    // Audio configuration constants
-    public const int SAMPLE_RATE = RadioPlayback.SampleRate;
-    public const int FRAME_SIZE_MS = 20;
-    public const int OPUS_SAMPLES_PER_FRAME = SAMPLE_RATE / (1000 / FRAME_SIZE_MS);
     public const int DEFAULT_PORT = 9987;
 
     // Events for UI integration

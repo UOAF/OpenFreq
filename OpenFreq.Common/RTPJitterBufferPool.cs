@@ -132,6 +132,26 @@ public sealed class RtpJitterBufferPool : IDisposable
     }
 
     /// <summary>
+    /// Blind concealment use summed over every active source.
+    /// See <see cref="RtpJitterBuffer.GetBlindConcealmentUse"/>.
+    /// </summary>
+    public (int rescuedRuns, IReadOnlyList<int> byBlindHighWater) GetBlindConcealmentUse()
+    {
+        int rescuedRuns = 0;
+        int[]? byHighWater = null;
+
+        foreach (var ctx in GetActiveSources())
+        {
+            var (runs, buckets) = ctx.JitterBuffer.GetBlindConcealmentUse();
+            rescuedRuns += runs;
+            byHighWater ??= new int[buckets.Count];
+            for (int i = 0; i < buckets.Count; ++i) byHighWater[i] += buckets[i];
+        }
+
+        return (rescuedRuns, byHighWater ?? []);
+    }
+
+    /// <summary>
     /// Per-source statistics for diagnostics
     /// </summary>
     public IReadOnlyList<(uint ssrc, int received, int lost, double lossPercent, double jitterMs, double bufferMs, int buffered)>

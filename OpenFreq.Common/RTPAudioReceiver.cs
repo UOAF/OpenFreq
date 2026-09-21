@@ -311,6 +311,18 @@ public class RtpAudioReceiver : IDisposable
         _logger.LogInformation("  Packets played: {Played}", stats.played);
         _logger.LogInformation("  Loss Recovery:");
 
+        // How much of the blind concealment budget this session actually used. A run
+        // counted at index k needed k+1 blind frames, so lowering the blind cap to k
+        // would have resynced it instead of letting a real packet rescue it.
+        var (rescuedRuns, byBlindHighWater) = _pool.GetBlindConcealmentUse();
+        _logger.LogInformation("    Concealment runs rescued: {Rescued}", rescuedRuns);
+        for (int i = 0; i < byBlindHighWater.Count; ++i)
+        {
+            _logger.LogInformation(
+                "      needed {Frames} blind frame(s): {Count} — a blind cap of {Cap} loses these",
+                i + 1, byBlindHighWater[i], i);
+        }
+
         _logger.LogInformation("  Measured jitter: {JitterMs:F1}ms (avg)", stats.jitterMs);
         _logger.LogInformation("  Buffer size: {BufferMs:F0}ms (avg, adaptive)", stats.bufferMs);
         _logger.LogInformation("  Currently buffered: {Buffered} packets", stats.buffered);

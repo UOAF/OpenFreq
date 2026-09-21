@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Common.Rtp;
+using OpenFreqAudio;
 
 namespace OpenFreq.Common;
 
@@ -87,6 +88,15 @@ public class RtpJitterBuffer
     private long _lastReceivedPt = -1;
     // Consecutive concealment frames emitted since the last real packet was released.
     private int _concealmentRunLength;
+
+    // Longest run this concealment run had already reached when it took a decision on
+    // the blind path, or -1 if it never took one. The cap compares run length before
+    // concealing, so a blind cap of C would have resynced this run instead of letting a
+    // real packet rescue it exactly when this reached C. Blind decisions happen at run
+    // lengths 0 to MAX_BLIND_CONCEAL_FRAMES - 1, so that is the range of the histogram.
+    private int _blindHighWater = -1;
+    private readonly int[] _rescuesByBlindHighWater = new int[MAX_BLIND_CONCEAL_FRAMES];
+    private int _rescuedRuns;
 
     // Statistics
     private int _packetsReceived;
@@ -197,9 +207,9 @@ public class RtpJitterBuffer
                 long activeBufferTicks = (long)(_activeBufferMs / 1000.0 * Stopwatch.Frequency);
                 long clockSamples = (long)(
                     (double)(now - _baseTimeTicks - activeBufferTicks)
-                        / Stopwatch.Frequency * OpenFreqRtcClient.SAMPLE_RATE);
+                        / Stopwatch.Frequency * AudioFormat.SampleRate);
                 double marginMs = (double)(pt - clockSamples)
-                    / OpenFreqRtcClient.SAMPLE_RATE * 1000.0;
+                    / AudioFormat.SampleRate * 1000.0;
 
                 // Intrinsic margin: margin with the current buffer removed, so
                 // samples stay comparable even as _activeBufferMs changes.
@@ -322,14 +332,14 @@ public class RtpJitterBuffer
         long bufferDelayTicks = (long)(_activeBufferMs / 1000.0 * Stopwatch.Frequency);
         long jitterAdjustedElapsedSamples = (long)(
             (double)(elapsedTicks - bufferDelayTicks) /
-                Stopwatch.Frequency * OpenFreqRtcClient.SAMPLE_RATE);
+                Stopwatch.Frequency * AudioFormat.SampleRate);
 
         // When the playout clock passes a slot and no real packet is in the buffer,
         // signal the drain thread to inject PLC now rather than waiting for the
         // next real packet to arrive (which would be a full frame too late).
         if (_lastReleasedPt.HasValue)
         {
-            long nextExpectedPt = _lastReleasedPt.Value + OpenFreqRtcClient.OPUS_SAMPLES_PER_FRAME;
+            long nextExpectedPt = _lastReleasedPt.Value + AudioFormat.OpusSamplesPerFrame;
 
             if (jitterAdjustedElapsedSamples >= nextExpectedPt)
             {
@@ -353,11 +363,16 @@ public class RtpJitterBuffer
                     {
                         _lastReleasedPt = null;
                         _concealmentRunLength = 0;
+                        // This run resynced rather than being rescued, so it is not
+                        // evidence either way about the blind cap.
+                        _blindHighWater = -1;
                         _activeBufferMs = _targetBufferMs;
                         // fall through to the buffer-empty check / release loop
                     }
                     else
                     {
+                        if (!provenGap) _blindHighWater = _concealmentRunLength;
+
                         // If N+1 is already in the buffer, pass its payload so the
                         // decoder can use LBRR FEC to recover N instead of pure PLC.
                         byte[]? fecPayload = null;
@@ -365,7 +380,7 @@ public class RtpJitterBuffer
                         {
                             var candidate = _buffer.First().Value;
                             long candidatePt = candidate.Timestamp - _baseTimestamp;
-                            if (candidatePt == nextExpectedPt + OpenFreqRtcClient.OPUS_SAMPLES_PER_FRAME)
+                            if (candidatePt == nextExpectedPt + AudioFormat.OpusSamplesPerFrame)
                                 fecPayload = candidate.Payload;
                         }
 
@@ -383,7 +398,7 @@ public class RtpJitterBuffer
                 // Cursor set, next slot not yet due, buffer empty — wait.
                 long ticksUntilNext = (long)(
                     (double)(nextExpectedPt - jitterAdjustedElapsedSamples) /
-                        OpenFreqRtcClient.SAMPLE_RATE * Stopwatch.Frequency);
+                        AudioFormat.SampleRate * Stopwatch.Frequency);
                 return new WaitFor(ticksUntilNext);
             }
             // Cursor set, next slot not yet due, buffer has packets:
@@ -410,7 +425,7 @@ public class RtpJitterBuffer
                 {
                     var ticksUntilReady = (long)(
                         (double)samplesUntilReady /
-                            OpenFreqRtcClient.SAMPLE_RATE * Stopwatch.Frequency);
+                            AudioFormat.SampleRate * Stopwatch.Frequency);
                     return new WaitFor(ticksUntilReady);
                 }
                 else break;
@@ -427,7 +442,15 @@ public class RtpJitterBuffer
         {
             _lastReleasedPt = p.Timestamp - _baseTimestamp; // advance playout cursor
         }
-        _concealmentRunLength = 0; // real audio resumed — reset the concealment budget
+        // Real audio resumed, so a run in progress was rescued rather than resynced.
+        // Record how much blind budget that rescue needed, then reset the budget.
+        if (_concealmentRunLength > 0)
+        {
+            _rescuedRuns++;
+            if (_blindHighWater >= 0) _rescuesByBlindHighWater[_blindHighWater]++;
+        }
+        _concealmentRunLength = 0;
+        _blindHighWater = -1;
         return new PacketsReady(readies);
     }
 
@@ -446,7 +469,7 @@ public class RtpJitterBuffer
         if (samplesElapsed < _lastPacketTimestamp) ++_packetsLate;
 
         double actualInterval = (double)(ticksElapsed - _lastPacketReceivedTicks) / Stopwatch.Frequency;
-        double expectedInterval = (double)(samplesElapsed - _lastPacketTimestamp) / OpenFreqRtcClient.SAMPLE_RATE;
+        double expectedInterval = (double)(samplesElapsed - _lastPacketTimestamp) / AudioFormat.SampleRate;
 
         // Detect transmission gap (PTT released).
         if (expectedInterval > 0.5)
@@ -534,6 +557,17 @@ public class RtpJitterBuffer
             bufferedCount
         );
     }
+
+    /// <summary>
+    /// Evidence for how much blind concealment budget this link actually needs.
+    /// <paramref name="rescuedRuns"/> counts concealment runs that a real packet ended,
+    /// and <paramref name="byBlindHighWater"/> splits them by the run length each one
+    /// had reached when it last concealed blind. A blind cap of C would have resynced
+    /// instead of rescuing every run counted at index C and above, so index
+    /// MAX_BLIND_CONCEAL_FRAMES - 1 is what the current budget buys.
+    /// </summary>
+    public (int rescuedRuns, IReadOnlyList<int> byBlindHighWater) GetBlindConcealmentUse()
+        => (_rescuedRuns, (int[])_rescuesByBlindHighWater.Clone());
 
     /// <summary>
     /// Set target buffer size (for manual override).

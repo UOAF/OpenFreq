@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Threading.Channels;
 using Concentus.Structs;
 using Microsoft.Extensions.Logging;
+using OpenFreqAudio;
 using static OpenFreq.Common.RtpAudioReceiver;
 
 namespace OpenFreq.Common;
@@ -66,7 +67,7 @@ public sealed class RtpSourceContext : IDisposable
         JitterBuffer.SetTargetBufferSize(initialBufferMs);
 
 #pragma warning disable CS0618 // Using the new factory method will not work on Linux
-        OpusDecoder = new OpusDecoder(OpenFreqRtcClient.SAMPLE_RATE, 1);
+        OpusDecoder = new OpusDecoder(AudioFormat.SampleRate, 1);
 #pragma warning restore CS0618
 
         // Wire up our task and off we go.
