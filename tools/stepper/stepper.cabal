@@ -1,0 +1,38 @@
+cabal-version:      3.0
+name:               stepper
+synopsis:           Who keeps talking over people?
+version:            0.1
+license:            Zlib
+author:             Matt Kline
+maintainer:         matt@bitbashing.io
+category:           Data
+build-type:         Simple
+
+executable stepper
+    ghc-options: -Weverything
+                 -Wno-all-missed-specialisations
+                 -Wno-implicit-prelude
+                 -Wno-missed-specialisations
+                 -Wno-missing-export-lists
+                 -Wno-missing-import-lists
+                 -Wno-missing-kind-signatures
+                 -Wno-missing-local-signatures
+                 -Wno-missing-role-annotations
+                 -Wno-missing-safe-haskell-mode
+                 -Wno-monomorphism-restriction
+                 -Wno-safe
+                 -Wno-type-defaults
+                 -Wno-unsafe
+                 -Wno-x-partial
+                 -threaded
+                 -fno-ignore-asserts
+                 -rtsopts=all "-with-rtsopts=-N --io-manager=native"
+    default-language: GHC2024
+    default-extensions: OverloadedStrings
+    main-is: Main.hs
+    build-depends: base,
+                   attoparsec,
+                   bytestring,
+                   data-interval,
+                   text,
+                   optparse-applicative

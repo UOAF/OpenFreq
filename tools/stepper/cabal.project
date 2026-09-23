@@ -1,0 +1,9 @@
+packages: .
+
+index-state: 2026-09-23T00:00:00Z
+
+package *
+    ghc-options: -O2
+
+package data-interval
+    flags: -lattices
