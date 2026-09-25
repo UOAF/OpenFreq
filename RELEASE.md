@@ -1,18 +1,11 @@
-## Release notes for vNext
+## Notes for the next release
 
-- Fix: multipath effects would warble voice volume but not the carrier,
-  causing weird static tremolos.
-  c28eab8
+- Fix: When no frequencies were tuned, audio would cut out until you changed audio devices.
+  Hopefully addresses cold start problems as well.
+  9d7d271
 
-- Fix: lobby presets now match BMS ones. They were flipped before.
-  d4b3558
+- Fix: Inability to set volume to 100%
+  4df79d1
 
-- Potential fix for radio channel desync during cold starts.
-  05bb567
-
-- Add faster squelch and hysteresis after PTT.
-  6da19dd
-
-- Networking: log how many concealment frames are needed to plug packet gaps.
-  Fewer of these would mean squelch can kick back on faster.
-  6da19dd
+- Fix: packet loss statistics were an overestimate
+  d9934bf
