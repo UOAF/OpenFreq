@@ -11,7 +11,7 @@ import Data.Hashable
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HM
 import Data.HashSet qualified as HS
-import Data.List (sort, sortOn)
+import Data.List (intersperse, sort, sortOn)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding (decodeUtf8)
@@ -73,7 +73,7 @@ main = do
 run :: Milli -> String -> Handle -> IO ()
 run grace ownship fh = do
     let refill = BS.hGet fh $ 1024 * 1024
-    res <- parseWith refill parsePtts =<< refill
+    res <- parseWith refill parseLog =<< refill
     case res of
         Fail _ ctxs msg -> do
             mapM_ (\c -> hPutStrLn stderr $ "in " <> c <> ":") ctxs
@@ -108,28 +108,48 @@ data HeterodyneState = NoStep | Stepping !Milli
 
 data SpeakerState = SpeakerState {
     tsStart :: !Milli,
-    tsGame :: !Text,
+    tsGame :: !(Maybe Text),
     tsStep :: !Bool
     }
 
-process :: Milli -> String -> [PttLine] -> IO ()
-process grace ownship ls = do
-    let s0 = MissionState mempty mempty
-    res <- foldM (accTalk grace ownship) s0 $ dropLobby ls
-    showStats grace ownship res
+data Sortie = Sortie {
+    srStart :: !Text,
+    srPtts :: ![PttLine]
+    }
 
--- Ignore PTT down (and up!) notifications for people in 2D/lobby mode
-dropLobby :: [PttLine] -> [PttLine]
-dropLobby = go HS.empty where
-    go _ [] = []
-    go lobby (l : ls) = case (l.plEdge, l.plGameMode) of
-        (PttStart, Just InLobby) -> go (HS.insert k lobby) ls
-        -- A 3D start means the next PTT end is theirs, even if a 2D start had no PTT end.
-        (PttStart, _) -> l : go (HS.delete k lobby) ls
-        (PttEnd, _)
-            | HS.member k lobby -> go (HS.delete k lobby) ls
-            | otherwise -> l : go lobby ls
+process :: Milli -> String -> [LogLine] -> IO ()
+process grace ownship ls = case sorties ls of
+    [] -> putStrLn "Nobody sorties? Is this thing on?"
+    ss -> sequence_ . intersperse (putStrLn "") $ showSortie <$> ss
+  where
+    showSortie s = do
+        putStrLn $ "== Sortie at " <> T.unpack s.srStart <> " =="
+        res <- foldM (accTalk grace ownship) (MissionState mempty mempty) s.srPtts
+        showStats grace ownship res
+
+-- Split the log into sorties, each from a change to in-game until the next mode change or client start.
+-- Ignore PTT down (and up!) notifications for people in 2D/lobby mode, and all of them while we're in the lobby.
+sorties :: [LogLine] -> [Sortie]
+sorties = go Nothing HS.empty HS.empty where
+    -- cur: the start of the sortie we're in (if we're in-game), and its PTT lines so far, newest first.
+    -- dropped: (Speaker, Frequency) of PTT downs we dropped, so we drop their PTT up too.
+    -- open: (Speaker, Frequency) whose PTT down we kept, which haven't ended yet.
+    go cur _ _ [] = finish cur []
+    -- A new client starts in the lobby, and the old one's PTTs never end.
+    go cur _ _ (ClientStart : ls) = finish cur $ go Nothing HS.empty HS.empty ls
+    -- A PTT that spans a mode change belongs to no sortie.
+    go cur !dropped !open (ModeChange ts mode : ls) = finish cur $ go next (dropped <> open) HS.empty ls
+      where next = if mode == InGame then Just (ts, []) else Nothing
+    go cur dropped open (Ptt l : ls) = case (l.plEdge, cur) of
+        (PttStart, Just (ts, ps))
+            -- A 3D start means the next PTT end is theirs, even if a 2D start had no PTT end.
+            | l.plGameMode /= Just InLobby -> go (Just (ts, l : ps)) (HS.delete k dropped) (HS.insert k open) ls
+        (PttStart, _) -> go cur (HS.insert k dropped) (HS.delete k open) ls
+        (PttEnd, Just (ts, ps))
+            | not (HS.member k dropped) -> go (Just (ts, l : ps)) dropped (HS.delete k open) ls
+        (PttEnd, _) -> go cur (HS.delete k dropped) (HS.delete k open) ls
       where k = (l.plWho, l.plFrequency)
+    finish cur rest = maybe rest (\(ts, ps) -> Sortie ts (reverse ps) : rest) cur
 
 -- Fold each line ino our mission state, in IO so we can complain.
 accTalk :: Milli -> String -> MissionState -> PttLine -> IO MissionState
@@ -216,11 +236,14 @@ pttOnFreq grace ownship ss l = assert (l.plEdge == PttStart) $ do
                 " on ",
                 showMHz l.plFrequency,
                 " at ",
-                T.unpack prev.tsGame,
+                showGameTime prev.tsGame,
                 " and ",
-                T.unpack l.plGameTime
+                showGameTime l.plGameTime
                 ]
             pure ss
+
+showGameTime :: Maybe Text -> String
+showGameTime = maybe "unknown game time" T.unpack
 
 showMHz :: Word64 -> String
 showMHz f = fstr <> " MHz" where
@@ -269,28 +292,39 @@ showStats' grace ownship m = do
             putStrLn $ "  " <> showSpeaker ownship (fst y) <> ": " <> showDuration (snd y)
 
 
-parsePtts :: Parser [PttLine]
-parsePtts = do
-    _ <- skipTill (string "Flying state changed: false -> true" *> endOfLine) <?> "3D start"
-    -- manyTill discards a failure of its end parser, so the label goes on the whole loop.
-    ptts <- manyTill maybePttLine (markerLine "Flying state changed: true -> false") <?> "3D end"
-    pure $ catMaybes ptts
+parseLog :: Parser [LogLine]
+parseLog = catMaybes <$> manyTill maybeLogLine endOfInput
 
-markerLine :: ByteString -> Parser ()
-markerLine l = manyTill (satisfy (not . isEndOfLine)) (string l) *> endOfLine
-
--- Can a man get some Boyer-Moore?
-skipTill :: Parser a -> Parser a
-skipTill end = go
-  where go = end <|> (anyChar *> go)
-
--- Like skipTill, but fails at the end of the line instead of looking at the next one.
+-- Skip ahead until end parses, but fail at the end of the line instead of looking at the next one.
 skipInLine :: Parser a -> Parser a
 skipInLine end = go
   where go = end <|> (satisfy (not . isEndOfLine) *> go)
 
-maybePttLine :: Parser (Maybe PttLine)
-maybePttLine = (Just <$> pttLine) <|> (Nothing <$ takeLine)
+maybeLogLine :: Parser (Maybe LogLine)
+maybeLogLine = (Just <$> logLine) <|> (Nothing <$ takeLine)
+
+-- ModeChange has the timestamp of its line, to label the sortie it starts.
+data LogLine = Ptt PttLine | ModeChange Text GameMode | ClientStart
+
+logLine :: Parser LogLine
+logLine = (Ptt <$> pttLine) <|> modeLine <|> (ClientStart <$ startLine)
+
+-- ex: 2026-09-26 15:09:25.093 -04:00 [INF] [OpenFreqClient.ViewModels.SettingsViewModel] Game mode changed to In-game
+-- BMS mode logs this when the flying state changes. GCI mode logs it when the user changes the mode.
+modeLine :: Parser LogLine
+modeLine = do
+    lineHas "Game mode changed to "
+    ts <- manyTill (satisfy (not . isEndOfLine)) (string " [")
+    _ <- skipInLine $ string "Game mode changed to "
+    mode <- (InGame <$ string "In-game") <|> (InLobby <$ string "Lobby")
+    endOfLine
+    pure $ ModeChange (decodeUtf8 $ BS.pack ts) mode
+
+-- ex: 2026-09-26 15:52:39.273 -04:00 [INF] [] OpenFreq Client 1.1.4 starting
+startLine :: Parser ()
+startLine = do
+    lineHas "] OpenFreq Client "
+    skipInLine $ string " starting" *> endOfLine
 
 data PttEdge = PttStart | PttEnd
     deriving stock (Show, Eq)
@@ -312,7 +346,7 @@ data PttLine = PttLine {
     plWho :: !Speaker,
     plFrequency :: !Word64,
     plGameMode :: Maybe GameMode,
-    plGameTime :: !Text
+    plGameTime :: !(Maybe Text)
     }
 
 -- ex: 2026-09-19 13:11:39.653 -07:00 [INF] [OpenFreqClient.Services.OpenFreqService] PTT start: Turcu (34092373-30da-487a-b58e-8c6de88466a8) on 139.700 MHz, 3D, game time 01:01:10
@@ -342,8 +376,10 @@ pttLine = do
     -- Only PTT start lines from other players have a mode.
     -- PTT end lines and our own radio's lines don't.
     mode <- optional . skipInLine $ (InLobby <$ string "2D") <|> (InGame <$ string "3D")
-    gt <- skipInLine gameTime
-    endOfLine
+    -- Lines have no game time when the client has no game clock.
+    gt <- optional $ skipInLine gameTime
+    -- Without a game time, nothing above consumes the end reason (", released").
+    _ <- takeLine
     pure $ PttLine t edge spk freq mode gt
 
 twoDigit :: Parser Integer
@@ -366,5 +402,6 @@ lineHas t = do
     l <- lookAhead $ takeTill isEndOfLine
     guard $ t `BS.isInfixOf` l
 
+-- The last line of a log that is still being written can have no line ending.
 takeLine :: Parser ByteString
-takeLine = takeTill isEndOfLine <* endOfLine
+takeLine = takeTill isEndOfLine <* (endOfLine <|> endOfInput)
