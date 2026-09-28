@@ -85,20 +85,24 @@ run grace ownship fh = do
 -- | What we track as we read the log.
 data ReadState = ReadState !HeardState !MissionState
 
--- | When did a player talk? When did they step on others?
+-- | When did a player talk? When did they step on others? When did others talk over them?
 -- These are (start, end) times, which we merge when we show them,
 -- so that talking on two frequencies at once counts once.
 -- (Someone keying several radios at once will generate several PTT downs in sequence.)
 data PlayerStats = PlayerStats {
     talks :: [(Milli, Milli)],
-    steps :: [(Milli, Milli)]
+    steps :: [(Milli, Milli)],
+    -- | When others talked over this player, on a frequency where this player started talking first.
+    -- No grace period unlike the other stats.
+    -- (Even if it's nobody's fault, you still can't be heard!)
+    steppedOn :: [(Milli, Milli)]
 }
 
 instance Semigroup PlayerStats where
-    l <> r = PlayerStats (l.talks <> r.talks) (l.steps <> r.steps)
+    l <> r = PlayerStats (l.talks <> r.talks) (l.steps <> r.steps) (l.steppedOn <> r.steppedOn)
 
 instance Monoid PlayerStats where
-    mempty = PlayerStats [] []
+    mempty = PlayerStats [] [] []
 
 -- | Tracked as we fold the log - per-frequency stats (and who's talking) and per-player stats.
 data MissionState = MissionState {
@@ -118,7 +122,8 @@ data HeterodyneState = NoStep | Stepping !Milli
 data SpeakerState = SpeakerState {
     start :: !Milli,
     gameTime :: Maybe Text,
-    step :: !StepVerdict
+    step :: !StepVerdict,
+    startedFirst :: !Bool
     }
 
 -- | Did this PTT step on anyone?
@@ -211,11 +216,16 @@ accTalk grace ownship ms l@PttLine{edge = PttEnd} = case ms.frequencies WM.!? l.
                     -- The folks we started over are still talking, so we overlapped them this whole time.
                     Pending _ -> l.time - sstate.start > grace
                     Clean -> False
-                ps = PlayerStats [talk] [talk | stepped]
-                newStats = HM.insertWith (<>) l.who ps ms.playerStats
+                others = HM.delete l.who f.speakers
+                -- If we started first, anyone still talking who started after us has talked over us since they started.
+                overUs = [(s.start, l.time) | sstate.startedFirst, s <- HM.elems others, s.start > sstate.start]
+                -- If someone still talking started first, we have talked over them this whole time.
+                overThem = [(who, PlayerStats [] [] [talk]) | (who, s) <- HM.toList others, s.startedFirst, s.start < sstate.start]
+                ps = PlayerStats [talk] [talk | stepped] overUs
+                newStats = foldr (uncurry $ HM.insertWith (<>)) ms.playerStats $ (l.who, ps) : overThem
                 -- They're not speaking no more,
                 -- so we know if anyone who started over them stepped on them.
-                newSpeakers = HM.map (victimStopped grace l) $ HM.delete l.who f.speakers
+                newSpeakers = HM.map (victimStopped grace l) others
                 -- Are the terrible noises over? And if so, how long were they going?
                 (newHetState, stepToAdd) = case f.heterodyneState of
                     NoStep -> (NoStep, 0)
@@ -269,7 +279,7 @@ pttOnFreq grace ownship ss l = assert (l.edge == PttStart) $ do
         victims = HM.keysSet $ HM.filter (\s -> l.time - s.start > grace) ss
         verdict = if HS.null victims then Clean else Pending victims
     case ss HM.!? l.who of
-        Nothing -> pure $ HM.insert l.who (SpeakerState l.time l.gameTime verdict) ss
+        Nothing -> pure $ HM.insert l.who (SpeakerState l.time l.gameTime verdict (HM.null ss)) ss
         Just prev -> do
             hPutStrLn stderr $ mconcat [
                 "warning: back-to-back PTT downs from ",
@@ -353,6 +363,12 @@ showStats' grace ownship m = do
     unless (null steppers') $ do
         putStrLn "Your timer keeps counting even if the others stopped talking first."
         putStrLn "(You didn't know that, you were busy yapping!)"
+
+    let steppees = ranked $ second (unionLength . (.steppedOn)) <$> ps
+    unless (null steppees) $ do
+        putStrLn "\nSteppees:"
+        forM_ steppees $ \(who, t) ->
+            putStrLn $ "  " <> showSpeaker ownship who <> ": " <> showDuration t
 
     let yappers = ranked $ second (unionLength . (.talks)) <$> ps
     unless (null yappers) $ do
