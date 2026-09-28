@@ -1,6 +1,6 @@
 import Control.Exception
 import Control.Monad
-import Data.Attoparsec.ByteString (IResult(..), parseWith)
+import Data.Attoparsec.ByteString (IResult(..))
 import Data.ByteString qualified as BS
 import Data.Bifunctor
 import Data.Fixed
@@ -23,10 +23,10 @@ import Data.Ord (Down(..))
 
 import Parser
 
-data Options = Options
-    { input :: Maybe FilePath
-    , grace :: Milli
-    , ownshipName :: String
+data Options = Options {
+    input :: Maybe FilePath ,
+    grace :: Milli,
+    ownshipName :: String
     }
     deriving stock (Show)
 
@@ -69,22 +69,29 @@ main = do
 run :: Milli -> String -> Handle -> IO ()
 run grace ownship fh = do
     let refill = BS.hGet fh $ 1024 * 1024
-    res <- parseWith refill parseLog =<< refill
+        -- Fold in each line that in-game players hear, as we read it.
+        step (ReadState heard ms) line = do
+            let (heard', event) = inGamePtt heard line
+            ReadState heard' <$> maybe (pure ms) (accEvent grace ownship ms) event
+    res <- foldLog refill step $ ReadState (HeardState InLobby HS.empty) (MissionState mempty mempty)
     case res of
         Fail _ ctxs msg -> do
             mapM_ (\c -> hPutStrLn stderr $ "in " <> c <> ":") ctxs
             hPutStrLn stderr msg
             exitFailure
-        Done _ ls -> process grace ownship ls
+        Done _ (ReadState _ ms) -> showStats grace ownship ms
         Partial _ -> error "absurd: partial result"
+
+-- | What we track as we read the log.
+data ReadState = ReadState !HeardState !MissionState
 
 -- | When did a player talk? When did they step on others?
 -- These are (start, end) times, which we merge when we show them,
 -- so that talking on two frequencies at once counts once.
 -- (Someone keying several radios at once will generate several PTT downs in sequence.)
 data PlayerStats = PlayerStats {
-    talks :: ![(Milli, Milli)],
-    steps :: ![(Milli, Milli)]
+    talks :: [(Milli, Milli)],
+    steps :: [(Milli, Milli)]
 }
 
 instance Semigroup PlayerStats where
@@ -100,7 +107,7 @@ data MissionState = MissionState {
     }
 
 data FrequencyState = FrequencyState {
-    heterodyneState :: HeterodyneState,
+    heterodyneState :: !HeterodyneState,
     heterodyneSum :: !Milli,
     speakers :: !(HashMap Speaker SpeakerState)
     }
@@ -110,7 +117,7 @@ data HeterodyneState = NoStep | Stepping !Milli
 
 data SpeakerState = SpeakerState {
     start :: !Milli,
-    gameTime :: !(Maybe Text),
+    gameTime :: Maybe Text,
     step :: !StepVerdict
     }
 
@@ -123,40 +130,39 @@ data StepVerdict
     | Pending !(HashSet Speaker)
     | Stepped
 
-process :: Milli -> String -> [LogLine] -> IO ()
-process grace ownship ls = do
-    res <- foldM (accEvent grace ownship) (MissionState mempty mempty) (inGamePtts ls)
-    showStats grace ownship res
-
 -- | What we fold into our mission state.
 data Event = Heard PttLine | Restart
+
+-- | What we need to know to decide which PTTs in-game players hear.
+data HeardState = HeardState {
+    mode :: !GameMode,
+    -- | PTT starts we ignored, so that we can ignore the PTT end too.
+    dropped :: !(HashSet (Speaker, Word64))
+    }
 
 -- Keep only the PTTs that in-game (3D) players hear, and the restarts that end all PTTs.
 -- For a client log, this is non-lobby comm while we were in-game, and our own PTTs from that time.
 -- For a server log, this is every PTT from an in-game player, on every frequency.
-inGamePtts :: [LogLine] -> [Event]
-inGamePtts = go InLobby HS.empty where
-    go _ _ [] = []
-    -- Assume clients always start in-lobby, so wait for a transition to game mode.
-    -- A restart also ends the PTTs we ignored.
-    go _ _ (AppStart : ls) = Restart : go InLobby HS.empty ls
-    go _ dropped (ModeChange mode : ls) = go mode dropped ls
-    -- `dropped` is tracking PTT starts we ignored so that we can ignore the PTT end too.
-    go mode !dropped (Ptt l : ls) = case l.edge of
-        PttStart
-            -- Out of caution, remove any previously ignored PTT start that had no end
-            -- (e.g., someone crashes while talking in the lobby, then reconnects.)
-            -- so that we don't ignore a PTT end for this start (which we heard!)
-            | heard -> Heard l : go mode (HS.delete k dropped) ls
-            | otherwise -> go mode (HS.insert k dropped) ls
-        PttEnd
-            | HS.member k dropped -> go mode (HS.delete k dropped) ls
-            | otherwise -> Heard l : go mode dropped ls
-      where
-        k = (l.who, l.frequency)
-        -- On server logs, all comm is marked as InLobby or InGame.
-        -- On client logs, our own aren't (so track when we enter game mode).
-        heard = (l.source == Server || mode == InGame) && l.gameMode /= Just InLobby
+inGamePtt :: HeardState -> LogLine -> (HeardState, Maybe Event)
+-- Assume clients always start in-lobby, so wait for a transition to game mode.
+-- A restart also ends the PTTs we ignored.
+inGamePtt _ AppStart = (HeardState InLobby HS.empty, Just Restart)
+inGamePtt hs (ModeChange mode) = (hs{mode = mode}, Nothing)
+inGamePtt hs (Ptt l) = case l.edge of
+    PttStart
+        -- Out of caution, remove any previously ignored PTT start that had no end
+        -- (e.g., someone crashes while talking in the lobby, then reconnects.)
+        -- so that we don't ignore a PTT end for this start (which we heard!)
+        | heard -> (hs{dropped = HS.delete k hs.dropped}, Just $ Heard l)
+        | otherwise -> (hs{dropped = HS.insert k hs.dropped}, Nothing)
+    PttEnd
+        | HS.member k hs.dropped -> (hs{dropped = HS.delete k hs.dropped}, Nothing)
+        | otherwise -> (hs, Just $ Heard l)
+  where
+    k = (l.who, l.frequency)
+    -- On server logs, all comm is marked as InLobby or InGame.
+    -- On client logs, our own aren't (so track when we enter game mode).
+    heard = (l.source == Server || hs.mode == InGame) && l.gameMode /= Just InLobby
 
 accEvent :: Milli -> String -> MissionState -> Event -> IO MissionState
 accEvent grace ownship ms (Heard l) = accTalk grace ownship ms l

@@ -9,15 +9,27 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Fixed
 import Data.Hashable
-import Data.Maybe
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding (decodeUtf8)
 import Data.Word
 import GHC.Generics
 
-parseLog :: Parser [LogLine]
-parseLog = catMaybes <$> manyTill maybeLogLine endOfInput
+-- | Fold over a log as we parse it line by line, getting more input from `refill` as needed.
+-- Attoparsec keeps all the input of a parse buffered in case of backtracking,
+-- so parse each line individually.
+foldLog :: IO ByteString -> (s -> LogLine -> IO s) -> s -> IO (Result s)
+foldLog refill step = go BS.empty where
+    go rest !s
+        -- Between lines, get more input ourselves to find the end of the log.
+        -- (At the end of the input, maybeLogLine matches an empty line forever.)
+        | BS.null rest = do
+            chunk <- refill
+            if BS.null chunk then pure $ Done BS.empty s else line chunk s
+        | otherwise = line rest s
+    line input s = parseWith refill maybeLogLine input >>= \case
+        Done rest l -> go rest =<< maybe (pure s) (step s) l
+        failed -> pure $ s <$ failed
 
 -- Skip ahead until end parses, but fail at the end of the line instead of looking at the next one.
 skipInLine :: Parser a -> Parser a
@@ -68,7 +80,7 @@ startLine = do
 data PttEdge = PttStart | PttEnd
     deriving stock (Show, Eq)
 
-data Speaker = Own | Named Text
+data Speaker = Own | Named !Text
     deriving stock (Eq, Generic)
     deriving anyclass (Hashable)
 
@@ -85,7 +97,7 @@ data PttLine = PttLine {
     who :: !Speaker,
     frequency :: !Word64,
     gameMode :: Maybe GameMode,
-    gameTime :: !(Maybe Text)
+    gameTime :: Maybe Text
     }
 
 -- ex: 2026-09-19 13:11:39.653 -07:00 [INF] [OpenFreqClient.Services.OpenFreqService] PTT start: Turcu (34092373-30da-487a-b58e-8c6de88466a8) on 139.700 MHz, 3D, game time 01:01:10
