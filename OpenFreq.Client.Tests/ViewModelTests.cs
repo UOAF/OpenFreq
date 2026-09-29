@@ -245,6 +245,28 @@ public class LocationViewModelTests
         openFreq.Received(1).JoinFrequencyAsync(Arg.Any<int>(), Arg.Any<Guid>(), Arg.Any<RadioStationData>());
     }
 
+    [Fact]
+    public async Task LeaveAllChannels_LeavesEveryCard_WhenTheCollectionChangesMidway()
+    {
+        var openFreq = VmFactory.OpenFreq();
+        var location = VmFactory.Location(openFreq: openFreq);
+        var cards = Enumerable.Range(0, 3).Select(_ => CardIn(location)).ToList();
+        foreach (var card in cards) location.Channels.Add(card);
+
+        var left = new List<Guid>();
+        openFreq.LeaveFrequencyAsync(Arg.Any<int>(), Arg.Any<Guid>())
+            .Returns(async ci =>
+            {
+                left.Add(ci.ArgAt<Guid>(1));
+                location.Channels.Clear();
+                await Task.Yield();
+            });
+
+        await location.LeaveAllChannelsAsync();
+
+        Assert.Equal(cards.Select(c => c.Id), left);
+    }
+
     private static (IOpenFreqService OpenFreq, LocationViewModel Other, LocationViewModel Owner) TwoLocations()
     {
         var openFreq = VmFactory.OpenFreq();

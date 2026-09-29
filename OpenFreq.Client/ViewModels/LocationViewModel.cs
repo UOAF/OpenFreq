@@ -377,7 +377,8 @@ public partial class LocationViewModel : ViewModelBase, IDisposable
     {
         // Leave every card, not just those showing Connected. That status lags the join, so a card that
         // joined a moment ago can still show Disconnected. The service ignores cards that never joined.
-        foreach (var channel in Channels)
+        // Iterate over a copy, since the cards can change while a leave is awaited.
+        foreach (var channel in Channels.ToList())
         {
             await _openFreqService.LeaveFrequencyAsync(channel.FrequencyKhz, channel.Id);
         }

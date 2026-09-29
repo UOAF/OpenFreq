@@ -5,6 +5,7 @@ using FalconRadioService.Models;
 using FalconRadioService.Services;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Client.Models;
+using OpenFreq.Common;
 using OpenFreqClient.Models;
 using OpenFreqClient.Services.Interfaces;
 using OpenFreqClient.ViewModels;
@@ -166,6 +167,39 @@ public class BmsSlotSwitchTests
         Assert.Equal([Uhf5], bms.Joined(RadioType.Radio1));
     }
 
+    /// <summary>
+    /// A reconnect must keep the cards. OpenFreqService holds its slots by card ID, so a new card would leave
+    /// the old slot joined, and transmitting if it was, with nothing that can reach it.
+    /// </summary>
+    [Fact]
+    public async Task Reconnect_KeepsTheCards_AndCatchesUpOnAMissedRetune()
+    {
+        var bms = new BmsRadios();
+        bms.SetRadio(RadioType.Radio1, Uhf1, isOn: true);
+        bms.SetRadio(RadioType.Radio2, Uhf5, isOn: true);
+        bms.PowerOn(RadioType.Radio1);
+        bms.PowerOn(RadioType.Radio2);
+        await bms.Settles(() => bms.Joined(RadioType.Radio1).SequenceEqual([Uhf1]) &&
+                                bms.Joined(RadioType.Radio2).SequenceEqual([Uhf5]));
+        var cardsBefore = bms.Location.Channels.ToList();
+        var radio2 = bms.Card(RadioType.Radio2);
+
+        // While the client reconnects, a switch can't join or leave, so this retune is dropped.
+        bms.SetAuthenticated(false);
+        bms.Retune(RadioType.Radio1, Uhf1, Uhf2);
+        await Task.Delay(100);
+        Assert.Equal([Uhf1], bms.Joined(RadioType.Radio1));
+
+        bms.SetAuthenticated(true);
+        bms.OpenFreq.ClearReceivedCalls();
+        bms.Authenticate();
+
+        await bms.Settles(() => bms.Joined(RadioType.Radio1).SequenceEqual([Uhf2]));
+        Assert.Equal(cardsBefore, bms.Location.Channels);
+        Assert.Equal([Uhf5], bms.Joined(RadioType.Radio2));
+        await bms.OpenFreq.DidNotReceive().LeaveFrequencyAsync(Uhf5, radio2.Id);
+    }
+
     private static readonly TimeSpan WaitLimit = TimeSpan.FromSeconds(5);
 
     /// <summary>
@@ -175,6 +209,7 @@ public class BmsSlotSwitchTests
     private sealed class BmsRadios
     {
         private readonly IFalconRadioSharedMemoryService _rcc = Substitute.For<IFalconRadioSharedMemoryService>();
+        private readonly IOpenFreqService _openFreq = VmFactory.OpenFreq();
         private readonly CapturingLogger<ChannelCardListViewModel> _logger = new();
         private readonly Dictionary<RadioType, ChannelCardViewModel> _cards = new();
         private readonly Dictionary<RadioType, RadioChannel> _radios = new();
@@ -190,10 +225,9 @@ public class BmsSlotSwitchTests
 
         public BmsRadios()
         {
-            var openFreq = VmFactory.OpenFreq();
-            openFreq.IsAuthenticated.Returns(true);
+            _openFreq.IsAuthenticated.Returns(true);
 
-            openFreq.JoinFrequencyAsync(Arg.Any<int>(), Arg.Any<Guid>(), Arg.Any<RadioStationData>())
+            _openFreq.JoinFrequencyAsync(Arg.Any<int>(), Arg.Any<Guid>(), Arg.Any<RadioStationData>())
                 .Returns(async ci =>
                 {
                     var frequencyKhz = ci.ArgAt<int>(0);
@@ -211,20 +245,20 @@ public class BmsSlotSwitchTests
                     }
                 });
 
-            openFreq.LeaveFrequencyAsync(Arg.Any<int>(), Arg.Any<Guid>())
+            _openFreq.LeaveFrequencyAsync(Arg.Any<int>(), Arg.Any<Guid>())
                 .Returns(ci =>
                 {
                     lock (_gate) _joined.Remove((ci.ArgAt<int>(0), ci.ArgAt<Guid>(1)));
                     return Task.CompletedTask;
                 });
 
-            openFreq.IsFrequencyJoined(Arg.Any<int>(), Arg.Any<Guid>())
+            _openFreq.IsFrequencyJoined(Arg.Any<int>(), Arg.Any<Guid>())
                 .Returns(ci =>
                 {
                     lock (_gate) return _joined.Contains((ci.ArgAt<int>(0), ci.ArgAt<Guid>(1)));
                 });
 
-            openFreq.GetJoinedFrequencies(Arg.Any<Guid>())
+            _openFreq.GetJoinedFrequencies(Arg.Any<Guid>())
                 .Returns(IReadOnlyList<int> (ci) =>
                 {
                     var slotId = ci.ArgAt<Guid>(0);
@@ -240,12 +274,12 @@ public class BmsSlotSwitchTests
             var hotkey = VmFactory.Hotkey();
             var falcon = Substitute.For<IFalconSharedMemoryService>();
             falcon.IsFlying.Returns(true);
-            var vm = VmFactory.ChannelCardList(openFreq, hotkey, _rcc, falcon, _logger);
+            var vm = VmFactory.ChannelCardList(_openFreq, hotkey, _rcc, falcon, _logger);
             vm.Settings.ModeIsGci = false;
 
             // CreateChannel adds the card through the UI dispatcher, which doesn't run in tests,
-            // so the cards are built and added here the way ImportBmsRadioChannels builds them.
-            Location = VmFactory.Location(RadioStationData.RadioStationType.BMS, openFreq);
+            // so the cards are built and added here the way CreateBmsLocation builds them.
+            Location = VmFactory.Location(RadioStationData.RadioStationType.BMS, _openFreq);
             foreach (var type in Enum.GetValues<RadioType>())
             {
                 _radios[type] = new RadioChannel(type) { Frequency = 0, IsOn = false };
@@ -261,7 +295,18 @@ public class BmsSlotSwitchTests
             vm.FalconLocation = Location;
         }
 
+        public IOpenFreqService OpenFreq => _openFreq;
+
         public ChannelCardViewModel Card(RadioType type) => _cards[type];
+
+        public void SetAuthenticated(bool isAuthenticated) => _openFreq.IsAuthenticated.Returns(isAuthenticated);
+
+        /// <summary>
+        /// Raises the event that the service raises when a connect or a reconnect authenticates.
+        /// </summary>
+        public void Authenticate() =>
+            _openFreq.ConnectionStateChanged +=
+                Raise.EventWith(new ConnectionStateChangedEventArgs(ConnectionState.Authenticated));
 
         public IReadOnlyList<int> Joined(RadioType type)
         {

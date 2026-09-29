@@ -209,18 +209,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         if (e == ConnectionState.Authenticated && !_settings.ModeIsGci)
         {
             _logger.LogDebug("OpenFreq authenticated, importing and joining BMS channels");
-
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await ImportBmsRadioChannels();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to import/join BMS channels");
-                }
-            });
+            StartBmsImport();
         }
         else if (e == ConnectionState.Authenticated && _settings.ModeIsGci)
         {
@@ -360,75 +349,101 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
             QueueSlotSwitch(type);
     }
 
+    /// <summary>
+    /// Runs <see cref="ImportBmsRadioChannels"/> on the thread pool. Its callers handle events on threads that must
+    /// not block: the WebSocket receive loop and the RCC polling loop.
+    /// </summary>
+    private void StartBmsImport()
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await ImportBmsRadioChannels();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to import/join BMS channels");
+            }
+        });
+    }
+
+    /// <summary>
+    /// Makes sure the BMS location has one card per radio slot, then switches each slot to the state BMS reports now.
+    /// </summary>
+    /// <remarks>
+    /// The cards are built once per BMS session, and a reconnect keeps them. OpenFreqService holds its slots by card
+    /// ID, so a new card would leave the old slot joined (and transmitting, if it was) with no card that can reach it.
+    /// The RTC client rejoins the frequencies itself.
+    /// </remarks>
     private async Task ImportBmsRadioChannels()
     {
-        await Dispatcher.UIThread.InvokeAsync(() =>
+        if (FalconLocation == null)
+            await Dispatcher.UIThread.InvokeAsync(CreateBmsLocation);
+
+        // Tune and join each slot from the state BMS reports right now. After a reconnect, this also applies
+        // the changes that switches dropped while the client wasn't authenticated.
+        foreach (var type in Enum.GetValues<RadioType>())
+            QueueSlotSwitch(type);
+
+        // Apply current BMS volume levels — SyncBmsChannelPowerStates (which calls
+        // SyncBmsChannelVolumeStates) only fires on ReadyToTransmit false→true transition.
+        // When ReadyToTransmit stays true across a reconnect that transition never fires,
+        // so we sync volumes explicitly here.
+        SyncBmsChannelVolumeStates();
+    }
+
+    private void CreateBmsLocation()
+    {
+        lock (_channelImportLock)
         {
-            lock (_channelImportLock)
+            // Another import built it first.
+            if (FalconLocation != null) return;
+
+            FalconLocation = CreateLocation(BmsLocationName, RadioStationPresets.FighterF16,
+                RadioStationData.RadioStationType.BMS);
+
+            // One card per radio slot, always. Two radios on one frequency are a normal BMS state,
+            // so the cards must never be merged or dropped: the slot, not the frequency, is the identity.
+            foreach (var type in Enum.GetValues<RadioType>())
             {
-                if (FalconLocation == null)
+                var falconChannel = _falconRadioSharedMemoryService.GetRadioChannel(type);
+                var channelName = type switch
                 {
-                    FalconLocation = CreateLocation(BmsLocationName, RadioStationPresets.FighterF16,
-                        RadioStationData.RadioStationType.BMS);
-                }
-                else
-                {
-                    FalconLocation.LeaveAllChannelsAsync().Wait(300);
-                    FalconLocation.Channels.Clear();
-                }
+                    RadioType.Radio1 => "Radio 1",
+                    RadioType.Radio2 => "Radio 2",
+                    RadioType.Guard => "Guard",
+                    _ => type.ToString()
+                };
+                var channel = FalconLocation.CreateChannel(falconChannel?.Frequency ?? 0,
+                    channelName,
+                    false, type);
+                channel.IsEditable = false;
 
-                // One card per radio slot, always. Two radios on one frequency are a normal BMS state,
-                // so the cards must never be merged or dropped: the slot, not the frequency, is the identity.
-                foreach (var type in Enum.GetValues<RadioType>())
+                // set hotkeys and Pan from Settings
+                switch (type)
                 {
-                    var falconChannel = _falconRadioSharedMemoryService.GetRadioChannel(type);
-                    var channelName = type switch
-                    {
-                        RadioType.Radio1 => "Radio 1",
-                        RadioType.Radio2 => "Radio 2",
-                        RadioType.Guard => "Guard",
-                        _ => type.ToString()
-                    };
-                    var channel = FalconLocation.CreateChannel(falconChannel?.Frequency ?? 0,
-                        channelName,
-                        false, type);
-                    channel.IsEditable = false;
-
-                    // set hotkeys and Pan from Settings
-                    switch (type)
-                    {
-                        case RadioType.Radio1:
-                            channel.PttHotKey = new KeyboardBinding(KeyCode.VcF1);
-                            channel.SquelchHotKey = _settings.BmsUhfSquelchHotkey;
-                            channel.Pan = _settings.BmsRadio1Pan;
-                            break;
-                        case RadioType.Radio2:
-                            channel.PttHotKey = new KeyboardBinding(KeyCode.VcF2);
-                            channel.SquelchHotKey = _settings.BmsVhfSquelchHotkey;
-                            channel.Pan = _settings.BmsRadio2Pan;
-                            break;
-                        case RadioType.Guard:
-                            channel.PttHotKey = new KeyboardBinding(KeyCode.VcF3);
-                            channel.SquelchHotKey = _settings.BmsUhfSquelchHotkey;
-                            channel.Pan = _settings.BmsRadio1Pan;
-                            break;
-                        default:
-                            _logger.LogWarning("Unknown radio type: " + type);
-                            break;
-                    }
+                    case RadioType.Radio1:
+                        channel.PttHotKey = new KeyboardBinding(KeyCode.VcF1);
+                        channel.SquelchHotKey = _settings.BmsUhfSquelchHotkey;
+                        channel.Pan = _settings.BmsRadio1Pan;
+                        break;
+                    case RadioType.Radio2:
+                        channel.PttHotKey = new KeyboardBinding(KeyCode.VcF2);
+                        channel.SquelchHotKey = _settings.BmsVhfSquelchHotkey;
+                        channel.Pan = _settings.BmsRadio2Pan;
+                        break;
+                    case RadioType.Guard:
+                        channel.PttHotKey = new KeyboardBinding(KeyCode.VcF3);
+                        channel.SquelchHotKey = _settings.BmsUhfSquelchHotkey;
+                        channel.Pan = _settings.BmsRadio1Pan;
+                        break;
+                    default:
+                        _logger.LogWarning("Unknown radio type: " + type);
+                        break;
                 }
             }
-
-            // Tune and join each slot from the state BMS reports right now.
-            foreach (var type in Enum.GetValues<RadioType>())
-                QueueSlotSwitch(type);
-
-            // Apply current BMS volume levels — SyncBmsChannelPowerStates (which calls
-            // SyncBmsChannelVolumeStates) only fires on ReadyToTransmit false→true transition.
-            // When ReadyToTransmit stays true across a reconnect that transition never fires,
-            // so we sync volumes explicitly here after the channel list is built.
-            SyncBmsChannelVolumeStates();
-        });
+        }
     }
 
     private void OnBmsPttChanged(object? sender, RadioPttChangedEventArgs e)
@@ -496,7 +511,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         if (FalconLocation == null)
         {
             _logger.LogWarning("Unclean state: FalconLocation is null, reimporting");
-            ImportBmsRadioChannels().Wait(100);
+            StartBmsImport();
             return;
         }
 
