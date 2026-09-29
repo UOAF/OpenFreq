@@ -416,7 +416,7 @@ public class OpenFreqRtcClient : IRtcClient
     /// <see cref="RtpAudioSender.MarkTransmitStartTime"/>
     public void MarkTransmitStartTime()
     {
-        _rtpSender!.MarkTransmitStartTime();
+        _rtpSender?.MarkTransmitStartTime();
     }
 
     public void SendAudio(Memory<short> pcmData, List<(int frequencyKhz, double txPowerWatts, double ppm, Vector3? position, Vector3? velocity, AmbientNoiseType ambientNoiseType)> frequencies, bool in3d)

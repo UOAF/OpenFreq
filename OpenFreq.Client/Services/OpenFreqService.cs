@@ -812,6 +812,15 @@ public class OpenFreqService : IOpenFreqService
             throw new InvalidOperationException("Service not initialized");
         }
 
+        // While the client reconnects, it has no RTP sender and the server has no session for our start.
+        // A key recorded now would send audio with no start once the link came back, so refuse it.
+        // The release then has nothing to undo.
+        if (!_client.IsConnected)
+        {
+            _logger.LogWarning("Not transmitting on {FrequencyKhz}, not connected to the server", frequencyKhz);
+            return;
+        }
+
         // Only a slot that tuned this frequency has the radio data the record callback sends with.
         // It's checked again under the lock below; checking here too avoids opening the mic for nothing.
         if (!_tunedSlots.ContainsKey((frequencyKhz, slotId)))

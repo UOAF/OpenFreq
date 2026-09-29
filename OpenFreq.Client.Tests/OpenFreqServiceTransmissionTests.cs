@@ -1,3 +1,6 @@
+using Microsoft.Extensions.Logging;
+using OpenFreqClient.Services;
+
 namespace OpenFreq.Client.Tests;
 
 /// <summary>
@@ -21,6 +24,32 @@ public class OpenFreqServiceTransmissionTests
 
         await h.Client.DidNotReceiveWithAnyArgs().StartTransmissionAsync(default, default);
         h.Playback.DidNotReceiveWithAnyArgs().SetTransmittingFrequencies(default!);
+    }
+
+    /// <summary>
+    /// A press while the client reconnects must not key the slot. A key recorded then would send audio with no
+    /// start once the link came back.
+    /// </summary>
+    [Fact]
+    public async Task StartTransmission_WhileNotConnected_KeysNothing()
+    {
+        var logger = new CapturingLogger<OpenFreqService>();
+        var h = new ServiceHarness(logger);
+        await h.InitializeAuthenticatedAsync();
+        var slot = Guid.NewGuid();
+        await h.Service.JoinFrequencyAsync(Freq, slot, ServiceHarness.NewRadioStation());
+
+        // A transparent reconnect keeps the slot tuned, and the client is briefly authenticated but not connected.
+        h.Client.IsConnected.Returns(false);
+        await h.Service.StartTransmissionAsync(Freq, slot);
+        await h.Service.StopTransmissionAsync(slot);
+
+        h.Client.DidNotReceive().MarkTransmitStartTime();
+        await h.Client.DidNotReceiveWithAnyArgs().StartTransmissionAsync(default, default);
+        await h.Client.DidNotReceiveWithAnyArgs().StopTransmissionAsync(default, default);
+        h.Playback.DidNotReceiveWithAnyArgs().SetTransmittingFrequencies(default!);
+        Assert.DoesNotContain(logger.Entries, e => e.Message.Contains("recording device"));
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("not connected"));
     }
 
     [Fact]
