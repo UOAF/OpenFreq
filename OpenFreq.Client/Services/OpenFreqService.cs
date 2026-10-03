@@ -128,9 +128,8 @@ public class OpenFreqService : IOpenFreqService
     private readonly TimeSpan _audioParamsCacheDuration = TimeSpan.FromMilliseconds(50);
 
     // Physics re-runs at most every _audioParamsCacheDuration while a peer holds the PTT, so a
-    // longer gap than that in the cadence means the next packet opens a new talk-spurt. Same 0.5s
-    // rule RTPJitterbuffer uses to call a released PTT.
-    private static readonly TimeSpan TalkspurtGap = TimeSpan.FromMilliseconds(500);
+    // longer gap than that in the cadence means the next packet opens a new talk-spurt.
+    private static readonly TimeSpan TalkspurtGap = TimeSpan.FromMilliseconds(AudioFormat.TalkspurtGapMs);
 
     // Cache cleanup
     private CancellationTokenSource? _cleanupCts;
