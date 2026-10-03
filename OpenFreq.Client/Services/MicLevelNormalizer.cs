@@ -4,77 +4,95 @@ using OpenFreqAudio;
 namespace OpenFreqClient.Services;
 
 /// <summary>
-/// Transmit-side loudness normalizer for the microphone path. Combats the wide
-/// per-user volume spread (loud mics vs. quiet mics) by slowly steering
-/// each users average level toward a common reference, then brick-wall.
+/// Transmit-side normalizer for player mics, which vary greatly in volume and noise floor.
+/// Steers average volume towards a target RMS and limits peaks to keep us from clipping.
 ///
-/// This is not to be confused by the AGC in the playback loop, it is only used on the TX side.
-/// Survives multiple talk-spurts, initial levelling needs about 1sec.
+/// Not to be confused with automatic gain control in the RF simulation,
+/// which models how a radio handles a weak signal.
 ///
-/// The noise gate is dynamic: while the operator is NOT transmitting the raw mic is fed to
-/// <see cref="UpdateNoiseFloor"/>, which tracks the room's noise floor. That value is then
-/// frozen and used as the gate threshold for the duration of the next talk-spurt, so we don't
-/// chase gain on background hiss.
+/// The noise gate is dynamic - whenever the player isn't transmitting,
+/// <see cref="UpdateNoiseFloor"/> tracks the room's noise floor.
+/// That floor is frozen whenever the user starts talking to prevent wild volume fluctuations
+/// in between words.
 /// </summary>
 public sealed class MicLevelNormalizer
 {
-    // Target average level (root mean squared).
-    // Human speach has a peak-to-average power level
-    // of about 12-18 dB, so we want to be about that many
-    // below full strength.
-    private const float TargetRms = 0.1f; // ~20 dBFS
+    // Target average volume level (root mean squared).
+    // Human speech has a peak-to-average power level of about 12-18 dB, so shoot for -18 dBFS.
+    private const float TargetRms = 0.126f;
+
+    // Avoid boosting more than this to prevent clipping if an excitable gamer suddenly
+    // starts talking loudly.
+    private const float MaxGain = 10f; // +20 dB
 
     // 16-bit PCM full-scale magnitude; maps samples to/from float in ~[-1, 1].
     private const float SampleScale = short.MaxValue;
 
-    // Noise gate. The threshold is tracked from the live mic while idle (UpdateNoiseFloor)
-    // then frozen during transmission. NoiseFloorSeedRms doubles as the startup seed so the
-    // first talk-spurt behaves like the old fixed gate before the estimate has warmed up.
-    private const float NoiseFloorSeedRms = 0.005f; // ~-46 dBFS
+    // Prevent the noise gate from dropping too low in quiet rooms,
+    // or with mics with built-in noise suppression.
+    private const float MinGateRms = 0.001f; // -60 dBFS
 
-    // RMS low-pass (it's a mean, after all)
+    // RMS low-pass time constant
     private const float LevelTau = 0.1f / 3f; // ~33ms, 95% in 100ms
 
     // We want our gain to duck loud inputs quickly,
     // but rise again slowly so that when people push-to-think (boo!)
     // it doesn't crank their volume up and clip once they actually speak.
+    // The ramp runs on ln(gain), so it rises equally slowly in dB at any gain.
+    // (On a linear gain, a large target made the "slow" rise many dB per second.)
     private const float GainRiseTau = 1.0f;
     private const float GainFallTau = 0.05f;
 
-    // Noise floor: slow to rise, quick to fall, so brief non-PTT transients (a cough, a
-    // door) don't ratchet the floor up while it still settles back down to true quiet.
+    // Noise floor: slow to rise, quick to fall, so brief non-PTT transients (a cough, a door)
+    // don't crank the floor up while it still settles back down to true quiet.
     private const float FloorAttackTau = 1.0f; // rising
     private const float FloorDecayTau = 0.3f;  // falling
 
     // TX-path smoothers
     private readonly FirstOrderFilter _level; // Input RMS
-    private readonly AttackDecayFilter _gainRamp; // smoothed applied gain
+    private readonly AttackDecayFilter _gainRamp; // smoothed ln(applied gain)
 
-    // Idle-mic noise-floor follower. Holds the smoothed mean-square (so the asymmetric
-    // attack/decay compares like-for-like); sqrt of its tap is the floor RMS.
+    private readonly PeakLimiter _limiter;
+
+    // Idle-mic noise-floor follower, in RMS.
     private readonly AttackDecayFilter _noiseFloor;
 
     /// <summary>
     /// Current noise-gate threshold (linear RMS). Recomputed from the live mic by
     /// <see cref="UpdateNoiseFloor"/> while idle, then held constant during transmission.
     /// </summary>
-    public float NoiseGateRms { get; private set; } = NoiseFloorSeedRms;
+    public float NoiseGateRms { get; private set; } = MinGateRms;
 
     /// <summary>
-    /// Gain <see cref="Process"/> is currently applying (linear, 1.0 = unity). Held constant while
-    /// the input sits below <see cref="NoiseGateRms"/>, so a gate that stops opening leaves this
-    /// frozen at whatever the last talk-spurt ducked it to — which is worth being able to see.
+    /// Gain <see cref="Process"/> is currently applying (linear, 1.0 = unity), before the limiter.
+    /// Held constant while the input sits below <see cref="NoiseGateRms"/>, so a gate that stops
+    /// opening leaves this frozen at whatever the last talk-spurt ducked it to — which is worth
+    /// being able to see.
     /// </summary>
-    public float CurrentGain => _gainRamp.D1;
+    public float CurrentGain => MathF.Exp(_gainRamp.D1);
+
+    /// <summary>Samples the limiter turned down since <see cref="BeginTalkspurt"/>.</summary>
+    public int LimitedSamples => _limiter.LimitedSamples;
+
+    /// <summary>Largest limiter gain reduction since <see cref="BeginTalkspurt"/>, in dB (positive).</summary>
+    public float MaxLimiterReductionDb => _limiter.MaxReductionDb;
 
     public MicLevelNormalizer(int sampleRate)
     {
         _level = FirstOrderFilter.MakeFirstOrderFilter(LevelTau, sampleRate, TargetRms * TargetRms);
         _gainRamp = AttackDecayFilter.MakeAttackDecayFilter(GainRiseTau, GainFallTau, sampleRate);
+        _gainRamp.D1 = 0; // ln(1): start at unity gain
+        _limiter = new PeakLimiter(sampleRate);
         _noiseFloor = AttackDecayFilter.MakeAttackDecayFilter(FloorAttackTau, FloorDecayTau, sampleRate);
         // Seed in the mean-square domain so early PTT matches the old fixed gate.
-        _noiseFloor.D1 = NoiseFloorSeedRms * NoiseFloorSeedRms;
+        _noiseFloor.D1 = MinGateRms * MinGateRms;
     }
+
+    /// <summary>
+    /// Call before the first <see cref="Process"/> of each talk-spurt to avoid reusing
+    /// the previous transmission's lookahead buffer.
+    /// </summary>
+    public void BeginTalkspurt() => _limiter.Reset();
 
     /// <summary>
     /// Advances the noise-floor estimate from idle-mic samples. Call this with raw mic audio
@@ -90,12 +108,13 @@ public sealed class MicLevelNormalizer
         }
 
         float floorRms = MathF.Sqrt(_noiseFloor.D1);
-        // Add some margin to gate ~3dB above the measured noise floor.
-        NoiseGateRms = floorRms * 2.0f;
+        // Add some margin to gate 6 dB above the measured noise floor.
+        NoiseGateRms = MathF.Max(floorRms * 2.0f, MinGateRms);
     }
 
     /// <summary>
     /// Normalizes <paramref name="count"/> mono 16-bit PCM samples in place.
+    /// Output lags the input by a 2ms for the limiter's lookahead.
     /// </summary>
     public void Process(short[] samples, int count)
     {
@@ -106,16 +125,16 @@ public sealed class MicLevelNormalizer
             // Track the smoothed RMS of the input.
             float rms = MathF.Sqrt(_level.Apply(x * x));
 
-            // Only chase a new gain target when there's actual speech present (above the
-            // frozen noise gate); otherwise hold the last gain so silence isn't pumped up.
-            float desiredGain = rms > NoiseGateRms
-                ? TargetRms / rms
+            // Only adjust the gain when there's actual speech (above the frozen noise floor).
+            float desiredLogGain = rms > NoiseGateRms
+                ? MathF.Log(MathF.Min(TargetRms / rms, MaxGain))
                 : _gainRamp.D1;
 
             // Slowly ramp toward the target
-            float gain = _gainRamp.Apply(desiredGain);
+            float gain = MathF.Exp(_gainRamp.Apply(desiredLogGain));
 
-            float y = Math.Clamp(x * gain, -1, 1);
+            // The limiter should keep us below full scale; the clamp is a last guard.
+            float y = Math.Clamp(_limiter.Process(x * gain), -1, 1);
             samples[i] = (short)(y * SampleScale);
         }
     }

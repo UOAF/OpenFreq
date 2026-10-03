@@ -123,6 +123,8 @@ public class OpenFreqService : IOpenFreqService
     private double _txSentSumSquares;
     private float _txRawPeak;
     private float _txSentPeak;
+    private int _txRawClipped; // raw samples at full scale: the input clipped before we got it
+    private bool _wasTransmitting; // whether the last callback was transmitting, to see a talk-spurt start
 
     // Cache duration - this effectively controls the rate of local physics calculations
     private readonly TimeSpan _audioParamsCacheDuration = TimeSpan.FromMilliseconds(50);
@@ -1041,6 +1043,7 @@ public class OpenFreqService : IOpenFreqService
         // The callback is stopped now, so the talk-spurt accumulators are safe to read: flush a
         // spurt that was still in flight when capture went away (disconnect mid-transmission).
         LogTalkspurtLevel();
+        _wasTransmitting = false;
     }
 
     public async Task NotifyModeAsync(bool is3d)
@@ -1137,6 +1140,21 @@ public class OpenFreqService : IOpenFreqService
         if (peakScaled > peak) peak = peakScaled;
     }
 
+    /// <summary>
+    /// Counts samples at full scale. In raw mic audio, these mean the input clipped (in the ADC
+    /// or in a gain stage before us), which nothing downstream can repair.
+    /// </summary>
+    internal static int CountFullScale(ReadOnlySpan<short> samples)
+    {
+        int count = 0;
+        foreach (var sample in samples)
+        {
+            if (sample >= short.MaxValue || sample <= -short.MaxValue) count++;
+        }
+
+        return count;
+    }
+
     /// <summary>Linear amplitude to dBFS, floored so digital silence stays printable.</summary>
     private static double ToDbFs(double amplitude) => amplitude > 1e-5 ? 20 * Math.Log10(amplitude) : -100;
 
@@ -1153,20 +1171,23 @@ public class OpenFreqService : IOpenFreqService
         var sentRms = Math.Sqrt(_txSentSumSquares / samples);
 
         _logger.LogInformation(
-            "TX level over {DurationMs}ms: mic peak {RawPeak:F1} dBFS rms {RawRms:F1} dBFS | " +
+            "TX level over {DurationMs}ms: mic peak {RawPeak:F1} dBFS rms {RawRms:F1} dBFS, clipped {RawClipped} | " +
             "sent peak {SentPeak:F1} dBFS rms {SentRms:F1} dBFS | " +
-            "normalizer {NormalizerState}, gain {Gain:F3}, gate {Gate:F1} dBFS",
+            "normalizer {NormalizerState}, gain {Gain:F3}, gate {Gate:F1} dBFS, " +
+            "limited {LimitedPercent:F1}% max {LimitDb:F1} dB",
             samples * 1000 / AudioFormat.SampleRate,
-            ToDbFs(_txRawPeak), ToDbFs(rawRms),
+            ToDbFs(_txRawPeak), ToDbFs(rawRms), _txRawClipped,
             ToDbFs(_txSentPeak), ToDbFs(sentRms),
             MicNormalizationEnabled ? "on" : "off",
-            _micNormalizer.CurrentGain, ToDbFs(_micNormalizer.NoiseGateRms));
+            _micNormalizer.CurrentGain, ToDbFs(_micNormalizer.NoiseGateRms),
+            100.0 * _micNormalizer.LimitedSamples / samples, _micNormalizer.MaxLimiterReductionDb);
 
         _txLevelSamples = 0;
         _txRawSumSquares = 0;
         _txSentSumSquares = 0;
         _txRawPeak = 0;
         _txSentPeak = 0;
+        _txRawClipped = 0;
     }
 
     private bool RecordProcedure(int handle, IntPtr buffer, int length, IntPtr user)
@@ -1183,6 +1204,7 @@ public class OpenFreqService : IOpenFreqService
             // gate during transmission: the estimate only advances on this idle path.
             if (transmittingSlots.Count == 0)
             {
+                _wasTransmitting = false;
                 LogTalkspurtLevel();
 
                 if (MicNormalizationEnabled)
@@ -1202,6 +1224,12 @@ public class OpenFreqService : IOpenFreqService
                 return true;
             }
 
+            if (!_wasTransmitting)
+            {
+                _wasTransmitting = true;
+                _micNormalizer.BeginTalkspurt();
+            }
+
             // Copy audio data once
             short[] audioData = new short[length / 2];
             Marshal.Copy(buffer, audioData, 0, audioData.Length);
@@ -1210,6 +1238,7 @@ public class OpenFreqService : IOpenFreqService
             // that only ever delivers silence can be told apart from a normalizer that ducked the
             // audio away. Both land in one log line when the talk-spurt ends.
             AccumulateLevel(audioData, ref _txRawSumSquares, ref _txRawPeak);
+            _txRawClipped += CountFullScale(audioData);
 
             // Normalize transmit level so loud/quiet mics land near a common
             // reference. Applied before sidetone + send so the operator hears
