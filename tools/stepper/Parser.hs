@@ -2,136 +2,184 @@ module Parser where
 
 import Control.Applicative ((<|>), optional)
 import Control.Monad
-import Data.Attoparsec.ByteString hiding (take)
-import Data.Attoparsec.ByteString.Char8 hiding (inClass, takeTill, satisfy, skipWhile, take)
-import Data.Attoparsec.Combinator
+import Data.Attoparsec.ByteString.Char8
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
+import Data.Bifunctor (bimap)
+import Data.ByteString.Char8 qualified as BC
+import Data.Either (isRight)
 import Data.Fixed
-import Data.Hashable
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Text.Encoding (decodeUtf8)
+import Data.Text.Encoding (decodeUtf8Lenient)
 import Data.Word
-import GHC.Generics
 
--- | Fold over a log as we parse it line by line, getting more input from `refill` as needed.
+-- | Read the start line of a session log, then fold over the other lines that we use,
+-- getting more input from `refill` as needed.
+-- Stop with an error if the input is not a session log, or if it has a line that we use but cannot read.
+foldLog :: IO ByteString -> (StartLine -> IO s) -> (s -> LogLine -> IO s) -> IO (Either String s)
+foldLog refill begin step = nextLine refill BS.empty >>= \case
+    Nothing -> pure $ Left "the input is empty, so it is not a session log"
+    Just (l, rest) -> case parseOnly (prefix *> startMessage) l of
+        Left _ -> pure . Left $ mconcat [
+            "line 1 is not an OpenFreq start line, so the input is not a session log:\n  ",
+            showLine l
+            ]
+        Right start -> begin start >>= go (2 :: Int) rest
+  where
+    go !n input !s = nextLine refill input >>= \case
+        Nothing -> pure $ Right s
+        Just (l, rest) -> case readLine l of
+            Right Nothing -> go (n + 1) rest s
+            Right (Just ll) -> step s ll >>= go (n + 1) rest
+            Left problem -> pure . Left $ mconcat [
+                "line ", show n, problemText, ":\n  ", showLine l, hint
+                ]
+              where
+                (problemText, hint) = case problem of
+                    BadPtt -> (" is a PTT line that stepper cannot read", "")
+                    SecondStart -> (" is a second start line",
+                        "\nA session log has one start line. Did someone join two logs?")
+
+showLine :: ByteString -> String
+showLine = T.unpack . decodeUtf8Lenient
+
+-- | The next line and the input after it, or Nothing at the end of the input.
 -- Attoparsec keeps all the input of a parse buffered in case of backtracking,
--- so parse each line individually.
-foldLog :: IO ByteString -> (s -> LogLine -> IO s) -> s -> IO (Result s)
-foldLog refill step = go BS.empty where
-    go rest !s
-        -- Between lines, get more input ourselves to find the end of the log.
-        -- (At the end of the input, maybeLogLine matches an empty line forever.)
-        | BS.null rest = do
-            chunk <- refill
-            if BS.null chunk then pure $ Done BS.empty s else line chunk s
-        | otherwise = line rest s
-    line input s = parseWith refill maybeLogLine input >>= \case
-        Done rest l -> go rest =<< maybe (pure s) (step s) l
-        failed -> pure $ s <$ failed
+-- so we take one line at a time.
+nextLine :: IO ByteString -> ByteString -> IO (Maybe (ByteString, ByteString))
+nextLine refill input
+    -- Between lines, get more input ourselves to find the end of the log.
+    -- (At the end of the input, `line` matches an empty line forever.)
+    | BS.null input = do
+        chunk <- refill
+        if BS.null chunk then pure Nothing else fromChunk chunk
+    | otherwise = fromChunk input
+  where
+    fromChunk i = parseWith refill line i >>= \case
+        Done rest l -> pure $ Just (l, rest)
+        _ -> error "absurd: a line always parses"
+    -- The last line of a log that is still being written can have no line ending.
+    line = do
+        l <- takeTill (== '\n') <* (void (char '\n') <|> endOfInput)
+        pure . fromMaybe l $ BS.stripSuffix "\r" l
 
--- Skip ahead until end parses, but fail at the end of the line instead of looking at the next one.
-skipInLine :: Parser a -> Parser a
-skipInLine end = go
-  where go = end <|> (satisfy (not . isEndOfLine) *> go)
+data LogLine = Ptt PttLine | ModeChange GameMode
 
-maybeLogLine :: Parser (Maybe LogLine)
-maybeLogLine = (Just <$> logLine) <|> (Nothing <$ takeLine)
+data Problem = BadPtt | SecondStart
 
-data LogLine = Ptt PttLine | ModeChange GameMode | AppStart
+-- | Read one line. Lines that we do not use are Nothing.
+readLine :: ByteString -> Either Problem (Maybe LogLine)
+readLine l = case parseOnly ((,) <$> prefix <*> takeByteString) l of
+    -- For example, a line of a stack trace.
+    Left _ -> Right Nothing
+    Right (t, msg)
+        | Just body <- BS.stripPrefix "PTT start: " msg -> ptt t PttStart body
+        | Just body <- BS.stripPrefix "PTT end: " msg -> ptt t PttEnd body
+        | Just body <- BS.stripPrefix "Game mode changed to " msg ->
+            Right . either (const Nothing) (Just . ModeChange) $ parseOnly (gameMode <* endOfInput) body
+        | isRight (parseOnly startMessage msg) -> Left SecondStart
+        | otherwise -> Right Nothing
+  where
+    ptt t edge body = bimap (const BadPtt) (Just . Ptt) $ parseOnly (pttLine t edge) body
 
-logLine :: Parser LogLine
-logLine = (Ptt <$> pttLine) <|> (ModeChange <$> modeLine) <|> (AppStart <$ startLine)
+-- | The start of each line: the seconds since the app started, the level, and the source context.
+-- ex: 8025.123 [INF] [OpenFreqClient.Services.OpenFreqService] PTT start: ...
+prefix :: Parser Milli
+prefix = do
+    seconds <- rational @Rational
+    _ <- string " ["
+    _ <- count 3 . satisfy $ inClass "A-Z"
+    _ <- string "] ["
+    _ <- takeTill (== ']')
+    _ <- string "] "
+    pure $ fromRational seconds
 
--- The time of day at the start of a line, without the date or UTC offset.
--- ex: 2026-09-19 13:11:39.653 -07:00
-lineTime :: Parser Milli
-lineTime = do
-    -- Skip yyyy-mm-dd
-    _ <- count 4 digit *> char8 '-' *> twoDigit *> char8 '-' *> twoDigit *> char8 ' '
-    hh <- twoDigit
-    _ <- char8 ':'
-    mm <- twoDigit
-    _ <- char8 ':'
-    ss <- rational @Rational
-    let h = fromIntegral (60 * 60 * hh) :: Milli
-        m = fromIntegral (60 * mm) :: Milli
-        s = realToFrac ss :: Milli
-    pure $ h + m + s
+data Source = Client | Server
+    deriving stock (Show, Eq)
 
--- ex: 2026-09-26 15:09:25.093 -04:00 [INF] [OpenFreqClient.ViewModels.SettingsViewModel] Game mode changed to In-game
--- BMS mode logs this when the flying state changes. GCI mode logs it when the user changes the mode.
-modeLine :: Parser GameMode
-modeLine = do
-    lineHas "Game mode changed to "
-    _ <- skipInLine $ string "Game mode changed to "
-    mode <- (InGame <$ string "In-game") <|> (InLobby <$ string "Lobby")
-    endOfLine
-    pure mode
+data StartLine = StartLine {
+    source :: !Source,
+    version :: !Text,
+    -- | When the app started, like 2026-09-26 14:21:20 -04:00
+    wallTime :: !Text
+    }
 
--- ex: 2026-09-26 15:52:39.273 -04:00 [INF] [] OpenFreq Client 1.1.4 starting
--- ex: 2026-09-26 20:11:27.224 +00:00 [INF] [] OpenFreq Server 1.1.4 starting
-startLine :: Parser ()
-startLine = do
-    lineHas "OpenFreq Client" <|> lineHas "OpenFreq Server"
-    skipInLine $ string "starting" *> endOfLine
+-- ex: OpenFreq Client 1.1.4 starting at 2026-09-26T14:21:20.0650000-04:00
+startMessage :: Parser StartLine
+startMessage = do
+    _ <- string "OpenFreq "
+    src <- (Client <$ string "Client") <|> (Server <$ string "Server")
+    ver <- char ' ' *> takeWhile1 (/= ' ')
+    wall <- string " starting at " *> isoTime
+    endOfInput
+    pure $ StartLine src (decodeUtf8Lenient ver) wall
+
+-- | An ISO 8601 time with a UTC offset, without the fraction of a second.
+-- ex: 2026-09-26T14:21:20.0650000-04:00 gives 2026-09-26 14:21:20 -04:00
+isoTime :: Parser Text
+isoTime = do
+    let digits n = BC.pack <$> count n digit
+        dashed = BS.intercalate "-" <$> sequence [digits 4, char '-' *> digits 2, char '-' *> digits 2]
+        coloned = BS.intercalate ":" <$> sequence [digits 2, char ':' *> digits 2, char ':' *> digits 2]
+    date <- dashed
+    time <- char 'T' *> coloned
+    _ <- optional $ char '.' *> takeWhile1 isDigit
+    offset <- string "Z" <|> do
+        sign <- string "+" <|> string "-"
+        hh <- digits 2
+        mm <- char ':' *> digits 2
+        pure $ mconcat [sign, hh, ":", mm]
+    pure . decodeUtf8Lenient $ BS.intercalate " " [date, time, offset]
 
 data PttEdge = PttStart | PttEnd
     deriving stock (Show, Eq)
 
-data Speaker = Own | Named !Text
-    deriving stock (Eq, Generic)
-    deriving anyclass (Hashable)
-
 data GameMode = InLobby | InGame
     deriving stock (Show, Eq)
 
-data Source = Client | Server
-    deriving stock (Eq)
-
 data PttLine = PttLine {
-    source :: !Source,
     time :: !Milli,
     edge :: !PttEdge,
-    who :: !Speaker,
+    who :: !Text,
     frequency :: !Word64,
     gameMode :: Maybe GameMode,
     gameTime :: Maybe Text
     }
 
--- ex: 2026-09-19 13:11:39.653 -07:00 [INF] [OpenFreqClient.Services.OpenFreqService] PTT start: Turcu (34092373-30da-487a-b58e-8c6de88466a8) on 139.700 MHz, 3D, game time 01:01:10
-pttLine :: Parser PttLine
-pttLine = do
-    lineHas "PTT "
-    t <- lineTime
-    -- The server logs PTTs in the same format as clients log other players' PTTs.
-    -- ex: 2026-09-26 19:10:59.306 +00:00 [INF] [OpenFreqServer.SignalingServer] PTT start: ...
-    src <- option Client (Server <$ skipInLine (string "[OpenFreqServer."))
-    edge <- skipInLine $ (PttStart <$ string "PTT start: ") <|> (PttEnd <$ string "PTT end: ")
+-- | The rest of a PTT line, after "PTT start: " or "PTT end: ".
+-- ex: Turcu (34092373-30da-487a-b58e-8c6de88466a8) on 139.700 MHz, 3D, game time 01:01:10
+pttLine :: Milli -> PttEdge -> Parser PttLine
+pttLine t edge = do
     let hexDigits n = void . count n . satisfy $ inClass "0-9a-fA-F"
         -- IDs are GUIDs, like 34092373-30da-487a-b58e-8c6de88466a8.
         -- Match that whole shape so that we don't cut a name like "Bob (ace)" short.
         parensUid = do
             _ <- string " ("
             hexDigits 8
-            forM_ [4, 4, 4, 12] $ \n -> char8 '-' *> hexDigits n
-            _ <- char8 ')'
-            pure ()
-        namedSpeaker = manyTill (satisfy (not . isEndOfLine)) parensUid
-    spk <- (Own <$ string "own radio ") <|> (Named . decodeUtf8 . BS.pack <$> namedSpeaker)
-    freq <- skipInLine frequency
-    -- Only PTT start lines from other players have a mode.
-    -- PTT end lines and our own radio's lines don't.
-    mode <- optional . skipInLine $ (InLobby <$ string "2D") <|> (InGame <$ string "3D")
+            forM_ [4, 4, 4, 12] $ \n -> char '-' *> hexDigits n
+            void $ char ')'
+    spk <- decodeUtf8Lenient . BC.pack <$> manyTill anyChar parensUid
+    freq <- string " on " *> frequency
     -- Lines have no game time when the client has no game clock.
-    gt <- optional $ skipInLine gameTime
-    -- Without a game time, nothing above consumes the end reason (", released").
-    _ <- takeLine
-    pure $ PttLine src t edge spk freq mode gt
+    let gameTimeEnd = optional (string ", game time " *> gameTime) <* endOfInput
+    (mode, gt) <- case edge of
+        -- Start lines from other players have a mode. Our own lines don't.
+        PttStart -> do
+            mode <- optional $ string ", " *> gameModeDims
+            (mode,) <$> gameTimeEnd
+        -- End lines from other players have a reason (", released"), which is free text.
+        -- Our own lines don't.
+        PttEnd -> (Nothing,) <$> (gameTimeEnd <|> (string ", " *> skipTill gameTimeEnd))
+    pure $ PttLine t edge spk freq mode gt
+  where
+    gameModeDims = (InLobby <$ string "2D") <|> (InGame <$ string "3D")
 
-twoDigit :: Parser Integer
-twoDigit = read <$> count 2 digit
+-- ex: In-game
+-- BMS mode logs this when the flying state changes. GCI mode logs it when the user changes the mode.
+gameMode :: Parser GameMode
+gameMode = (InGame <$ string "In-game") <|> (InLobby <$ string "Lobby")
 
 frequency :: Parser Word64
 frequency = do
@@ -141,15 +189,9 @@ frequency = do
 
 gameTime :: Parser Text
 gameTime = do
-    _ <- string "game time "
     s <- sequence [digit, digit, char ':', digit, digit, char ':', digit, digit]
     pure $ T.pack s
 
-lineHas :: ByteString -> Parser ()
-lineHas t = do
-    l <- lookAhead $ takeTill isEndOfLine
-    guard $ t `BS.isInfixOf` l
-
--- The last line of a log that is still being written can have no line ending.
-takeLine :: Parser ByteString
-takeLine = takeTill isEndOfLine <* (endOfLine <|> endOfInput)
+-- | Skip ahead until `end` parses.
+skipTill :: Parser a -> Parser a
+skipTill end = go where go = end <|> (anyChar *> go)

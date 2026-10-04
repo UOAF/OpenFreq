@@ -1,6 +1,5 @@
 import Control.Exception
 import Control.Monad
-import Data.Attoparsec.ByteString (IResult(..))
 import Data.ByteString qualified as BS
 import Data.Bifunctor
 import Data.Fixed
@@ -25,13 +24,12 @@ import Parser
 
 data Options = Options {
     input :: Maybe FilePath ,
-    grace :: Milli,
-    ownshipName :: String
+    grace :: Milli
     }
     deriving stock (Show)
 
 options :: Parser Options
-options = Options <$> optional pinp <*> pgrace <*> pownship where
+options = Options <$> optional pinp <*> pgrace where
     pinp = strArgument $ mconcat [
         metavar "FILE",
         help "Input file, defaults to stdin"
@@ -43,13 +41,6 @@ options = Options <$> optional pinp <*> pgrace <*> pownship where
         value 500,
         showDefault,
         help "Grace period in milliseconds"
-        ]
-    pownship = strOption $ mconcat [
-        long "ownship",
-        metavar "NAME",
-        value "You",
-        showDefault,
-        help "Name to show for your own radio"
         ]
 
 parseOptions :: IO Options
@@ -64,26 +55,32 @@ main = do
     let inBracket go = case opts.input of
             Just fp -> withFile fp ReadMode $ \fh -> go fh
             Nothing -> go stdin
-    inBracket (run opts.grace opts.ownshipName)
+    inBracket (run opts.grace)
 
-run :: Milli -> String -> Handle -> IO ()
-run grace ownship fh = do
+run :: Milli -> Handle -> IO ()
+run grace fh = do
     let refill = BS.hGet fh $ 1024 * 1024
+        -- Show which session the report is for.
+        begin start = do
+            putStrLn $ mconcat [
+                "OpenFreq ", show start.source, " ", T.unpack start.version,
+                ", started at ", T.unpack start.wallTime, "\n"
+                ]
+            pure $ ReadState start.source (HeardState InLobby HS.empty) (MissionState mempty mempty)
         -- Fold in each line that in-game players hear, as we read it.
-        step (ReadState heard ms) line = do
-            let (heard', event) = inGamePtt heard line
-            ReadState heard' <$> maybe (pure ms) (accEvent grace ownship ms) event
-    res <- foldLog refill step $ ReadState (HeardState InLobby HS.empty) (MissionState mempty mempty)
-    case res of
-        Fail _ ctxs msg -> do
-            mapM_ (\c -> hPutStrLn stderr $ "in " <> c <> ":") ctxs
-            hPutStrLn stderr msg
+        step (ReadState src heard ms) line = do
+            let (heard', ptt) = inGamePtt src heard line
+            ReadState src heard' <$> maybe (pure ms) (accTalk grace ms) ptt
+    foldLog refill begin step >>= \case
+        Left err -> do
+            hPutStrLn stderr $ "error: " <> err
             exitFailure
-        Done _ (ReadState _ ms) -> showStats grace ownship ms
-        Partial _ -> error "absurd: partial result"
+        Right (ReadState _ _ ms) -> do
+            warnUnended ms
+            showStats grace ms
 
 -- | What we track as we read the log.
-data ReadState = ReadState !HeardState !MissionState
+data ReadState = ReadState !Source !HeardState !MissionState
 
 -- | When did a player talk? When did they step on others? When did others talk over them?
 -- These are (start, end) times, which we merge when we show them,
@@ -107,13 +104,13 @@ instance Monoid PlayerStats where
 -- | Tracked as we fold the log - per-frequency stats (and who's talking) and per-player stats.
 data MissionState = MissionState {
     frequencies :: !(Word64Map FrequencyState),
-    playerStats :: !(HashMap Speaker PlayerStats)
+    playerStats :: !(HashMap Text PlayerStats)
     }
 
 data FrequencyState = FrequencyState {
     heterodyneState :: !HeterodyneState,
     heterodyneSum :: !Milli,
-    speakers :: !(HashMap Speaker SpeakerState)
+    speakers :: !(HashMap Text SpeakerState)
     }
 
 -- | Nobody is stepping on others on this frequency, or when that started.
@@ -132,70 +129,63 @@ data StepVerdict
     = Clean
     -- | We don't know yet. We started more than the grace period after these folks.
     -- It's a step if we overlap any of them for more than the grace period.
-    | Pending !(HashSet Speaker)
+    | Pending !(HashSet Text)
     | Stepped
-
--- | What we fold into our mission state.
-data Event = Heard PttLine | Restart
 
 -- | What we need to know to decide which PTTs in-game players hear.
 data HeardState = HeardState {
     mode :: !GameMode,
     -- | PTT starts we ignored, so that we can ignore the PTT end too.
-    dropped :: !(HashSet (Speaker, Word64))
+    dropped :: !(HashSet (Text, Word64))
     }
 
--- Keep only the PTTs that in-game (3D) players hear, and the restarts that end all PTTs.
+-- Keep only the PTTs that in-game (3D) players hear.
 -- For a client log, this is non-lobby comm while we were in-game, and our own PTTs from that time.
 -- For a server log, this is every PTT from an in-game player, on every frequency.
-inGamePtt :: HeardState -> LogLine -> (HeardState, Maybe Event)
+inGamePtt :: Source -> HeardState -> LogLine -> (HeardState, Maybe PttLine)
 -- Assume clients always start in-lobby, so wait for a transition to game mode.
--- A restart also ends the PTTs we ignored.
-inGamePtt _ AppStart = (HeardState InLobby HS.empty, Just Restart)
-inGamePtt hs (ModeChange mode) = (hs{mode = mode}, Nothing)
-inGamePtt hs (Ptt l) = case l.edge of
+inGamePtt _ hs (ModeChange mode) = (hs{mode = mode}, Nothing)
+inGamePtt src hs (Ptt l) = case l.edge of
     PttStart
         -- Out of caution, remove any previously ignored PTT start that had no end
         -- (e.g., someone crashes while talking in the lobby, then reconnects.)
         -- so that we don't ignore a PTT end for this start (which we heard!)
-        | heard -> (hs{dropped = HS.delete k hs.dropped}, Just $ Heard l)
+        | heard -> (hs{dropped = HS.delete k hs.dropped}, Just l)
         | otherwise -> (hs{dropped = HS.insert k hs.dropped}, Nothing)
     PttEnd
         | HS.member k hs.dropped -> (hs{dropped = HS.delete k hs.dropped}, Nothing)
-        | otherwise -> (hs, Just $ Heard l)
+        | otherwise -> (hs, Just l)
   where
     k = (l.who, l.frequency)
     -- On server logs, all comm is marked as InLobby or InGame.
     -- On client logs, our own aren't (so track when we enter game mode).
-    heard = (l.source == Server || hs.mode == InGame) && l.gameMode /= Just InLobby
+    heard = (src == Server || hs.mode == InGame) && l.gameMode /= Just InLobby
 
-accEvent :: Milli -> String -> MissionState -> Event -> IO MissionState
-accEvent grace ownship ms (Heard l) = accTalk grace ownship ms l
--- A restart ends every PTT, but if the app crashed, it logged no PTT up for them.
+-- | Warn about each PTT that is still open at the end of the log.
+-- The app crashed, or the session is still running.
 -- We don't know how long those PTTs went, so we drop them (and their noises) instead of guessing.
-accEvent _ ownship ms Restart = do
+warnUnended :: MissionState -> IO ()
+warnUnended ms =
     forM_ (WM.toAscList ms.frequencies) $ \(freq, f) ->
-        forM_ (HM.toList f.speakers) $ \(who, sstate) ->
+        forM_ (sortOn (\(_, s) -> s.start) $ HM.toList f.speakers) $ \(who, sstate) ->
             hPutStrLn stderr $ mconcat [
                 "warning: PTT down from ",
-                showSpeaker ownship who,
+                T.unpack who,
                 " on ",
                 showMHz freq,
                 " at ",
                 showGameTime sstate.gameTime,
-                " had no PTT up before a restart"
+                " had no PTT up before the log ended"
                 ]
-    let endAll f = f{heterodyneState = NoStep, speakers = HM.empty}
-    pure ms{frequencies = WM.map endAll ms.frequencies}
 
 -- Fold each line ino our mission state, in IO so we can complain.
-accTalk :: Milli -> String -> MissionState -> PttLine -> IO MissionState
-accTalk grace ownship !ms l@PttLine{edge = PttStart} = do
+accTalk :: Milli -> MissionState -> PttLine -> IO MissionState
+accTalk grace !ms l@PttLine{edge = PttStart} = do
     -- Nobody has talked on a new frequency yet.
     let newFrequency = FrequencyState NoStep 0 HM.empty
         f = fromMaybe newFrequency $ ms.frequencies WM.!? l.frequency
     -- Add our new speaker (determining if they might be stepping),
-    newSpeakers <- pttOnFreq grace ownship f.speakers l
+    newSpeakers <- pttOnFreq grace f.speakers l
     -- Then see if the horrible noises started
     -- (if there's more than one speaker on freq now).
     let newHetState = case f.heterodyneState of
@@ -205,7 +195,7 @@ accTalk grace ownship !ms l@PttLine{edge = PttStart} = do
     -- We don't chnage any player stats on PTT down
     pure $ ms{frequencies = WM.insert l.frequency newFreqState ms.frequencies}
 
-accTalk grace ownship ms l@PttLine{edge = PttEnd} = case ms.frequencies WM.!? l.frequency of
+accTalk grace ms l@PttLine{edge = PttEnd} = case ms.frequencies WM.!? l.frequency of
     Just f -> case f.speakers HM.!? l.who of
         Just sstate -> do
             -- We've found the frequency and the person who's been talking on it.
@@ -243,7 +233,7 @@ accTalk grace ownship ms l@PttLine{edge = PttEnd} = case ms.frequencies WM.!? l.
         Nothing -> do
             hPutStrLn stderr $ mconcat [
                 "warning: PTT up from ",
-                showSpeaker ownship l.who,
+                T.unpack l.who,
                 " on ",
                 showMHz l.frequency,
                 ", but they weren't talking"
@@ -252,7 +242,7 @@ accTalk grace ownship ms l@PttLine{edge = PttEnd} = case ms.frequencies WM.!? l.
     Nothing -> do
         hPutStrLn stderr $ mconcat [
             "warning: PTT up from ",
-            showSpeaker ownship l.who,
+            T.unpack l.who,
             " on a frequency nobody has talked on (",
             showMHz l.frequency,
             ")"
@@ -272,8 +262,8 @@ victimStopped grace l s = case s.step of
         | HS.null rest = Clean
         | otherwise = Pending rest
 
-pttOnFreq :: Milli -> String -> HashMap Speaker SpeakerState -> PttLine -> IO (HashMap Speaker SpeakerState)
-pttOnFreq grace ownship ss l = assert (l.edge == PttStart) $ do
+pttOnFreq :: Milli -> HashMap Text SpeakerState -> PttLine -> IO (HashMap Text SpeakerState)
+pttOnFreq grace ss l = assert (l.edge == PttStart) $ do
     let -- We might be stepping on anyone who started talking > the grace period ago,
         -- if they keep talking for > the grace period after we started blabbing anyways.
         victims = HM.keysSet $ HM.filter (\s -> l.time - s.start > grace) ss
@@ -283,7 +273,7 @@ pttOnFreq grace ownship ss l = assert (l.edge == PttStart) $ do
         Just prev -> do
             hPutStrLn stderr $ mconcat [
                 "warning: back-to-back PTT downs from ",
-                showSpeaker ownship l.who,
+                T.unpack l.who,
                 " on ",
                 showMHz l.frequency,
                 " at ",
@@ -292,10 +282,6 @@ pttOnFreq grace ownship ss l = assert (l.edge == PttStart) $ do
                 showGameTime l.gameTime
                 ]
             pure ss
-
-showSpeaker :: String -> Speaker -> String
-showSpeaker ownship Own = ownship
-showSpeaker _ (Named n) = T.unpack n
 
 showGameTime :: Maybe Text -> String
 showGameTime = maybe "unknown game time" T.unpack
@@ -326,15 +312,15 @@ mergeIntervals = go . sort where
 unionLength :: [(Milli, Milli)] -> Milli
 unionLength = sum . fmap (\(s, e) -> e - s) . mergeIntervals
 
-showStats :: Milli -> String -> MissionState -> IO ()
-showStats grace ownship m = do
+showStats :: Milli -> MissionState -> IO ()
+showStats grace m = do
     let talkTime = sum $ unionLength . (.talks) <$> HM.elems m.playerStats
     if talkTime > 0
-        then showStats' grace ownship m
+        then showStats' grace m
         else putStrLn "Nobody said a thing? Is this thing on?"
 
-showStats' :: Milli -> String -> MissionState -> IO ()
-showStats' grace ownship m = do
+showStats' :: Milli -> MissionState -> IO ()
+showStats' grace m = do
     let totalHet = sum . fmap (.heterodyneSum) . WM.elems $ m.frequencies
         ps = HM.toList m.playerStats
         -- How long each player stepped on others, and how many times.
@@ -354,7 +340,7 @@ showStats' grace ownship m = do
         putStrLn $ (if totalHet > 0 then "\n" else "") <> "Steppers:"
         forM_ steppers' $ \(who, (t, n)) ->
             putStrLn $ mconcat [
-                "  ", showSpeaker ownship who, ": ", showDuration t,
+                "  ", T.unpack who, ": ", showDuration t,
                 " (", show n, if n == 1 then " time)" else " times)"
                 ]
     unless noSteps $ do
@@ -368,13 +354,13 @@ showStats' grace ownship m = do
     unless (null steppees) $ do
         putStrLn "\nSteppees:"
         forM_ steppees $ \(who, t) ->
-            putStrLn $ "  " <> showSpeaker ownship who <> ": " <> showDuration t
+            putStrLn $ "  " <> T.unpack who <> ": " <> showDuration t
 
     let yappers = ranked $ second (unionLength . (.talks)) <$> ps
     unless (null yappers) $ do
         putStrLn "\nYappers:"
         forM_ yappers $ \(who, t) ->
-            putStrLn $ "  " <> showSpeaker ownship who <> ": " <> showDuration t
+            putStrLn $ "  " <> T.unpack who <> ": " <> showDuration t
 
 -- | Drop the zeros, and put the biggest first.
 ranked :: [(k, Milli)] -> [(k, Milli)]

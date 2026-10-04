@@ -112,8 +112,7 @@ public class SignalingServer
     /// </summary>
     public int? BoundWebSocketPort { get; private set; }
 
-    private static string GetDisplayName(ClientSession session) =>
-        !string.IsNullOrWhiteSpace(session.DisplayName) ? session.DisplayName : "Unnamed";
+    private static string GetDisplayName(ClientSession session) => DisplayNames.ForLog(session.DisplayName);
 
     public SignalingServer(ServerConfig config, ILoggerFactory loggerFactory)
         : this(config, loggerFactory, null, null, null)

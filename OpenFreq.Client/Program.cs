@@ -5,6 +5,7 @@ using Avalonia;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Client.NativeMethods;
+using OpenFreq.Common.Logging;
 using OpenFreqClient.Services;
 using Serilog;
 using Serilog.Events;
@@ -26,7 +27,7 @@ sealed class Program
         var logsDirectory = Path.Combine(exeDir, "logs");
         Directory.CreateDirectory(logsDirectory);
 
-        var logFile = Path.Combine(logsDirectory, $"openfreq-client-{DateTime.Now:yyyy-MM-dd}.log");
+        var logFile = SessionLog.CreatePath(logsDirectory, "client");
 
 #if DEBUG
         Log.Logger = new LoggerConfiguration()
@@ -52,12 +53,8 @@ sealed class Program
 
             .Enrich.FromLogContext()
             .Enrich.WithProperty("Application", "OpenFreqClient")
-            .WriteTo.File(
-                logFile,
-                outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}",
-                rollingInterval: RollingInterval.Day,
-                retainedFileCountLimit: 30,
-                shared: true)
+            .Enrich.With(new ElapsedEnricher())
+            .WriteTo.SessionFile(logFile)
             .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss.fff} {Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}")
             .CreateLogger();
 #else
@@ -67,12 +64,8 @@ sealed class Program
             .MinimumLevel.Override("System", LogEventLevel.Warning)
             .Enrich.FromLogContext()
             .Enrich.WithProperty("Application", "OpenFreqClient")
-            .WriteTo.File(
-                logFile,
-                outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}",
-                rollingInterval: RollingInterval.Day,
-                retainedFileCountLimit: 30,
-                shared: true)
+            .Enrich.With(new ElapsedEnricher())
+            .WriteTo.SessionFile(logFile)
             .CreateLogger();
 #endif
 
@@ -85,7 +78,8 @@ sealed class Program
         Version = Assembly.GetExecutingAssembly()
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
             ?.InformationalVersion ?? "unknown";
-        Log.Information("OpenFreq Client {Version} starting", Version);
+        Log.Information("OpenFreq Client {Version} starting at {WallTime:o}", Version, DateTimeOffset.Now);
+        SessionLog.DeleteOld(logsDirectory, TimeSpan.FromDays(30));
 
         // Set up dependency injection
         var services = new ServiceCollection();

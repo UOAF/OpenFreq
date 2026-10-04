@@ -36,6 +36,12 @@ public class OpenFreqService : IOpenFreqService
     private IRtcClient? _client;
     private int _recordHandle;
 
+    // Our own ID and name, for our PTT lines. LogOwnPtt reads them inside the lock of _transmissions,
+    // on a different thread than the writes. A disconnect ends our transmissions, and _client can be gone then,
+    // so we keep the ID after a disconnect.
+    private volatile string? _ownPeerId;
+    private volatile string? _ownDisplayName;
+
     // Which slots are transmitting, and on which frequency.
     private readonly ActiveTransmissions _transmissions;
 
@@ -333,6 +339,7 @@ public class OpenFreqService : IOpenFreqService
             settings.OwnPositionMode == IOpenFreqService.Mode.BMS
                 ? (_falconRadioSharedMemoryService.ConnectionParameters?.Nickname ?? string.Empty)
                 : settings.DisplayName;
+        _ownDisplayName = myDisplayName;
 
         // Create client with server settings
         _logger.LogDebug("Creating new client");
@@ -1056,6 +1063,7 @@ public class OpenFreqService : IOpenFreqService
     {
         if (_client is not { IsAuthenticated: true }) return;
         await _client.SetDisplayNameAsync(newDisplayName);
+        _ownDisplayName = newDisplayName;
     }
 
     public void SetVolume(int frequencyKhz, Guid slotId, float volumeValue)
@@ -1444,6 +1452,7 @@ public class OpenFreqService : IOpenFreqService
 
     private void OnClientAuthenticated(object? sender, AuthenticationEventArgs e)
     {
+        _ownPeerId = e.PeerId;
         OnStatusMessage($"Authenticated - Peer ID: {e.PeerId}, Audio Port: {e.AudioPort}");
         OnAllPeersStatusUpdateReceived(sender, new AllPeersStatusEventArgs(e.Peers));
         // Push current mode to server immediately so it knows our Is3d state before
@@ -1596,19 +1605,22 @@ public class OpenFreqService : IOpenFreqService
     }
 
     /// <summary>
-    /// Logs our own PTT start or end for each frequency that <paramref name="change"/> started or stopped.
+    /// Logs our own PTT start or end for each frequency that <paramref name="change"/> started or stopped,
+    /// with the name and ID that the server and other players log for us.
     /// </summary>
     private void LogOwnPtt(TransmissionChange change)
     {
         var gameTime = GameClock.LogSuffix(GameTimeSeconds());
+        var name = DisplayNames.ForLog(_ownDisplayName);
+        var peerId = _ownPeerId;
 
         foreach (var frequencyKhz in change.Started)
-            _logger.LogInformation("PTT start: own radio on {FreqMhz:F3} MHz{GameTimeSuffix}",
-                frequencyKhz / 1000.0, gameTime);
+            _logger.LogInformation("PTT start: {PeerName} ({PeerId}) on {FreqMhz:F3} MHz{GameTimeSuffix}",
+                name, peerId, frequencyKhz / 1000.0, gameTime);
 
         foreach (var frequencyKhz in change.Stopped)
-            _logger.LogInformation("PTT end: own radio on {FreqMhz:F3} MHz{GameTimeSuffix}",
-                frequencyKhz / 1000.0, gameTime);
+            _logger.LogInformation("PTT end: {PeerName} ({PeerId}) on {FreqMhz:F3} MHz{GameTimeSuffix}",
+                name, peerId, frequencyKhz / 1000.0, gameTime);
     }
 
     /// <summary>

@@ -106,7 +106,7 @@ The entry launches the server in a terminal with the TUI.
 
 ### Log Files
 
-Logs are written to `logs/openfreq-YYYY-MM-DD.log` next to the binary. The last 30 days are kept automatically.
+Each run of the server writes a new log file in `logs/` next to the binary, for example `logs/openfreq-server-20260926-142120-12345.log`. The name has the start time (`YYYYMMDD-HHMMSS`) and the process ID. At startup, the server deletes log files older than 30 days.
 
 ### Firewall
 

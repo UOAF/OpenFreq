@@ -40,7 +40,6 @@ executable stepper
                    attoparsec,
                    bytestring,
                    ghc,
-                   hashable,
                    text,
                    optparse-applicative,
                    unordered-containers

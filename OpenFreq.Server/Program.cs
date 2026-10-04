@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
+using OpenFreq.Common.Logging;
 using Serilog;
 using Serilog.Events;
 
@@ -29,7 +30,7 @@ static class Program
         var logsDirectory = Path.Combine(baseDirectory, "logs");
         Directory.CreateDirectory(logsDirectory);
 
-        var logFile = Path.Combine(logsDirectory, $"openfreq-{DateTime.Now:yyyy-MM-dd}.log");
+        var logFile = SessionLog.CreatePath(logsDirectory, "server");
 
         var loggerConfiguration = new LoggerConfiguration()
 #if DEBUG
@@ -41,13 +42,8 @@ static class Program
             .MinimumLevel.Override("System", LogEventLevel.Warning)
             .Enrich.FromLogContext()
             .Enrich.WithProperty("Application", "OpenFreqServer")
-            .WriteTo.File(
-                logFile,
-                outputTemplate:
-                "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}",
-                rollingInterval: RollingInterval.Day,
-                retainedFileCountLimit: 30,
-                shared: true);
+            .Enrich.With(new ElapsedEnricher())
+            .WriteTo.SessionFile(logFile);
 
         if (headlessMode)
         {
@@ -57,6 +53,8 @@ static class Program
         }
 
         Log.Logger = loggerConfiguration.CreateLogger();
+        Log.Information("OpenFreq Server {Version} starting at {WallTime:o}", version, DateTimeOffset.Now);
+        SessionLog.DeleteOld(logsDirectory, TimeSpan.FromDays(30));
 
         try
         {
@@ -71,7 +69,6 @@ static class Program
                 return;
             }
 
-            Log.Information("OpenFreq Server {Version} starting", version);
             Log.Information("Server starting with configuration: Port={Port}, MaxClients={MaxClients}",
                 config.WebSocketPort, config.MaxClientsPerChannel);
 
@@ -196,7 +193,8 @@ static class Program
               Read from OpenFreq.Server.json next to the executable; a default
               config is created on first run.
 
-            Logs are written to the logs/ directory (daily rolling files).
+            Each run writes a new log file in the logs/ directory.
+            At startup, the server deletes log files older than 30 days.
             """);
     }
 
