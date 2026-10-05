@@ -330,9 +330,15 @@ showStats' grace m = do
         steppers' = sortOn (Down . snd) $ filter (\s -> fst (snd s) > 0) steppers
         -- Noise from overlaps within the grace period has no steppers.
         noSteps = totalHet == 0 && null steppers'
+        -- From the start of the first in-game transmission to the end of the last.
+        allTalks = concatMap (.talks) $ HM.elems m.playerStats
+        inGameTime = maximum (snd <$> allTalks) - minimum (fst <$> allTalks)
     when noSteps $ putStrLn "No steps, amazing job!"
     when (totalHet > 0) $ do
-        putStrLn $ showDuration totalHet <> " of awful noises. By frequency:"
+        putStrLn $ mconcat [
+            showDuration totalHet, " of awful noises out of ",
+            showDuration inGameTime, " yapping. By frequency:"
+            ]
         forM_ (ranked $ second (.heterodyneSum) <$> WM.toAscList m.frequencies) $ \(f, h) ->
             putStrLn $ "  " <> showMHz f <> ": " <> showDuration h
 
