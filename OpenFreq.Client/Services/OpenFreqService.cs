@@ -1179,15 +1179,15 @@ public class OpenFreqService : IOpenFreqService
         var sentRms = Math.Sqrt(_txSentSumSquares / samples);
 
         _logger.LogInformation(
-            "TX level over {DurationMs}ms: mic peak {RawPeak:F1} dBFS rms {RawRms:F1} dBFS, clipped {RawClipped} | " +
-            "sent peak {SentPeak:F1} dBFS rms {SentRms:F1} dBFS | " +
-            "normalizer {NormalizerState}, gain {Gain:F3}, gate {Gate:F1} dBFS, " +
-            "limited {LimitedPercent:F1}% max {LimitDb:F1} dB",
+            "TX for {DurationMs}ms: mic peak {RawPeak:F1} dBFS (RMS {RawRms:F1} dBFS), {RawClipped} samples clipped | " +
+            "peaked at {SentPeak:F1} dBFS (RMS {SentRms:F1} dBFS) | " +
+            "normalizer {NormalizerState}, gain {GainDb:F1} dB, gate {Gate:F1} dBFS, " +
+            "limited {LimitedPercent:F1}% samples by up to {LimitDb:F1} dB",
             samples * 1000 / AudioFormat.SampleRate,
             ToDbFs(_txRawPeak), ToDbFs(rawRms), _txRawClipped,
             ToDbFs(_txSentPeak), ToDbFs(sentRms),
             MicNormalizationEnabled ? "on" : "off",
-            _micNormalizer.CurrentGain, ToDbFs(_micNormalizer.NoiseGateRms),
+            20 * Math.Log10(_micNormalizer.CurrentGain), ToDbFs(_micNormalizer.NoiseGateRms),
             100.0 * _micNormalizer.LimitedSamples / samples, _micNormalizer.MaxLimiterReductionDb);
 
         _txLevelSamples = 0;
