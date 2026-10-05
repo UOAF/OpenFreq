@@ -1,11 +1,15 @@
 ## Notes for the next release
 
-- Fix: When no frequencies were tuned, audio would cut out until you changed audio devices.
-  Hopefully addresses cold start problems as well.
-  9d7d271
+- Fix: PTT got stuck on if a player talked during a reconnect.
+  8aa50cc, 1588f4a
 
-- Fix: Inability to set volume to 100%
-  4df79d1
+- Fix: Smooth physics params so that jumps in distance and angular velocity
+  (especially in close formation) don't cause distortions.
+  c3d535f
 
-- Fix: packet loss statistics were an overestimate
-  d9934bf
+- Improve mic level normalization, reduce input and output clipping.
+  bdb5373
+
+- Experiment: Add a log-crunching script to determine when folks step on each others' comms.
+  Binaries will be provided Soon™.
+  6cf1f96, b76c0f6, 3b0e8ec
