@@ -108,7 +108,18 @@ public class AcmiClientService : IAcmiClientService
             return false;
         }
 
-        var ipPort = Util.ResolveAddress(connectionString, DefaultPort);
+        (string ipAddress, int port) ipPort;
+        try
+        {
+            ipPort = Util.ResolveAddress(connectionString, DefaultPort);
+        }
+        catch (ArgumentException ex)
+        {
+            _logger.LogError("Could not resolve ACMI server address \"{Address}\": {Error}", connectionString, ex.Message);
+            throw;
+        }
+        _logger.LogInformation("Resolved ACMI server address \"{Address}\" to {IpAddress}, port {Port}",
+            connectionString, ipPort.ipAddress, ipPort.port);
 
         _serverAddress = ipPort.ipAddress;
         _serverPort = ipPort.port;

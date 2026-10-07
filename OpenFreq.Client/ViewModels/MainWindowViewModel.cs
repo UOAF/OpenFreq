@@ -531,6 +531,8 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
             _falconRadioSharedMemoryService.RemoveClientStatus(ClientStatusFlags.ExitReceived);
             _falconRadioSharedMemoryService.AddClientStatus(ClientStatusFlags.ClientActive);
             _falconRadioSharedMemoryService.AddClientStatus(ClientStatusFlags.TryingToConnect);
+            _logger.LogInformation("BMS requested a connection to address \"{Address}\", port {Port}",
+                e.NewParameters.Address, e.NewParameters.Port);
             Settings.OpenFreqPassword = e.NewParameters.Password;
             Settings.OpenFreqServerAddress = e.NewParameters.Address + ":" + e.NewParameters.Port;
             var failFlag = ClientStatusFlags.ConnectionFail;

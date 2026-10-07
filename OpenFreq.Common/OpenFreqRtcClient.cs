@@ -126,7 +126,18 @@ public class OpenFreqRtcClient : IRtcClient
         connectCts.CancelAfter(timeout);
 
         // Connect WebSocket
-        var ipPort = Util.ResolveAddress(ServerIp, DEFAULT_PORT);
+        (string ipAddress, int port) ipPort;
+        try
+        {
+            ipPort = Util.ResolveAddress(ServerIp, DEFAULT_PORT);
+        }
+        catch (ArgumentException ex)
+        {
+            _logger.LogError("Could not resolve server address \"{Address}\": {Error}", ServerIp, ex.Message);
+            throw;
+        }
+        _logger.LogInformation("Resolved server address \"{Address}\" to {IpAddress}, port {Port}",
+            ServerIp, ipPort.ipAddress, ipPort.port);
 
         // we need to wrap IPv6 into [] for a valid URI
         IPAddress? ip;
