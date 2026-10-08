@@ -186,7 +186,7 @@ static class Program
             Usage: OpenFreq.Server [options]
 
             Options:
-              -a, --headless    Run headless (no TUI), logs to console and file
+              -a, --headless  Run headless (no TUI), logs to console and file
               -h, --help      Show this help and exit
 
             Configuration:
