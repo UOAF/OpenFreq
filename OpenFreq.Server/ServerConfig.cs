@@ -5,7 +5,7 @@ namespace OpenFreqServer;
 public class ServerConfig
 {
     [JsonPropertyName("serverPassword")]
-    public string? ServerPassword { get; set; }
+    public string? ServerPassword { get; set; } = string.Empty;
 
     [JsonPropertyName("websocketPort")]
     public int WebSocketPort { get; set; } = 9987;
