@@ -7,10 +7,8 @@ namespace OpenFreqClient.ViewModels;
 
 internal sealed record PeerFrequencySnapshot(int FrequencyKhz, List<PeerData> Peers);
 
-/// <summary>
-/// Keeps the peer panel's view models, and therefore its Avalonia item containers, stable
-/// across full server snapshots. Only changed groups and peers are inserted or removed.
-/// </summary>
+// Keep peer rows stable across full server snapshots so Avalonia can reuse their controls.
+// Insert, move, or remove only the groups and peers that changed.
 internal static class PeerListReconciler
 {
     public static bool Reconcile(
@@ -41,6 +39,7 @@ internal static class PeerListReconciler
             }
 
             var group = groups[i];
+            // BMS controls channel joins, so CanJoin must always be false outside GCI mode.
             group.CanJoin = modeIsGci && is3dMode == is3dFrequency &&
                             !isFrequencyAlreadyConnected(desired.FrequencyKhz);
             membershipChanged |= ReconcilePeers(group.Peers, desired.Peers,

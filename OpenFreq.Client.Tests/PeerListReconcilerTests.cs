@@ -74,6 +74,47 @@ public class PeerListReconcilerTests
         Assert.True(groups[1].CanJoin);
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void BmsMode_NeverOffersJoinEvenAfterGciSnapshot(bool is3dFrequency, bool is3dMode)
+    {
+        ObservableCollection<ChannelFrequencyPeerViewModel> groups = [];
+        PeerFrequencySnapshot[] snapshot = [Snapshot(251_000, Peer("a", "Alpha"))];
+
+        PeerListReconciler.Reconcile(groups, snapshot, is3dFrequency, is3dMode,
+            modeIsGci: true, ownPeerId: null, _ => false, _ => { });
+        var originalGroup = groups[0];
+        Assert.Equal(is3dFrequency == is3dMode, originalGroup.CanJoin);
+
+        PeerListReconciler.Reconcile(groups, snapshot, is3dFrequency, is3dMode,
+            modeIsGci: false, ownPeerId: null, _ => false, _ => { });
+
+        Assert.Same(originalGroup, groups[0]);
+        Assert.False(groups[0].CanJoin);
+    }
+
+    [Theory]
+    [InlineData(false, false, false, true)]
+    [InlineData(false, true, false, false)]
+    [InlineData(true, false, false, false)]
+    [InlineData(true, true, false, true)]
+    [InlineData(false, false, true, false)]
+    [InlineData(true, true, true, false)]
+    public void GciMode_OnlyOffersJoinForCurrentModeAndDisconnectedFrequency(
+        bool is3dFrequency, bool is3dMode, bool isConnected, bool expectedCanJoin)
+    {
+        ObservableCollection<ChannelFrequencyPeerViewModel> groups = [];
+
+        PeerListReconciler.Reconcile(groups, [Snapshot(251_000, Peer("a", "Alpha"))],
+            is3dFrequency, is3dMode, modeIsGci: true, ownPeerId: null,
+            _ => isConnected, _ => { });
+
+        Assert.Equal(expectedCanJoin, groups[0].CanJoin);
+    }
+
     private static bool Apply(
         ObservableCollection<ChannelFrequencyPeerViewModel> groups,
         IReadOnlyList<PeerFrequencySnapshot> snapshot,

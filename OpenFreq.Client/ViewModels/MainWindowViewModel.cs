@@ -297,7 +297,7 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
 
         foreach (var entry in GamePeerList)
         {
-            // ... for the game list if the GCI is not in 3d AND the freq is joinable
+            // ... for the game list if the GCI is in 3d AND the freq is joinable
             entry.CanJoin = Settings is { ModeIsGci: true, Is3dMode: true } &&
                             !IsFrequencyAlreadyConnected(entry.FrequencyKhz);
         }
@@ -980,8 +980,10 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
 
     private void OnSettingsPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName != nameof(Settings.Is3dMode)) return;
-        Dispatcher.UIThread.Post(UpdateModeDependent);
+        if (e.PropertyName == nameof(Settings.Is3dMode))
+            Dispatcher.UIThread.Post(UpdateModeDependent);
+        else if (e.PropertyName == nameof(Settings.ConnectionMode))
+            Dispatcher.UIThread.Post(UpdateCanJoin);
     }
 
     private void UpdateModeDependent()
