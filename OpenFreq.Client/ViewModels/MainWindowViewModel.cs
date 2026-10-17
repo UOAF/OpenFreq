@@ -223,42 +223,42 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
     private void RebuildPeerLists()
     {
         bool is3dMode = Settings.Is3dMode;
-        var newLobby = new List<ChannelFrequencyPeerViewModel>();
-        var newGame = new List<ChannelFrequencyPeerViewModel>();
+        var newLobby = new List<PeerFrequencySnapshot>();
+        var newGame = new List<PeerFrequencySnapshot>();
 
         foreach (var (frequency, peerDatas) in _latestAllPeers)
         {
-            ObservableCollection<ChannelPeerViewModel> lobbyPeers = [];
-            ObservableCollection<ChannelPeerViewModel> gamePeers = [];
+            List<PeerData> lobbyPeers = [];
+            List<PeerData> gamePeers = [];
 
             foreach (var peer in peerDatas)
             {
                 bool is3d = _peerModes.TryGetValue((peer.Id, frequency), out var mode) && mode;
-                bool isTransmitting = (is3dMode == is3d) && peer.Status == PeerData.PeerStatus.Transmitting;
-                var vm = new ChannelPeerViewModel(peer.Id, peer.Name ?? string.Empty, isTransmitting,
-                    peer.Id == _openFreqService.PeerId);
-                if (is3d) gamePeers.Add(vm);
-                else lobbyPeers.Add(vm);
+                if (is3d) gamePeers.Add(peer);
+                else lobbyPeers.Add(peer);
             }
 
-            // canJoin is always false for BMS mode - BMS controls our channels
             if (lobbyPeers.Count > 0)
-            {
-                newLobby.Add(new ChannelFrequencyPeerViewModel(frequency, lobbyPeers, JoinFrequencyFromPeerList, false,
-                    Settings.ModeIsGci && !is3dMode && !IsFrequencyAlreadyConnected(frequency)));
-            }
+                newLobby.Add(new PeerFrequencySnapshot(frequency, lobbyPeers));
 
             if (gamePeers.Count > 0)
-            {
-                newGame.Add(new ChannelFrequencyPeerViewModel(frequency, gamePeers, JoinFrequencyFromPeerList, true,
-                    Settings.ModeIsGci && is3dMode && !IsFrequencyAlreadyConnected(frequency)));
-            }
+                newGame.Add(new PeerFrequencySnapshot(frequency, gamePeers));
         }
 
-        LobbyPeerList.Clear();
-        foreach (var e in newLobby) LobbyPeerList.Add(e);
-        GamePeerList.Clear();
-        foreach (var e in newGame) GamePeerList.Add(e);
+        bool lobbyMembershipChanged = PeerListReconciler.Reconcile(LobbyPeerList, newLobby,
+            false, is3dMode, Settings.ModeIsGci, _openFreqService.PeerId,
+            IsFrequencyAlreadyConnected, JoinFrequencyFromPeerList);
+        bool gameMembershipChanged = PeerListReconciler.Reconcile(GamePeerList, newGame,
+            true, is3dMode, Settings.ModeIsGci, _openFreqService.PeerId,
+            IsFrequencyAlreadyConnected, JoinFrequencyFromPeerList);
+
+        // Group collection events do not cover changes within an existing group's Peers list.
+        if (lobbyMembershipChanged || gameMembershipChanged)
+        {
+            OnPropertyChanged(nameof(LobbyPeerCount));
+            OnPropertyChanged(nameof(GamePeerCount));
+            OnPropertyChanged(nameof(DistinctPeers));
+        }
     }
 
     private void JoinFrequencyFromPeerList(int frequencyKhz)
