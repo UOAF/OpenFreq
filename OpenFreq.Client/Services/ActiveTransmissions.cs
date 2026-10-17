@@ -21,6 +21,7 @@ internal sealed class ActiveTransmissions
     // current snapshot without locking.
     private ImmutableDictionary<Guid, int> _bySlot = ImmutableDictionary<Guid, int>.Empty;
 
+    /// <summary>Tracks the frequencies currently transmitting for each slot.</summary>
     /// <param name="onFrequenciesChanged">
     /// Receives each change to the set of transmitting frequencies. Called under the lock, so
     /// concurrent changes are reported in the order they happened.
