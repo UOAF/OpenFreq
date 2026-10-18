@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using OpenFreq.Common;
 
 namespace OpenFreqClient.ViewModels;
@@ -21,7 +22,8 @@ internal static class PeerListReconciler
         Func<int, bool> isFrequencyAlreadyConnected,
         Action<int> joinFrequency)
     {
-        bool membershipChanged = false;
+        bool membershipChanged = RemoveStale(groups, g => g.FrequencyKhz,
+            snapshot.Select(s => s.FrequencyKhz));
 
         for (int i = 0; i < snapshot.Count; i++)
         {
@@ -61,7 +63,7 @@ internal static class PeerListReconciler
         bool showTransmitting,
         string? ownPeerId)
     {
-        bool membershipChanged = false;
+        bool membershipChanged = RemoveStale(peers, p => p.Id, snapshot.Select(p => p.Id));
 
         for (int i = 0; i < snapshot.Count; i++)
         {
@@ -93,6 +95,23 @@ internal static class PeerListReconciler
         }
 
         return membershipChanged;
+    }
+
+    // Avalonia rebuilds the controls of a moved item. Remove stale items before the pass,
+    // so a removal does not move each later item up by one position.
+    private static bool RemoveStale<T, TKey>(
+        ObservableCollection<T> items, Func<T, TKey> key, IEnumerable<TKey> desiredKeys)
+    {
+        var keep = new HashSet<TKey>(desiredKeys);
+        bool removed = false;
+        for (int i = items.Count - 1; i >= 0; i--)
+        {
+            if (keep.Contains(key(items[i]))) continue;
+            items.RemoveAt(i);
+            removed = true;
+        }
+
+        return removed;
     }
 
     private static int FindGroup(

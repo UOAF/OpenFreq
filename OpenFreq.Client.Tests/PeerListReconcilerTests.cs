@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using OpenFreq.Common;
 using OpenFreqClient.ViewModels;
 
@@ -72,6 +73,32 @@ public class PeerListReconcilerTests
         Assert.Same(retainedPeer, groups[1].Peers[0]);
         Assert.Equal(["b", "d"], groups[1].Peers.Select(p => p.Id));
         Assert.True(groups[1].CanJoin);
+    }
+
+    // Avalonia rebuilds the controls of a moved item, so a removal must not move the items after it.
+    [Fact]
+    public void Removal_DoesNotMoveLaterGroupsOrPeers()
+    {
+        ObservableCollection<ChannelFrequencyPeerViewModel> groups = [];
+        Apply(groups,
+        [
+            Snapshot(250_000, Peer("a", "Alpha")),
+            Snapshot(251_000, Peer("b", "Bravo"), Peer("c", "Charlie"), Peer("d", "Delta"))
+        ]);
+        var retainedGroup = groups[1];
+        List<NotifyCollectionChangedAction> groupActions = [];
+        List<NotifyCollectionChangedAction> peerActions = [];
+        groups.CollectionChanged += (_, e) => groupActions.Add(e.Action);
+        retainedGroup.Peers.CollectionChanged += (_, e) => peerActions.Add(e.Action);
+
+        bool membershipChanged = Apply(groups,
+            [Snapshot(251_000, Peer("c", "Charlie"), Peer("d", "Delta"))]);
+
+        Assert.True(membershipChanged);
+        Assert.Same(retainedGroup, Assert.Single(groups));
+        Assert.Equal(["c", "d"], retainedGroup.Peers.Select(p => p.Id));
+        Assert.Equal([NotifyCollectionChangedAction.Remove], groupActions);
+        Assert.Equal([NotifyCollectionChangedAction.Remove], peerActions);
     }
 
     [Theory]
