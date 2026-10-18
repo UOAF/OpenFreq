@@ -22,7 +22,9 @@ public partial class ChannelPeerViewModel : ViewModelBase
         nameof(TransmitHighlightColor))]
     public partial bool IsTransmitting { get; set; } = false;
 
-    public bool IsOwnUser { get; set; }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PeerFontWeight))]
+    public partial bool IsOwnUser { get; set; }
 
     public Color TransmitHighlightColor => IsTransmitting
         ? Color.FromArgb(20, 255, 193, 7)
