@@ -298,7 +298,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         {
             var radioChannel = _falconRadioSharedMemoryService.GetRadioChannel(type);
             // BMS scales RxVolume from 0, the loudest, to 10000, the quietest.
-            if (radioChannel == null || radioChannel.RxVolume < 0) continue;
+            if (radioChannel == null) continue;
             var gain = ComputeGainFromBmsVolume(radioChannel.RxVolume);
             foreach (var channel in FalconLocation.Channels.Where(c => c.BmsRadioType == type).ToList())
             {
@@ -568,6 +568,16 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
                     var wasJoined = _openFreqService.IsFrequencyJoined(oldFrequencyKhz, card.Id);
 
                     await location.ApplySlotStateAsync(card, frequencyKhz, shouldJoin);
+
+                    // Playback keeps volume per (frequency, slot), so a retune lands on a slot that hasn't
+                    // seen the knob yet. Re-apply the current knob, or the new frequency plays at whatever
+                    // volume that slot last had (default 0 dB) until the knob moves.
+                    if (shouldJoin)
+                    {
+                        var rxVolume = _falconRadioSharedMemoryService.GetRadioChannel(radioType)?.RxVolume
+                                       ?? radio.RxVolume;
+                        _openFreqService.SetVolume(frequencyKhz, card.Id, ComputeGainFromBmsVolume(rxVolume));
+                    }
 
                     if (oldFrequencyKhz != frequencyKhz || wasJoined != shouldJoin)
                     {
