@@ -80,7 +80,7 @@
     <dialogHostAvalonia:DialogHost Identifier="MainDialogHost">
         <!-- Side Drawer LEFT (Settings) -->
         <controls:NavigationDrawer Name="MainDrawer"
-                                   LeftDrawerOpened="{Binding SettingsDrawerOpened}">
+                                   LeftDrawerOpened="{Binding SettingsDrawerOpened, Mode=TwoWay}">
             <controls:NavigationDrawer.LeftDrawerContent>
                 <!-- Settings Drawer -->
                 <DockPanel Width="320">
