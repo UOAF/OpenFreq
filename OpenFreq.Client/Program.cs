@@ -54,7 +54,10 @@ sealed class Program
             .Enrich.FromLogContext()
             .Enrich.WithProperty("Application", "OpenFreqClient")
             .Enrich.With(new ElapsedEnricher())
-            .WriteTo.SessionFile(logFile)
+            .Enrich.With(new UtcTimestampEnricher())
+            .WriteTo.SessionFile(logFile,
+                "{UtcTimestamp:yyyy-MM-ddTHH:mm:ss.fffZ} [{Level:u3}] [{SourceContext}] " +
+                "{Message:lj}{NewLine}{Exception}")
             .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss.fff} {Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}")
             .CreateLogger();
 #else
@@ -65,7 +68,10 @@ sealed class Program
             .Enrich.FromLogContext()
             .Enrich.WithProperty("Application", "OpenFreqClient")
             .Enrich.With(new ElapsedEnricher())
-            .WriteTo.SessionFile(logFile)
+            .Enrich.With(new UtcTimestampEnricher())
+            .WriteTo.SessionFile(logFile,
+                "{UtcTimestamp:yyyy-MM-ddTHH:mm:ss.fffZ} [{Level:u3}] [{SourceContext}] " +
+                "{Message:lj}{NewLine}{Exception}")
             .CreateLogger();
 #endif
 

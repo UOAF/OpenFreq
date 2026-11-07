@@ -43,7 +43,10 @@ static class Program
             .Enrich.FromLogContext()
             .Enrich.WithProperty("Application", "OpenFreqServer")
             .Enrich.With(new ElapsedEnricher())
-            .WriteTo.SessionFile(logFile);
+            .Enrich.With(new UtcTimestampEnricher())
+            .WriteTo.SessionFile(logFile,
+                "{UtcTimestamp:yyyy-MM-ddTHH:mm:ss.fffZ} [{Level:u3}] [{SourceContext}] " +
+                "{Message:lj}{NewLine}{Exception}");
 
         if (headlessMode)
         {
