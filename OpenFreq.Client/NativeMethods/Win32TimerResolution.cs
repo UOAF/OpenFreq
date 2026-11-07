@@ -25,6 +25,7 @@ internal sealed class Win32TimerResolution : IDisposable
     {
     }
 
+    /// <summary>Requests the timer resolution needed for responsive PTT polling.</summary>
     /// <returns>The request, or null when this isn't Windows or Windows refuses the resolution.</returns>
     public static Win32TimerResolution? Request(ILogger<Win32TimerResolution> logger)
     {
