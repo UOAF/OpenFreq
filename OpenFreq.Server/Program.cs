@@ -56,7 +56,7 @@ static class Program
         }
 
         Log.Logger = loggerConfiguration.CreateLogger();
-        Log.Information("OpenFreq Server {Version} starting at {WallTime:o}", version, DateTimeOffset.Now);
+        Log.Information("OpenFreq Server {Version}", version);
         SessionLog.DeleteOld(logsDirectory, TimeSpan.FromDays(30));
 
         try

@@ -84,7 +84,7 @@ sealed class Program
         Version = Assembly.GetExecutingAssembly()
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
             ?.InformationalVersion ?? "unknown";
-        Log.Information("OpenFreq Client {Version} starting at {WallTime:o}", Version, DateTimeOffset.Now);
+        Log.Information("OpenFreq Client {Version}", Version);
         SessionLog.DeleteOld(logsDirectory, TimeSpan.FromDays(30));
 
         // Set up dependency injection
