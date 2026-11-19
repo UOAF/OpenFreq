@@ -73,6 +73,20 @@ public class RadioPowerChangedEventArgs : EventArgs
     }
 }
 
+public class RadioSquelchChangedEventArgs : EventArgs
+{
+    public RadioType RadioType { get; }
+    public bool OldSquelchActive { get; }
+    public bool NewSquelchActive { get; }
+
+    public RadioSquelchChangedEventArgs(RadioType radioType, bool oldSquelchActive, bool newSquelchActive)
+    {
+        RadioType = radioType;
+        OldSquelchActive = oldSquelchActive;
+        NewSquelchActive = newSquelchActive;
+    }
+}
+
 public class ConnectionParametersChangedEventArgs : EventArgs
 {
     public ConnectionParameters OldParameters { get; }

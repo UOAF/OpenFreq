@@ -29,6 +29,7 @@ public interface IFalconRadioSharedMemoryService : IDisposable, ILifecycleServic
     event EventHandler<RadioVolumeChangedEventArgs>? VolumeChanged;
     event EventHandler<RadioPttChangedEventArgs>? PttChanged;
     event EventHandler<RadioPowerChangedEventArgs>? PowerChanged;
+    event EventHandler<RadioSquelchChangedEventArgs>? SquelchChanged;
 
     // Connection parameter changes
     event EventHandler<ConnectionParametersChangedEventArgs>? ConnectionParametersChanged;

@@ -9,6 +9,7 @@ public class RadioChannel
     public int RxVolume { get; set; }         // 0-10000
     public bool PttDepressed { get; set; }
     public bool IsOn { get; set; }
+    public bool SquelchActive { get; set; } = true;
 
     public RadioChannel(RadioType radioType)
     {
@@ -22,12 +23,13 @@ public class RadioChannel
             Frequency = Frequency,
             RxVolume = RxVolume,
             PttDepressed = PttDepressed,
-            IsOn = IsOn
+            IsOn = IsOn,
+            SquelchActive = SquelchActive
         };
     }
 
     public override string ToString()
     {
-        return $"{RadioType}: {Frequency / 1000.0:F3} MHz, Vol:{RxVolume}, PTT:{PttDepressed}, On:{IsOn}";
+        return $"{RadioType}: {Frequency / 1000.0:F3} MHz, Vol:{RxVolume}, PTT:{PttDepressed}, On:{IsOn}, SQL:{SquelchActive}";
     }
 }

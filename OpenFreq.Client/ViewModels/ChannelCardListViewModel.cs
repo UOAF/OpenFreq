@@ -100,6 +100,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         _falconRadioSharedMemoryService.PttChanged += OnBmsPttChanged;
         _falconRadioSharedMemoryService.PowerChanged += OnRadioPowerChanged;
         _falconRadioSharedMemoryService.VolumeChanged += OnRadioVolumeChanged;
+        _falconRadioSharedMemoryService.SquelchChanged += OnBmsSquelchChanged;
         _falconSharedMemoryService.FlyingStateChanged += OnFlyingStateChanged;
         _falconSharedMemoryService.StateChanged += OnFalconSharedMemoryStateChanged;
 
@@ -258,6 +259,34 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
     }
 
     private void OnRadioPowerChanged(object? sender, RadioPowerChangedEventArgs e) => QueueSlotSwitch(e.RadioType);
+
+    /// <summary>
+    /// In 3D, sets a BMS card's squelch each time the pilot moves that radio's cockpit squelch control.
+    /// </summary>
+    /// <remarks>
+    /// Edge-triggered, not level-triggered, so that previous BMS shared memory layouts
+    /// (where the squelch byte is just padding) don't drive anything.
+    /// </remarks>
+    private void OnBmsSquelchChanged(object? sender, RadioSquelchChangedEventArgs e)
+    {
+        if (_settings.ModeIsGci) return;
+
+        // Use the flight mode from the same RCC read as the squelch change, not IsFlying. When BMS enters 3D, the
+        // new cockpit turns squelch back on in the RCC write that sets flight mode, and IsFlying can lag that write.
+        if (_falconRadioSharedMemoryService.ConnectionParameters?.FlightMode != true) return;
+
+        var location = FalconLocation;
+        var card = location?.Channels.FirstOrDefault(c => c.BmsRadioType == e.RadioType);
+        if (location == null || card == null || card.IsSquelchEnabled == e.NewSquelchActive) return;
+
+        card.IsSquelchEnabled = e.NewSquelchActive;
+        // A card that is not joined gets its squelch from ApplySlotStateAsync when it joins.
+        if (card.ConnectionStatus != Channel.ChannelConnectionStatus.Disconnected)
+            location.SetChannelSquelch(card);
+
+        _logger.LogInformation("{RadioType}: cockpit squelch {State}", e.RadioType,
+            e.NewSquelchActive ? "on" : "off");
+    }
 
     private async void OnConnectionParametersChanged(object? sender,
         ConnectionParametersChangedEventArgs e)
@@ -769,6 +798,7 @@ public partial class ChannelCardListViewModel : ViewModelBase, IDisposable
         _falconRadioSharedMemoryService.PttChanged -= OnBmsPttChanged;
         _falconRadioSharedMemoryService.PowerChanged -= OnRadioPowerChanged;
         _falconRadioSharedMemoryService.VolumeChanged -= OnRadioVolumeChanged;
+        _falconRadioSharedMemoryService.SquelchChanged -= OnBmsSquelchChanged;
         _falconSharedMemoryService.FlyingStateChanged -= OnFlyingStateChanged;
         _falconSharedMemoryService.StateChanged -= OnFalconSharedMemoryStateChanged;
         _openFreqService.ConnectionStateChanged -= OnOpenFreqConnectionStateChanged;

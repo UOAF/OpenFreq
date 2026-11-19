@@ -200,6 +200,64 @@ public class BmsSlotSwitchTests
         await bms.OpenFreq.DidNotReceive().LeaveFrequencyAsync(Uhf5, radio2.Id);
     }
 
+    [Fact]
+    public async Task CockpitSquelch_In3d_SetsTheCardSquelch()
+    {
+        var bms = new BmsRadios();
+        bms.SetRadio(RadioType.Radio1, Uhf5, isOn: true);
+        bms.PowerOn(RadioType.Radio1);
+        await bms.Settles(() => bms.Joined(RadioType.Radio1).SequenceEqual([Uhf5]));
+        var card = bms.Card(RadioType.Radio1);
+        bms.SetFlightMode(true);
+        bms.OpenFreq.ClearReceivedCalls();
+
+        bms.SetCockpitSquelch(RadioType.Radio1, false);
+
+        Assert.False(card.IsSquelchEnabled);
+        bms.OpenFreq.Received(1).SetSquelch(Uhf5, card.Id, false);
+        Assert.True(bms.Card(RadioType.Radio2).IsSquelchEnabled);
+
+        bms.SetCockpitSquelch(RadioType.Radio1, true);
+
+        Assert.True(card.IsSquelchEnabled);
+        bms.OpenFreq.Received(1).SetSquelch(Uhf5, card.Id, true);
+    }
+
+    [Fact]
+    public async Task CockpitSquelch_OutsideOf3d_IsIgnored()
+    {
+        var bms = new BmsRadios();
+        bms.SetRadio(RadioType.Radio1, Uhf5, isOn: true);
+        bms.PowerOn(RadioType.Radio1);
+        await bms.Settles(() => bms.Joined(RadioType.Radio1).SequenceEqual([Uhf5]));
+        bms.SetFlightMode(false);
+        bms.OpenFreq.ClearReceivedCalls();
+
+        bms.SetCockpitSquelch(RadioType.Radio1, false);
+
+        Assert.True(bms.Card(RadioType.Radio1).IsSquelchEnabled);
+        bms.OpenFreq.DidNotReceiveWithAnyArgs().SetSquelch(default, default, default);
+    }
+
+    [Fact]
+    public async Task CockpitSquelch_OnARadioThatIsOff_IsAppliedWhenItJoins()
+    {
+        var bms = new BmsRadios();
+        bms.SetRadio(RadioType.Radio1, Uhf5, isOn: false);
+        bms.SetFlightMode(true);
+
+        bms.SetCockpitSquelch(RadioType.Radio1, false);
+
+        var card = bms.Card(RadioType.Radio1);
+        Assert.False(card.IsSquelchEnabled);
+        bms.OpenFreq.DidNotReceiveWithAnyArgs().SetSquelch(default, default, default);
+
+        bms.PowerOn(RadioType.Radio1);
+
+        await bms.Settles(() => bms.Joined(RadioType.Radio1).SequenceEqual([Uhf5]));
+        bms.OpenFreq.Received(1).SetSquelch(Uhf5, card.Id, false);
+    }
+
     private static readonly TimeSpan WaitLimit = TimeSpan.FromSeconds(5);
 
     /// <summary>
@@ -357,6 +415,22 @@ public class BmsSlotSwitchTests
         {
             lock (_gate) _radios[type].IsOn = isOn;
             _rcc.PowerChanged += Raise.EventWith(new RadioPowerChangedEventArgs(type, !isOn, isOn));
+        }
+
+        public void SetFlightMode(bool flightMode) =>
+            _rcc.ConnectionParameters.Returns(new ConnectionParameters { FlightMode = flightMode });
+
+        public void SetCockpitSquelch(RadioType type, bool squelchActive)
+        {
+            bool oldSquelchActive;
+            lock (_gate)
+            {
+                oldSquelchActive = _radios[type].SquelchActive;
+                _radios[type].SquelchActive = squelchActive;
+            }
+
+            _rcc.SquelchChanged +=
+                Raise.EventWith(new RadioSquelchChangedEventArgs(type, oldSquelchActive, squelchActive));
         }
 
         /// <summary>

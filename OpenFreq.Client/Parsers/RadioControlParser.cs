@@ -28,6 +28,8 @@ public static class RadioControlParser
     // RadioChannel structure size (12 bytes with padding)
     private const int RADIOCHANNEL_SIZE = 12;
     private const int OFFSET_CHANNEL_PTT = 8;          // bool, within a RadioChannel
+    // BMS builds before cockpit squelch export never write this byte. It was padding, so it reads as a constant.
+    private const int OFFSET_CHANNEL_SQUELCH = 10;     // bool, within a RadioChannel
 
     public static ConnectionParameters ParseConnectionParameters(IntPtr baseAddress)
     {
@@ -71,7 +73,8 @@ public static class RadioControlParser
                 Frequency = Marshal.ReadInt32(baseAddress, offset),
                 RxVolume = Marshal.ReadInt32(baseAddress, offset + 4),
                 PttDepressed = Marshal.ReadByte(baseAddress, offset + OFFSET_CHANNEL_PTT) != 0,
-                IsOn = Marshal.ReadByte(baseAddress, offset + 9) != 0
+                IsOn = Marshal.ReadByte(baseAddress, offset + 9) != 0,
+                SquelchActive = Marshal.ReadByte(baseAddress, offset + OFFSET_CHANNEL_SQUELCH) != 0
             };
 
             return channel;

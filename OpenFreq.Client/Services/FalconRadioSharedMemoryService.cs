@@ -66,6 +66,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
     public event EventHandler<RadioVolumeChangedEventArgs>? VolumeChanged;
     public event EventHandler<RadioPttChangedEventArgs>? PttChanged;
     public event EventHandler<RadioPowerChangedEventArgs>? PowerChanged;
+    public event EventHandler<RadioSquelchChangedEventArgs>? SquelchChanged;
     public event EventHandler<ConnectionParametersChangedEventArgs>? ConnectionParametersChanged;
     public event EventHandler<LogbookNameChangedEventArgs>? LogbookNameChanged;
     public event EventHandler? RadioClientConflict;
@@ -656,6 +657,12 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
             var args = new RadioPowerChangedEventArgs(radioType, oldChannel.IsOn, newChannel.IsOn);
             pendingEvents.Add(() => Raise(PowerChanged, args));
         }
+
+        if (oldChannel.SquelchActive != newChannel.SquelchActive)
+        {
+            var args = new RadioSquelchChangedEventArgs(radioType, oldChannel.SquelchActive, newChannel.SquelchActive);
+            pendingEvents.Add(() => Raise(SquelchChanged, args));
+        }
     }
 
     private void DetectConnectionParameterChanges(ConnectionParameters oldParams, ConnectionParameters newParams,
@@ -808,6 +815,7 @@ public class FalconRadioSharedMemoryService : IFalconRadioSharedMemoryService
     public event EventHandler<RadioVolumeChangedEventArgs>? VolumeChanged;
     public event EventHandler<RadioPttChangedEventArgs>? PttChanged;
     public event EventHandler<RadioPowerChangedEventArgs>? PowerChanged;
+    public event EventHandler<RadioSquelchChangedEventArgs>? SquelchChanged;
     public event EventHandler<ConnectionParametersChangedEventArgs>? ConnectionParametersChanged;
     public event EventHandler<LogbookNameChangedEventArgs>? LogbookNameChanged;
     public event EventHandler? RadioClientConflict;

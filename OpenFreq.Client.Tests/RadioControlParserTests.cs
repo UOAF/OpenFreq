@@ -16,6 +16,9 @@ public sealed class RadioControlParserTests : IDisposable
     // mRadios[1].mPttDepressed: mRadios starts at 196, and mPttDepressed is 8 bytes into a 12-byte RadioChannel.
     private const int Radio2PttOffset = 196 + 12 + 8;
 
+    // mRadios[0].mSqlActive, 10 bytes into the first RadioChannel.
+    private const int Radio1SquelchOffset = 196 + 10;
+
     private readonly IntPtr _rcc = Marshal.AllocHGlobal(RccPrefixSize);
 
     public RadioControlParserTests()
@@ -34,5 +37,18 @@ public sealed class RadioControlParserTests : IDisposable
         Assert.True(RadioControlParser.ParseRadioChannel(_rcc, RadioType.Radio2).PttDepressed);
         Assert.False(RadioControlParser.ParsePttDepressed(_rcc, RadioType.Radio1));
         Assert.False(RadioControlParser.ParsePttDepressed(_rcc, RadioType.Guard));
+    }
+
+    [Fact]
+    public void SquelchFlag_IsReadFromItsOwnRadioOnly()
+    {
+        Marshal.WriteByte(_rcc, Radio1SquelchOffset, 1);
+
+        var radio1 = RadioControlParser.ParseRadioChannel(_rcc, RadioType.Radio1);
+        Assert.True(radio1.SquelchActive);
+        Assert.False(radio1.IsOn);
+        Assert.False(radio1.PttDepressed);
+        Assert.False(RadioControlParser.ParseRadioChannel(_rcc, RadioType.Radio2).SquelchActive);
+        Assert.False(RadioControlParser.ParseRadioChannel(_rcc, RadioType.Guard).SquelchActive);
     }
 }
