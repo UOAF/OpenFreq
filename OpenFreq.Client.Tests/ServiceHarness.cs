@@ -29,6 +29,7 @@ internal sealed class ServiceHarness
 
     public OpenFreqService Service { get; }
 
+    /// <summary>Creates a service with substituted external dependencies.</summary>
     /// <param name="logger">The service's logger. Defaults to a null logger.</param>
     public ServiceHarness(ILogger<OpenFreqService>? logger = null)
     {
