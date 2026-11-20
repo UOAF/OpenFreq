@@ -54,7 +54,10 @@ sealed class Program
             .Enrich.FromLogContext()
             .Enrich.WithProperty("Application", "OpenFreqClient")
             .Enrich.With(new ElapsedEnricher())
-            .WriteTo.SessionFile(logFile)
+            .Enrich.With(new UtcTimestampEnricher())
+            .WriteTo.SessionFile(logFile,
+                "{UtcTimestamp:yyyy-MM-ddTHH:mm:ss.fffZ} [{Level:u3}] [{SourceContext}] " +
+                "{Message:lj}{NewLine}{Exception}")
             .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss.fff} {Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}")
             .CreateLogger();
 #else
@@ -65,7 +68,10 @@ sealed class Program
             .Enrich.FromLogContext()
             .Enrich.WithProperty("Application", "OpenFreqClient")
             .Enrich.With(new ElapsedEnricher())
-            .WriteTo.SessionFile(logFile)
+            .Enrich.With(new UtcTimestampEnricher())
+            .WriteTo.SessionFile(logFile,
+                "{UtcTimestamp:yyyy-MM-ddTHH:mm:ss.fffZ} [{Level:u3}] [{SourceContext}] " +
+                "{Message:lj}{NewLine}{Exception}")
             .CreateLogger();
 #endif
 
@@ -78,7 +84,7 @@ sealed class Program
         Version = Assembly.GetExecutingAssembly()
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
             ?.InformationalVersion ?? "unknown";
-        Log.Information("OpenFreq Client {Version} starting at {WallTime:o}", Version, DateTimeOffset.Now);
+        Log.Information("OpenFreq Client {Version}", Version);
         SessionLog.DeleteOld(logsDirectory, TimeSpan.FromDays(30));
 
         // Set up dependency injection

@@ -22,6 +22,16 @@ public sealed class ElapsedEnricher : ILogEventEnricher
 }
 
 /// <summary>
+/// Adds <c>UtcTimestamp</c>, the current UTC timestamp to each log event.
+/// </summary>
+public sealed class UtcTimestampEnricher : ILogEventEnricher
+{
+    public void Enrich(LogEvent logEvent, ILogEventPropertyFactory propertyFactory) =>
+        logEvent.AddPropertyIfAbsent(new LogEventProperty("UtcTimestamp",
+            new ScalarValue(logEvent.Timestamp.UtcDateTime)));
+}
+
+/// <summary>
 /// The log file setup that the client and the server share. tools/stepper reads the files of both,
 /// so they must use the same line format.
 /// </summary>
@@ -78,6 +88,7 @@ public static class SessionLog
     /// Serilog 4 already uses the invariant culture when it has no format provider.
     /// The explicit provider makes that a stated rule, because tools/stepper cannot read <c>139,700 MHz</c>.
     /// </remarks>
-    public static LoggerConfiguration SessionFile(this LoggerSinkConfiguration writeTo, string path) =>
-        writeTo.File(path, outputTemplate: FileTemplate, formatProvider: CultureInfo.InvariantCulture);
+    public static LoggerConfiguration SessionFile(this LoggerSinkConfiguration writeTo, string path,
+        string outputTemplate = FileTemplate) =>
+        writeTo.File(path, outputTemplate: outputTemplate, formatProvider: CultureInfo.InvariantCulture);
 }

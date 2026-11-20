@@ -43,7 +43,10 @@ static class Program
             .Enrich.FromLogContext()
             .Enrich.WithProperty("Application", "OpenFreqServer")
             .Enrich.With(new ElapsedEnricher())
-            .WriteTo.SessionFile(logFile);
+            .Enrich.With(new UtcTimestampEnricher())
+            .WriteTo.SessionFile(logFile,
+                "{UtcTimestamp:yyyy-MM-ddTHH:mm:ss.fffZ} [{Level:u3}] [{SourceContext}] " +
+                "{Message:lj}{NewLine}{Exception}");
 
         if (headlessMode)
         {
@@ -53,7 +56,7 @@ static class Program
         }
 
         Log.Logger = loggerConfiguration.CreateLogger();
-        Log.Information("OpenFreq Server {Version} starting at {WallTime:o}", version, DateTimeOffset.Now);
+        Log.Information("OpenFreq Server {Version}", version);
         SessionLog.DeleteOld(logsDirectory, TimeSpan.FromDays(30));
 
         try
