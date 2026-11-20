@@ -210,48 +210,48 @@ static class Program
 
     static ServerConfig? LoadConfiguration()
     {
+        var configPath = Path.Combine(
+            Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory,
+            "OpenFreq.Server.json");
+
         try
         {
-            var configPath = Path.Combine(
-                Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory,
-                "OpenFreq.Server.json");
-
             if (!File.Exists(configPath))
             {
-                Log.Information("Configuration file not found at: {ConfigPath}, creating default", configPath);
-
-                var defaultConfig = new ServerConfig
-                {
-                    ServerPassword = "",
-                    WebSocketPort = 9987,
-                    AudioPort = 9988,
-                    MaxClientsPerChannel = 50,
-                    MaxChannelsPerClient = 10,
-                    BroadcastPeerUpdates = true
-                };
-
-                var json = Json.Json.Instance.Serialize(defaultConfig);
-
-                File.WriteAllText(configPath, json);
-                Log.Information("Default configuration created at: {ConfigPath}", configPath);
-                return defaultConfig;
+                return CreateDefaultConfiguration(configPath);
             }
 
-            var configJson = File.ReadAllText(configPath);
-            var config = Json.Json.Instance.Deserialize<ServerConfig>(configJson);
-
-            if (config == null)
-            {
-                Log.Error("Failed to parse configuration file");
-                return null;
-            }
-
-            return config;
+            return ReadExistingConfiguration(configPath);
         }
         catch (Exception ex)
         {
             Log.Error(ex, "Error loading configuration");
             return null;
         }
+    }
+
+    private static ServerConfig CreateDefaultConfiguration(string configPath)
+    {
+        Log.Information("Configuration file not found at: {ConfigPath}, creating default", configPath);
+
+        var defaultConfig = new ServerConfig();
+        var json = Json.Json.Instance.Serialize(defaultConfig);
+        File.WriteAllText(configPath, json);
+        Log.Information("Default configuration created at: {ConfigPath}", configPath);
+        return defaultConfig;
+    }
+
+    private static ServerConfig? ReadExistingConfiguration(string configPath)
+    {
+        var configJson = File.ReadAllText(configPath);
+        var config = Json.Json.Instance.Deserialize<ServerConfig>(configJson);
+
+        if (config == null)
+        {
+            Log.Error("Failed to parse configuration file");
+            return null;
+        }
+
+        return config;
     }
 }
