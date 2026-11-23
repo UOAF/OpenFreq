@@ -21,7 +21,7 @@ import Data.Word
 foldLog :: IO ByteString -> (StartLine -> IO s) -> (s -> LogLine -> IO s) -> IO (Either String s)
 foldLog refill begin step = nextLine refill BS.empty >>= \case
     Nothing -> pure $ Left "the input is empty, so it is not a session log"
-    Just (l, rest) -> case parseOnly (prefix *> startMessage) l of
+    Just (l, rest) -> case parseOnly parseStartLine l of
         Left _ -> pure . Left $ mconcat [
             "line 1 is not an OpenFreq start line, so the input is not a session log:\n  ",
             showLine l
@@ -84,17 +84,30 @@ readLine l = case parseOnly ((,) <$> prefix <*> takeByteString) l of
   where
     ptt t edge body = bimap (const BadPtt) (Just . Ptt) $ parseOnly (pttLine t edge) body
 
--- | The start of each line: the seconds since the app started, the level, and the source context.
--- ex: 8025.123 [INF] [OpenFreqClient.Services.OpenFreqService] PTT start: ...
-prefix :: Parser Milli
-prefix = do
-    seconds <- rational @Rational
+-- | The start of each line: the monotonic seconds since the app started, the level, and the source context.
+-- Also returns the wall time if present in the prefix.
+-- ex: 2026-11-07T09:35:44.803Z (8025.123) [INF] [OpenFreqClient.Services.OpenFreqService] PTT start: ...
+-- or: 8025.123 [INF] [OpenFreqClient.Services.OpenFreqService] PTT start: ...
+prefixWithWall :: Parser (Maybe Text, Milli)
+prefixWithWall = do
+    (wall, seconds) <- newPrefix <|> oldPrefix
     _ <- string " ["
     _ <- count 3 . satisfy $ inClass "A-Z"
     _ <- string "] ["
     _ <- takeTill (== ']')
     _ <- string "] "
-    pure $ fromRational seconds
+    pure (wall, fromRational seconds)
+  where
+    newPrefix = do
+        wall <- isoTime
+        _ <- string " ("
+        s <- rational @Rational
+        _ <- char ')'
+        pure (Just wall, s)
+    oldPrefix = (Nothing,) <$> rational @Rational
+
+prefix :: Parser Milli
+prefix = snd <$> prefixWithWall
 
 data Source = Client | Server
     deriving stock (Show, Eq)
@@ -106,15 +119,29 @@ data StartLine = StartLine {
     wallTime :: !Text
     }
 
--- ex: OpenFreq Client 1.1.4 starting at 2026-09-26T14:21:20.0650000-04:00
-startMessage :: Parser StartLine
-startMessage = do
+-- | Parse the first line of a session log.
+-- ex: 2026-11-07T09:35:44.803Z (0.000) [INF] [OpenFreqClient] OpenFreq Client 1.1.4
+-- or: 0.000 [INF] [OpenFreqClient] OpenFreq Client 1.1.4 starting at 2026-09-26T14:21:20.0650000-04:00
+parseStartLine :: Parser StartLine
+parseStartLine = do
+    (pfxWall, _) <- prefixWithWall
     _ <- string "OpenFreq "
     src <- (Client <$ string "Client") <|> (Server <$ string "Server")
     ver <- char ' ' *> takeWhile1 (/= ' ')
-    wall <- string " starting at " *> isoTime
+    msgWall <- optional (string " starting at " *> isoTime)
     endOfInput
+    let wall = fromMaybe (fromMaybe "unknown start time" pfxWall) msgWall
     pure $ StartLine src (decodeUtf8Lenient ver) wall
+
+-- ex: OpenFreq Client 1.1.4 starting at 2026-09-26T14:21:20.0650000-04:00
+-- or: OpenFreq Client 1.1.4
+startMessage :: Parser ()
+startMessage = do
+    _ <- string "OpenFreq "
+    _ <- (Client <$ string "Client") <|> (Server <$ string "Server")
+    _ <- char ' ' *> takeWhile1 (/= ' ')
+    _ <- optional (string " starting at " *> isoTime)
+    endOfInput
 
 -- | An ISO 8601 time with a UTC offset, without the fraction of a second.
 -- ex: 2026-09-26T14:21:20.0650000-04:00 gives 2026-09-26 14:21:20 -04:00

@@ -55,6 +55,7 @@ public sealed class SessionLogTests : IDisposable
 
             using var logger = new LoggerConfiguration()
                 .Enrich.With(new ElapsedEnricher())
+                .Enrich.With(new UtcTimestampEnricher())
                 .WriteTo.SessionFile(path)
                 .CreateLogger();
             logger.Information("PTT start: Bob ({PeerId}) on {FreqMhz:F3} MHz", "id", 139.7);
@@ -64,8 +65,8 @@ public sealed class SessionLogTests : IDisposable
             CultureInfo.CurrentCulture = culture;
         }
 
-        // Without the enricher, Serilog writes "{Elapsed:F3}" as text.
-        Assert.Matches(@"^\d+\.\d{3} \[INF\] \[\] PTT start: Bob \(id\) on 139\.700 MHz\r?\n$", File.ReadAllText(path));
+        // Without the enrichers, Serilog writes "{UtcTimestamp:...}" or "{Elapsed:F3}" as text.
+        Assert.Matches(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z \(\d+\.\d{3}\) \[INF\] \[\] PTT start: Bob \(id\) on 139\.700 MHz\r?\n$", File.ReadAllText(path));
     }
 
     private string CreateFile(string name, DateTime lastWriteUtc)
