@@ -4,6 +4,19 @@
 public static class BmsHeightmapConverter
 {
     public const double HEIGHTMAP_SIZE_METERS = 1_024_000.0;
+    public const int HEIGHTMAP_SAMPLES = 32_768;
+
+    /// <summary>
+    /// Heightmap Y, in meters, of the last row, which BMS puts at 0m north.
+    /// </summary>
+    /// <remarks>
+    /// BMS heightmap samples are fenceposts, so they span (HEIGHTMAP_SAMPLES - 1)^2 cells.
+    /// For sim coordinates, BMS uses row (HEIGHTMAP_SAMPLES - 1) - north.
+    /// For some reason (possible bug?) BMS maps Lat/Lon row 0 on the north edge of
+    /// the heightmap, i.e., one cell north of the sim coordinates.
+    /// </remarks>
+    public const double LAST_ROW_Y_METERS = HEIGHTMAP_SIZE_METERS * (HEIGHTMAP_SAMPLES - 1) / HEIGHTMAP_SAMPLES;
+
     private const double FEET_PER_METER = 3.28084;
 
     /// <summary>
@@ -17,7 +30,7 @@ public static class BmsHeightmapConverter
     {
         // Convert feet to meters
         var heightmapX = x / FEET_PER_METER;
-        var heightmapY = HEIGHTMAP_SIZE_METERS - (y / FEET_PER_METER);
+        var heightmapY = LAST_ROW_Y_METERS - (y / FEET_PER_METER);
         var altitudeMeters = z / FEET_PER_METER;
 
         return (heightmapX, heightmapY, altitudeMeters);
@@ -33,7 +46,7 @@ public static class BmsHeightmapConverter
     public static (double x, double y, double z) FromHeightmap(double heightmapX, double heightmapY, double altitudeMeters)
     {
         var x = heightmapX * FEET_PER_METER;
-        var y = (HEIGHTMAP_SIZE_METERS - heightmapY) * FEET_PER_METER;
+        var y = (LAST_ROW_Y_METERS - heightmapY) * FEET_PER_METER;
         var z = altitudeMeters * FEET_PER_METER;
 
         return (x, y, z);

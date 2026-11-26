@@ -1,6 +1,7 @@
 using System.Globalization;
 using OpenFreq.Client.Converters;
 using OpenFreqClient.Converters;
+using OpenFreq.Utilities;
 
 namespace OpenFreq.Client.Tests;
 
@@ -21,12 +22,27 @@ public class BmsHeightmapConverterTests
     }
 
     [Fact]
-    public void ToHeightmap_FlipsYAxis_AroundMapSize()
+    public void ToHeightmap_PutsNorthZeroOnLastRow()
     {
-        // y = 0 ft maps to the far edge (HEIGHTMAP_SIZE_METERS); origin is top-left in heightmap space.
         var (_, hy, _) = BmsHeightmapConverter.ToHeightmap(0, 0, 0);
 
-        Assert.Equal(BmsHeightmapConverter.HEIGHTMAP_SIZE_METERS, hy, precision: 6);
+        const double cell = BmsHeightmapConverter.HEIGHTMAP_SIZE_METERS / BmsHeightmapConverter.HEIGHTMAP_SAMPLES;
+        Assert.Equal(BmsHeightmapConverter.HEIGHTMAP_SAMPLES - 1, hy / cell, precision: 6);
+    }
+
+    [Fact]
+    public void ToHeightmap_AgreesWithLatLonConversion()
+    {
+        // BMS puts the theater center at 16384 cells east, 16383 cells north.
+        const double cell = BmsHeightmapConverter.HEIGHTMAP_SIZE_METERS / BmsHeightmapConverter.HEIGHTMAP_SAMPLES;
+        const double feetPerMeter = 1.0 / 0.3048;
+        var (simX, simY, _) = BmsHeightmapConverter.ToHeightmap(16384 * cell * feetPerMeter, 16383 * cell * feetPerMeter, 0);
+
+        var (lx, ly) = TheaterCoordinateConverter.LatLonToXYMeters("Korea KTO", 38.5, 127.5,
+            TheaterCoordinateConverter.CoordinateSystem.BMS_HEIGHTMAP_COORDINATE_SYTEM);
+
+        Assert.Equal(lx, simX, 0.1);
+        Assert.Equal(ly, simY, 0.1);
     }
 }
 

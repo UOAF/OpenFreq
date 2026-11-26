@@ -6,8 +6,6 @@ using OpenFreq.Common;
 /// </summary>
 public static class AcmiHeightmapConverter
 {
-    private const double THEATRE_SIZE_METERS = 1_024_000.0;
-
     /// <summary>
     /// Converts ACMI coordinates to Heightmap coordinates (in METERS for FastPathAudioSim)
     /// </summary>
@@ -17,9 +15,10 @@ public static class AcmiHeightmapConverter
     /// <returns>(heightmapX, heightmapY, altitudeMeters) - all in METERS</returns>
     public static (double x, double y, double altitudeMeters) ToHeightmap(double u, double v, double altitudeMeters)
     {
-        // ACMI coordinates are already in meters, just need Y-flip
+        // BMS writes U and V as its sim east and north in meters,
+        // so they need the same Y flip as BMS shared memory positions.
         var x = u;
-        var y = THEATRE_SIZE_METERS - v;
+        var y = BmsHeightmapConverter.LAST_ROW_Y_METERS - v;
 
         return (x, y, altitudeMeters);
     }
