@@ -22,17 +22,26 @@ public sealed class ElapsedEnricher : ILogEventEnricher
 }
 
 /// <summary>
+/// Adds <c>UtcTimestamp</c>, the current UTC timestamp to each log event.
+/// </summary>
+public sealed class UtcTimestampEnricher : ILogEventEnricher
+{
+    public void Enrich(LogEvent logEvent, ILogEventPropertyFactory propertyFactory) =>
+        logEvent.AddPropertyIfAbsent(new LogEventProperty("UtcTimestamp",
+            new ScalarValue(logEvent.Timestamp.UtcDateTime)));
+}
+
+/// <summary>
 /// The log file setup that the client and the server share. tools/stepper reads the files of both,
 /// so they must use the same line format.
 /// </summary>
 public static class SessionLog
 {
     /// <summary>
-    /// Each line starts with a monotonic stamp from <see cref="ElapsedEnricher"/>.
-    /// The wall time appears once, in the start line.
+    /// Each line starts with a UTC timestamp and a monotonic stamp from <see cref="ElapsedEnricher"/>.
     /// </summary>
     public const string FileTemplate =
-        "{Elapsed:F3} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}";
+        "{UtcTimestamp:yyyy-MM-ddTHH:mm:ss.fffZ} ({Elapsed:F3}) [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}";
 
     /// <summary>
     /// A new log file path for this process, for example <c>openfreq-client-20260926-142120-12345.log</c>.
@@ -72,12 +81,14 @@ public static class SessionLog
     }
 
     /// <summary>
-    /// Writes a log file in the <see cref="FileTemplate"/> format. Add an <see cref="ElapsedEnricher"/> to the logger too.
+    /// Writes a log file in the <see cref="FileTemplate"/> format.
+    /// Add an <see cref="ElapsedEnricher"/> and <see cref="UtcTimestampEnricher"/> to the logger too.
     /// </summary>
     /// <remarks>
     /// Serilog 4 already uses the invariant culture when it has no format provider.
     /// The explicit provider makes that a stated rule, because tools/stepper cannot read <c>139,700 MHz</c>.
     /// </remarks>
-    public static LoggerConfiguration SessionFile(this LoggerSinkConfiguration writeTo, string path) =>
-        writeTo.File(path, outputTemplate: FileTemplate, formatProvider: CultureInfo.InvariantCulture);
+    public static LoggerConfiguration SessionFile(this LoggerSinkConfiguration writeTo, string path,
+        string outputTemplate = FileTemplate) =>
+        writeTo.File(path, outputTemplate: outputTemplate, formatProvider: CultureInfo.InvariantCulture);
 }
