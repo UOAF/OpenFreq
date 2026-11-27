@@ -2,6 +2,7 @@ using System;
 using FalconBmsDataService.Models;
 using FalconRadioService.Models;
 using OpenFreq.Client.Services.Interfaces;
+using OpenFreq.Client.Terrain;
 
 namespace FalconBmsDataService.Services;
 
@@ -26,9 +27,9 @@ public interface IFalconSharedMemoryService : IDisposable, ILifecycleService
     FlightVelocity? Velocity { get; }
 
     /// <summary>
-    /// Theater terrain directory (read once on connect, null if never connected)
+    /// What BMS exports about the current theater (read once on connect, null if never connected)
     /// </summary>
-    string? TheaterTerrainDir { get; }
+    BmsTheaterInfo? TheaterInfo { get; }
 
     /// <summary>
     /// Current aircraft NCTR string (read once on connect, null if never connected)

@@ -10,6 +10,7 @@ using FalconBmsDataService.Services;
 using FalconRadioService.Models;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Client.NativeMethods;
+using OpenFreq.Client.Terrain;
 
 namespace OpenFreq.Client.Services;
 
@@ -71,7 +72,7 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
 
     private FlightPosition? _position;
     private FlightVelocity? _velocity;
-    private string? _theaterTerrainDir;
+    private BmsTheaterInfo? _theaterInfo;
     private string? _acName;
     private string? _acNctr;
     private readonly object _dataLock = new();
@@ -126,12 +127,12 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
 
     public int? GameTimeSeconds => Volatile.Read(ref _gameTimeSeconds) is >= 0 and var seconds ? seconds : null;
 
-    public string? TheaterTerrainDir
+    public BmsTheaterInfo? TheaterInfo
     {
         get
         {
             lock (_dataLock)
-                return _theaterTerrainDir;
+                return _theaterInfo;
         }
     }
 
@@ -291,13 +292,13 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
                     0, 0,
                     IntPtr.Zero);
 
-                // Read theater terrain dir once (only on connect)
+                // Read theater info once (only on connect)
                 if (_lpStringBaseAddress != IntPtr.Zero)
                 {
-                    var terrainDir = StringDataParser.ParseTheaterTerrainDir(_lpStringBaseAddress);
+                    var theaterInfo = StringDataParser.ParseTheaterInfo(_lpStringBaseAddress);
 
                     // This happens when BMS is not done loading yet
-                    if (String.IsNullOrEmpty(terrainDir))
+                    if (theaterInfo == null)
                     {
                         DisconnectFromSharedMemory();
                         return false;
@@ -305,7 +306,7 @@ public class FalconSharedMemoryService(ILogger<FalconSharedMemoryService> logger
 
                     lock (_dataLock)
                     {
-                        _theaterTerrainDir = terrainDir;
+                        _theaterInfo = theaterInfo;
                     }
                 }
             }
@@ -582,7 +583,7 @@ public class FalconSharedMemoryService : IFalconSharedMemoryService
     public ServiceState State { get; }
     public FlightPosition? Position { get; }
     public FlightVelocity? Velocity { get; }
-    public string? TheaterTerrainDir { get; }
+    public BmsTheaterInfo? TheaterInfo { get; }
     public string? AcNCTR { get; }
     public bool? IsFlying { get; }
     public int? GameTimeSeconds { get; }

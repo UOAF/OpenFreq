@@ -26,6 +26,7 @@ using OpenFreq.Client.Models;
 using OpenFreq.Common;
 using OpenFreq.Services.Acmi;
 using OpenFreqAudio;
+using OpenFreqAudio.TerrainSampling;
 using OpenFreqClient.Models;
 using OpenFreqClient.Services;
 using OpenFreqClient.Services.Interfaces;
@@ -648,7 +649,10 @@ public partial class MainWindowViewModel : ViewModelBase, IAsyncDisposable
 
             if (Settings.ConnectionMode == IOpenFreqService.Mode.GCI)
             {
-                _openFreqService.LoadHeightmap(Settings.HeightmapPath);
+                // We know the objects folder (and so the terrain leveling) only for a theater that we found in BMS.
+                var theater = Settings.TheaterDefinitions.FirstOrDefault(t =>
+                    string.Equals(t.HeightmapPath, Settings.HeightmapPath, StringComparison.OrdinalIgnoreCase));
+                _openFreqService.LoadHeightmap(TheaterTerrainFiles.FromHeightmapPath(Settings.HeightmapPath, theater?.ObjectDir));
 
                 if (!string.IsNullOrEmpty(Settings.TacviewServerAddress))
                 {

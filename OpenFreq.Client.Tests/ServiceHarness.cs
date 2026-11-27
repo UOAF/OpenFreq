@@ -23,6 +23,8 @@ internal sealed class ServiceHarness
     public IRtcClient Client { get; } = Substitute.For<IRtcClient>();
     public IPlaybackService Playback { get; } = Substitute.For<IPlaybackService>();
     public ISignalCalculator SignalCalculator { get; } = Substitute.For<ISignalCalculator>();
+    /// <summary>Gives <see cref="SignalCalculator"/> for any files, unless a test changes it</summary>
+    public ISignalCalculatorFactory SignalCalculatorFactory { get; } = Substitute.For<ISignalCalculatorFactory>();
     public IFalconSharedMemoryService Falcon { get; } = Substitute.For<IFalconSharedMemoryService>();
     public IFalconRadioSharedMemoryService FalconRadio { get; } = Substitute.For<IFalconRadioSharedMemoryService>();
     public IAcmiClientService Acmi { get; } = Substitute.For<IAcmiClientService>();
@@ -38,12 +40,11 @@ internal sealed class ServiceHarness
         var playbackFactory = Substitute.For<IPlaybackServiceFactory>();
         playbackFactory.Create(default!, default).ReturnsForAnyArgs(Playback);
 
-        var signalFactory = Substitute.For<ISignalCalculatorFactory>();
-        signalFactory.Create(default!, default, default, default, default, default!).ReturnsForAnyArgs(SignalCalculator);
+        SignalCalculatorFactory.Create(default!, default!).ReturnsForAnyArgs(SignalCalculator);
 
         Service = new OpenFreqService(
             Falcon, FalconRadio, logger ?? NullLogger<OpenFreqService>.Instance, NullLoggerFactory.Instance, Acmi,
-            rtcFactory, playbackFactory, signalFactory);
+            rtcFactory, playbackFactory, SignalCalculatorFactory);
     }
 
     /// <summary>Run Initialize() with sane defaults (GCI mode, device 0).</summary>

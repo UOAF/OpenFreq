@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using OpenFreq.Client.Models;
 using OpenFreq.Common;
+using OpenFreqAudio.TerrainSampling;
 
 namespace OpenFreqClient.Services.Interfaces;
 
@@ -100,7 +101,12 @@ public interface IOpenFreqService : IDisposable
 
     public OpenFreqStatus Status { get; }
 
-    public void LoadHeightmap(string path, int width = 32768, int height = 32768, int bytesPerSample = 2);
+    /// <summary>
+    /// Loads a theater's terrain for terrain-aware RF calculations.
+    /// Does nothing if the terrain from the same files is already loaded.
+    /// If the load fails, it logs the error and keeps the terrain that was loaded before.
+    /// </summary>
+    public void LoadHeightmap(TheaterTerrainFiles files);
 
     /// <summary>
     /// Samples terrain elevation (meters MSL) at BMS heightmap coordinates. Null if no heightmap loaded.

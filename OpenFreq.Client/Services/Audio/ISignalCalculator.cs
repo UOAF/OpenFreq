@@ -25,21 +25,24 @@ public interface ISignalCalculator : IDisposable
         (double x, double y, double z)? rxVelocity = null);
     public double SampleElevation(double xMeters, double yMeters);
 
+    /// <summary>The size of the loaded heightmap, which converts BMS positions to heightmap meters</summary>
+    BmsHeightmapConverter Heightmap { get; }
 }
 
-/// <summary>Adapter owning a <see cref="DEMReader"/> + <see cref="FastPathAudioSim"/>.</summary>
+/// <summary>Adapter owning a <see cref="TheaterTerrain"/> + <see cref="FastPathAudioSim"/>.</summary>
 public sealed class TerrainSignalCalculator : ISignalCalculator
 {
-    private readonly HeightPyramid _pyramid;
+    private readonly TheaterTerrain _terrain;
     private readonly FastPathAudioSim _sim;
 
-    public TerrainSignalCalculator(string path, int width, int height, int bytesPerSample, double cellSizeMeters,
-        ILoggerFactory loggerFactory)
+    public BmsHeightmapConverter Heightmap { get; }
+
+    public TerrainSignalCalculator(TheaterTerrainFiles files, ILoggerFactory loggerFactory)
     {
-        if (bytesPerSample != 2)
-            throw new ArgumentException("HeightPyramid only supports 2-byte (int16 feet) samples", nameof(bytesPerSample));
-        _pyramid = HeightPyramid.FromFile(path, width, height);
-        _sim = new FastPathAudioSim(_pyramid, 0, 0, cellSizeMeters, loggerFactory.CreateLogger<FastPathAudioSim>());
+        _terrain = TheaterTerrain.Load(files, loggerFactory.CreateLogger<TheaterTerrain>());
+        Heightmap = new BmsHeightmapConverter(_terrain.Samples, _terrain.SizeMeters);
+        _sim = new FastPathAudioSim(_terrain.Pyramid, 0, 0, _terrain.CellSizeMeters,
+            loggerFactory.CreateLogger<FastPathAudioSim>());
     }
 
     public AudioParams CalculateAudioParams(
@@ -58,7 +61,7 @@ public sealed class TerrainSignalCalculator : ISignalCalculator
             receiverSensitivityDbm, includeTerrainProfile, txAltitudeIsMSL, rxAltitudeIsMSL, txVelocity, rxVelocity);
     public double SampleElevation(double xMeters, double yMeters) => _sim.SampleElevation(xMeters, yMeters);
 
-    public void Dispose() => _pyramid.Dispose();
+    public void Dispose() => _terrain.Dispose();
 }
 
 /// <summary>
@@ -67,14 +70,12 @@ public sealed class TerrainSignalCalculator : ISignalCalculator
 /// </summary>
 public interface ISignalCalculatorFactory
 {
-    ISignalCalculator Create(string path, int width, int height, int bytesPerSample, double cellSizeMeters,
-        ILoggerFactory loggerFactory);
+    ISignalCalculator Create(TheaterTerrainFiles files, ILoggerFactory loggerFactory);
 }
 
 /// <summary>Default factory producing the terrain-backed calculator.</summary>
 public sealed class TerrainSignalCalculatorFactory : ISignalCalculatorFactory
 {
-    public ISignalCalculator Create(string path, int width, int height, int bytesPerSample, double cellSizeMeters,
-        ILoggerFactory loggerFactory)
-        => new TerrainSignalCalculator(path, width, height, bytesPerSample, cellSizeMeters, loggerFactory);
+    public ISignalCalculator Create(TheaterTerrainFiles files, ILoggerFactory loggerFactory)
+        => new TerrainSignalCalculator(files, loggerFactory);
 }

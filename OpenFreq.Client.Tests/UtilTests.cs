@@ -13,8 +13,8 @@ public class BmsHeightmapConverterTests
     {
         const double x = 123_456.0, y = 654_321.0, z = 5_000.0;
 
-        var (hx, hy, alt) = BmsHeightmapConverter.ToHeightmap(x, y, z);
-        var (bx, by, bz) = BmsHeightmapConverter.FromHeightmap(hx, hy, alt);
+        var (hx, hy, alt) = BmsHeightmapConverter.Default.ToHeightmap(x, y, z);
+        var (bx, by, bz) = BmsHeightmapConverter.Default.FromHeightmap(hx, hy, alt);
 
         Assert.Equal(x, bx, precision: 6);
         Assert.Equal(y, by, precision: 6);
@@ -24,19 +24,31 @@ public class BmsHeightmapConverterTests
     [Fact]
     public void ToHeightmap_PutsNorthZeroOnLastRow()
     {
-        var (_, hy, _) = BmsHeightmapConverter.ToHeightmap(0, 0, 0);
+        var heightmap = BmsHeightmapConverter.Default;
+        var (_, hy, _) = heightmap.ToHeightmap(0, 0, 0);
 
-        const double cell = BmsHeightmapConverter.HEIGHTMAP_SIZE_METERS / BmsHeightmapConverter.HEIGHTMAP_SAMPLES;
-        Assert.Equal(BmsHeightmapConverter.HEIGHTMAP_SAMPLES - 1, hy / cell, precision: 6);
+        Assert.Equal(heightmap.Samples - 1, hy / heightmap.CellSizeMeters, precision: 6);
+    }
+
+    [Fact]
+    public void ToHeightmap_UsesTheMapSize()
+    {
+        // A 16384-sample map over 512 km has the same 31.25 m cells as the stock map, but half as many.
+        var heightmap = new BmsHeightmapConverter(16_384, 512_000);
+        var (_, hy, _) = heightmap.ToHeightmap(0, 0, 0);
+
+        Assert.Equal(31.25, heightmap.CellSizeMeters, precision: 9);
+        Assert.Equal(16_383 * 31.25, hy, precision: 6);
     }
 
     [Fact]
     public void ToHeightmap_AgreesWithLatLonConversion()
     {
         // BMS puts the theater center at 16384 cells east, 16383 cells north.
-        const double cell = BmsHeightmapConverter.HEIGHTMAP_SIZE_METERS / BmsHeightmapConverter.HEIGHTMAP_SAMPLES;
+        var heightmap = BmsHeightmapConverter.Default;
+        double cell = heightmap.CellSizeMeters;
         const double feetPerMeter = 1.0 / 0.3048;
-        var (simX, simY, _) = BmsHeightmapConverter.ToHeightmap(16384 * cell * feetPerMeter, 16383 * cell * feetPerMeter, 0);
+        var (simX, simY, _) = heightmap.ToHeightmap(16384 * cell * feetPerMeter, 16383 * cell * feetPerMeter, 0);
 
         var (lx, ly) = TheaterCoordinateConverter.LatLonToXYMeters("Korea KTO", 38.5, 127.5,
             TheaterCoordinateConverter.CoordinateSystem.BMS_HEIGHTMAP_COORDINATE_SYTEM);

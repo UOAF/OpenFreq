@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -16,9 +17,11 @@ using FalconRadioService.Services;
 using ManagedBass;
 using Microsoft.Extensions.Logging;
 using OpenFreq.Client.Models;
+using OpenFreq.Client.Terrain;
 using OpenFreq.Common;
 using OpenFreq.Services.Acmi;
 using OpenFreqAudio;
+using OpenFreqAudio.TerrainSampling;
 using OpenFreqClient.Models;
 using OpenFreqClient.Services.Audio;
 using OpenFreqClient.Services.Interfaces;
@@ -79,6 +82,14 @@ public class OpenFreqService : IOpenFreqService
     private readonly Lock _streamCreationLock = new();
 
     private ISignalCalculator? _signalCalculator;
+    // Physics holds this lock while it uses _signalCalculator, so a terrain load cannot dispose it during a calculation.
+    private readonly Lock _signalCalculatorLock = new();
+    // A terrain load takes seconds, so loads use their own lock and hold _signalCalculatorLock only for the swap.
+    private readonly Lock _terrainLoadLock = new();
+    // The files of the loaded terrain, or null if none is loaded
+    private TheaterTerrainFiles? _loadedTerrainFiles;
+    // The size of the loaded heightmap. Assume the stock size until we load one.
+    private volatile BmsHeightmapConverter _heightmap = BmsHeightmapConverter.Default;
     private readonly IAcmiClientService _acmiClientService;
     private readonly SignalStrengthTracker _signalStrengthTracker;
 
@@ -433,17 +444,9 @@ public class OpenFreqService : IOpenFreqService
             return;
         }
 
-        if (e.NewState == ServiceState.Connected && _falconSharedMemoryService.TheaterTerrainDir != null)
+        if (e.NewState == ServiceState.Connected)
         {
-            var heightmapPath = Path.Join(_falconSharedMemoryService.TheaterTerrainDir, "NewTerrain", "HeightMaps",
-                "HeightMap.raw");
-            if (!File.Exists(heightmapPath))
-            {
-                _logger.LogError("Could not find heightmap path: {heightmapPath}", heightmapPath);
-                return;
-            }
-
-            LoadHeightmap(heightmapPath);
+            LoadBmsHeightmap();
         }
     }
 
@@ -452,15 +455,27 @@ public class OpenFreqService : IOpenFreqService
         // Auto-record keys off Apply3dAudioEffects ("game mode"), which BMS flying state drives,
         // so it is handled there — not here. This handler only loads the heightmap on takeoff.
         if (e is not { OldFlyingState: false, NewFlyingState: true }) return;
-        var heightmapPath = Path.Join(_falconSharedMemoryService.TheaterTerrainDir, "NewTerrain", "HeightMaps",
-            "HeightMap.raw");
-        if (!File.Exists(heightmapPath))
+        LoadBmsHeightmap();
+    }
+
+    /// <summary>
+    /// Loads the terrain of the theater that BMS runs.
+    /// </summary>
+    private void LoadBmsHeightmap()
+    {
+        var theater = _falconSharedMemoryService.TheaterInfo;
+        if (theater == null) return;
+        _logger.LogInformation("BMS runs theater {Theater}: terrain folder {TerrainDir}, objects folder {ObjectDir}, Data folder {DataDir}",
+            theater.Name ?? "unknown", theater.TerrainDir, theater.ObjectDir ?? "unknown", theater.DataDir ?? "unknown");
+
+        var files = BmsTheaterPaths.Resolve(theater, BmsDetectionService.GetBmsDirectory(), _logger);
+        if (!File.Exists(files.HeightmapPath))
         {
-            _logger.LogError("Could not find heightmap path: {heightmapPath}", heightmapPath);
+            _logger.LogError("Could not find heightmap path: {heightmapPath}", files.HeightmapPath);
             return;
         }
 
-        LoadHeightmap(heightmapPath);
+        LoadHeightmap(files);
     }
 
     public async Task Shutdown()
@@ -1109,22 +1124,56 @@ public class OpenFreqService : IOpenFreqService
     }
 
     /// <summary>
-    /// Load heightmap for terrain-aware RF calculations
+    /// Loads a theater's terrain for terrain-aware RF calculations.
     /// </summary>
-    public void LoadHeightmap(string path, int width = 32768, int height = 32768, int bytesPerSample = 2)
+    /// <remarks>
+    /// Physics keeps the old terrain until the new terrain is ready, and keeps it if the load fails.
+    /// BMS mode calls this each time the player enters 3D, so we skip a load from the same files.
+    /// </remarks>
+    public void LoadHeightmap(TheaterTerrainFiles files)
     {
-        _signalCalculator?.Dispose();
-        // Cell size = theater world size / DEM resolution
-        var cellSizeMeters = BmsHeightmapConverter.HEIGHTMAP_SIZE_METERS / width;
-        _signalCalculator = _signalCalculatorFactory.Create(path, width, height, bytesPerSample, cellSizeMeters,
-            _loggerFactory);
-        OnStatusMessage($"Heightmap loaded: {path}");
-        _logger.LogDebug($"Heightmap loaded: {path}");
+        lock (_terrainLoadLock)
+        {
+            if (files == _loadedTerrainFiles)
+            {
+                _logger.LogInformation("Terrain from {Heightmap} is already loaded", files.HeightmapPath);
+                return;
+            }
+
+            ISignalCalculator calculator;
+            try
+            {
+                calculator = _signalCalculatorFactory.Create(files, _loggerFactory);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Could not load terrain from {Heightmap}. Keeping the terrain that was loaded before.",
+                    files.HeightmapPath);
+                OnStatusMessage($"Could not load terrain: {ex.Message}");
+                return;
+            }
+
+            ISignalCalculator? old;
+            lock (_signalCalculatorLock)
+            {
+                old = _signalCalculator;
+                _signalCalculator = calculator;
+                // A fake calculator in tests can have no heightmap size.
+                _heightmap = calculator.Heightmap ?? BmsHeightmapConverter.Default;
+            }
+            // No calculation can use the old calculator now, because physics holds the lock while it calculates.
+            old?.Dispose();
+            _loadedTerrainFiles = files;
+        }
+        OnStatusMessage($"Heightmap loaded: {files.HeightmapPath}");
     }
 
     public double? SampleTerrainElevationMeters(double xMeters, double yMeters)
     {
-        return _signalCalculator?.SampleElevation(xMeters, yMeters);
+        lock (_signalCalculatorLock)
+        {
+            return _signalCalculator?.SampleElevation(xMeters, yMeters);
+        }
     }
 
     /// <summary>
@@ -1331,7 +1380,7 @@ public class OpenFreqService : IOpenFreqService
                 if (_falconSharedMemoryService.State != ServiceState.Connected ||
                     _falconSharedMemoryService.Position == null) return null;
 
-                return new Vector3(BmsHeightmapConverter.ToHeightmap(_falconSharedMemoryService.Position.X,
+                return new Vector3(_heightmap.ToHeightmap(_falconSharedMemoryService.Position.X,
                     _falconSharedMemoryService.Position.Y, _falconSharedMemoryService.Position.Z));
 
             case RadioStationData.RadioStationType.STATIONARY:
@@ -1346,7 +1395,7 @@ public class OpenFreqService : IOpenFreqService
                 var aircraft = _acmiClientService.GetAircraft(acmiAircraftId);
                 if (aircraft == null) return null;
                 return new Vector3(AcmiHeightmapConverter.ToHeightmap(aircraft.Transform.U, aircraft.Transform.V,
-                    aircraft.Transform.Altitude + tunedFrequencyData.RadioStation.Preset.AntennaElevation_m));
+                    aircraft.Transform.Altitude + tunedFrequencyData.RadioStation.Preset.AntennaElevation_m, _heightmap));
             default:
                 return null;
         }
@@ -1763,15 +1812,29 @@ public class OpenFreqService : IOpenFreqService
             ? receiverData.RadioStation.Preset.RxSensitivity_VHF_dBm
             : receiverData.RadioStation.Preset.RxSensitivity_UHF_dBm;
 
-        var audioParams = _signalCalculator.CalculateAudioParams(
-            frequencyTransmission.Position.X, frequencyTransmission.Position.Y, frequencyTransmission.Position.Z,
-            ownPosition.X, ownPosition.Y, ownPosition.Z,
-            frequencyTransmission.Khz, (float)frequencyTransmission.Ppm,
-            frequencyTransmission.TxPowerWatts, receiverSensitivityDb,
-            txAltitudeIsMSL: true, rxAltitudeIsMSL: true,
-            txVelocity: frequencyTransmission.Velocity?.ToTuple(),
-            rxVelocity: ownVelocity?.ToTuple()
-        );
+        AudioParams audioParams;
+        // The ground height under each end, for the RX line of a new talk-spurt
+        (double Tx, double Rx) groundMeters = default;
+        lock (_signalCalculatorLock)
+        {
+            var calculator = _signalCalculator;
+            if (calculator == null) return LastKnownOrDefaultAudioParams(cacheKey, frequencyTransmission.Khz);
+
+            audioParams = calculator.CalculateAudioParams(
+                frequencyTransmission.Position.X, frequencyTransmission.Position.Y, frequencyTransmission.Position.Z,
+                ownPosition.X, ownPosition.Y, ownPosition.Z,
+                frequencyTransmission.Khz, (float)frequencyTransmission.Ppm,
+                frequencyTransmission.TxPowerWatts, receiverSensitivityDb,
+                txAltitudeIsMSL: true, rxAltitudeIsMSL: true,
+                txVelocity: frequencyTransmission.Velocity?.ToTuple(),
+                rxVelocity: ownVelocity?.ToTuple()
+            );
+            if (newTalkspurt)
+            {
+                groundMeters = (calculator.SampleElevation(frequencyTransmission.Position.X, frequencyTransmission.Position.Y),
+                    calculator.SampleElevation(ownPosition.X, ownPosition.Y));
+            }
+        }
 
         // Refuse NaN or infinite physics output and keep playing the last good result.
         // A single NaN SNR latches that radio's squelch shut until reconnect (the 1.1.0 F-15 bug).
@@ -1803,7 +1866,7 @@ public class OpenFreqService : IOpenFreqService
         };
 
         if (newTalkspurt)
-            LogTalkspurtSignal(peerId, peerName, frequencyTransmission, ownPosition, audioParams);
+            LogTalkspurtSignal(peerId, peerName, frequencyTransmission, ownPosition, groundMeters, audioParams);
 
 #if DEBUG
         _logger.LogDebug("Calculated audio params {AudioParams}", audioParams);
@@ -1817,10 +1880,13 @@ public class OpenFreqService : IOpenFreqService
     /// received level, SNR, and the two dominant loss terms. Terrain diffraction is altitude-gated,
     /// so the range and both MSL altitudes are what make a tester's log bucketable after the fact.
     /// The talker's name and the game time let it be matched to PTT lines and in-game recordings.
+    /// The water reflection gain and the ground height under each end show what the physics saw of the terrain.
+    /// For example, a parked aircraft is a few meters above the leveled airbase, and the sea is at 0 m.
     /// Counterpart to <see cref="LogTalkspurtLevel"/> on the send side.
     /// </summary>
+    /// <param name="groundMeters">The terrain height under the transmitter and the receiver</param>
     private void LogTalkspurtSignal(string peerId, string? peerName, FrequencyTransmission tx, Vector3 rxPosition,
-        AudioParams audioParams)
+        (double Tx, double Rx) groundMeters, AudioParams audioParams)
     {
         // Both positions are MSL - that is how they go into CalculateAudioParams above.
         var dx = rxPosition.X - tx.Position!.X;
@@ -1831,18 +1897,19 @@ public class OpenFreqService : IOpenFreqService
         _logger.LogInformation(
             "RX {FreqMhz:F3} MHz from {PeerName} ({PeerId}){GameTimeSuffix}: " +
             "{ReceivedDb:F1} dBm, SNR {SnrDb:F1} dB, " +
-            "FSPL {FsplDb:F1} dB, terrain {TerrainDb:F1} dB, " +
-            "{RangeKm:F1} km, tx {TxAlt:F0} m / rx {RxAlt:F0} m MSL",
+            "FSPL {FsplDb:F1} dB, terrain {TerrainDb:F1} dB, water reflection {WaterReflection}, " +
+            "{RangeKm:F1} km, tx {TxAlt:F0} m / rx {RxAlt:F0} m MSL, ground tx {TxGround:F0} m / rx {RxGround:F0} m",
             tx.Khz / 1000.0, peerName ?? "Unnamed", peerId, GameClock.LogSuffix(GameTimeSeconds()),
             audioParams.ReceivedDb, audioParams.ReceivedSnrDb,
             audioParams.FreeSpaceLossDb, audioParams.TerrainLossDb,
-            rangeKm, tx.Position.Z, rxPosition.Z);
+            audioParams.WaterReflectionDb is { } waterDb ? waterDb.ToString("F1", CultureInfo.InvariantCulture) + " dB" : "none",
+            rangeKm, tx.Position.Z, rxPosition.Z, groundMeters.Tx, groundMeters.Rx);
     }
 
     private static bool IsFinite(AudioParams p) =>
         float.IsFinite(p.ReceivedDb) && float.IsFinite(p.ReceivedSnrDb) &&
         float.IsFinite(p.FreeSpaceLossDb) && float.IsFinite(p.TerrainLossDb) &&
-        float.IsFinite(p.TuneOffsetPPM);
+        float.IsFinite(p.WaterReflectionDb ?? 0f) && float.IsFinite(p.TuneOffsetPPM);
 
     /// <summary>
     /// Physics produced a NaN or infinity. Print every parameter, plus every input that went into
@@ -1854,10 +1921,12 @@ public class OpenFreqService : IOpenFreqService
         _logger.LogError(
             "Rejected non-finite audio params for {FreqMhz:F3} MHz from {PeerId}, keeping the last good ones: " +
             "ReceivedDb {ReceivedDb}, ReceivedSnrDb {ReceivedSnrDb}, FreeSpaceLossDb {FreeSpaceLossDb}, " +
-            "TerrainLossDb {TerrainLossDb}, TuneOffsetPPM {TuneOffsetPpm}. Inputs: tx position {TxPosition} m, tx velocity {TxVelocity} m/s, " +
+            "TerrainLossDb {TerrainLossDb}, WaterReflectionDb {WaterReflectionDb}, TuneOffsetPPM {TuneOffsetPpm}. " +
+            "Inputs: tx position {TxPosition} m, tx velocity {TxVelocity} m/s, " +
             "{TxPowerWatts} W, {Ppm} ppm; rx position {RxPosition} m, rx velocity {RxVelocity} m/s, " +
             "rx sensitivity {RxSensitivityDbm} dBm",
-            tx.Khz / 1000.0, peerId, p.ReceivedDb, p.ReceivedSnrDb, p.FreeSpaceLossDb, p.TerrainLossDb, p.TuneOffsetPPM,
+            tx.Khz / 1000.0, peerId, p.ReceivedDb, p.ReceivedSnrDb, p.FreeSpaceLossDb, p.TerrainLossDb,
+            p.WaterReflectionDb, p.TuneOffsetPPM,
             tx.Position, tx.Velocity, tx.TxPowerWatts, tx.Ppm, rxPosition, rxVelocity, rxSensitivityDbm);
     }
 
@@ -1939,7 +2008,11 @@ public class OpenFreqService : IOpenFreqService
         StopMicCapture();
 
         _playbackService?.StopAll();
-        _signalCalculator?.Dispose();
+        lock (_signalCalculatorLock)
+        {
+            _signalCalculator?.Dispose();
+            _signalCalculator = null;
+        }
 
         _falconSharedMemoryService.FlyingStateChanged -= OnFlyingStateChanged;
         _falconSharedMemoryService.StateChanged -= OnFalconStateChanged;

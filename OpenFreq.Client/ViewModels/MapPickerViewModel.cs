@@ -210,7 +210,7 @@ public partial class MapPickerViewModel : ViewModelBase
 
             var elevationMeters = _openFreqService.SampleTerrainElevationMeters(xy.x, xy.y);
             if (elevationMeters.HasValue)
-                TerrainAltitudeFt = Math.Max(0d, elevationMeters.Value) * FeetPerMeter; // BMS sets negative magic values for oceans
+                TerrainAltitudeFt = elevationMeters.Value * FeetPerMeter;
         }
         catch
         {

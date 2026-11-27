@@ -12,13 +12,15 @@ public static class AcmiHeightmapConverter
     /// <param name="u">ACMI U in meters (East/West)</param>
     /// <param name="v">ACMI V in meters (North/South)</param>
     /// <param name="altitudeMeters">ACMI altitude in meters</param>
+    /// <param name="heightmap">The size of the theater's heightmap</param>
     /// <returns>(heightmapX, heightmapY, altitudeMeters) - all in METERS</returns>
-    public static (double x, double y, double altitudeMeters) ToHeightmap(double u, double v, double altitudeMeters)
+    public static (double x, double y, double altitudeMeters) ToHeightmap(double u, double v, double altitudeMeters,
+        BmsHeightmapConverter heightmap)
     {
         // BMS writes U and V as its sim east and north in meters,
         // so they need the same Y flip as BMS shared memory positions.
         var x = u;
-        var y = BmsHeightmapConverter.LAST_ROW_Y_METERS - v;
+        var y = heightmap.LastRowYMeters - v;
 
         return (x, y, altitudeMeters);
     }

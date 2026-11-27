@@ -6,11 +6,16 @@ using DotSpatial.Projections;
 
 namespace OpenFreq.Utilities
 {
-    public record TheaterDefinition(string Name, string ProjString, double CenterLat, double CenterLon, string? HeightmapPath = null);
+    /// <param name="SizeMeters">Theater size, from "Theater size in KM" in Theater.txt</param>
+    /// <param name="ObjectDir">The theater's objects folder, which has its terrain leveling files</param>
+    public record TheaterDefinition(string Name, string ProjString, double CenterLat, double CenterLon,
+        string? HeightmapPath = null, double SizeMeters = TheaterCoordinateConverter.DefaultSizeMeters,
+        string? ObjectDir = null);
 
     public static partial class TheaterCoordinateConverter
     {
-        private const int HEIGHTMAP_SIZE_M = 1024 * 1000;
+        /// <summary>The size of the stock BMS theaters</summary>
+        public const double DefaultSizeMeters = 1_024_000.0;
 
         private static readonly Dictionary<string, Theater> Theaters = new()
         {
@@ -54,6 +59,7 @@ namespace OpenFreq.Utilities
         {
             public string Name { get; }
             public string ProjString { get; }
+            public double SizeMeters { get; }
             private readonly ProjectionInfo _projectionInfo;
             private readonly ProjectionInfo _wgs84;
             public (double x, double y) CenterProjected { get; private set; }
@@ -62,10 +68,12 @@ namespace OpenFreq.Utilities
             public (double lat, double lon)[] CornersLatLon { get; }
             public (double lat, double lon) CenterLatLon { get; set; }
 
-            public Theater(string name, string projString, double centerLat, double centerLon)
+            public Theater(string name, string projString, double centerLat, double centerLon,
+                double sizeMeters = DefaultSizeMeters)
             {
                 Name = name;
                 ProjString = NormalizeProj4(projString);
+                SizeMeters = sizeMeters;
                 CenterLatLon = (centerLat, centerLon);
 
                 _wgs84 = KnownCoordinateSystems.Geographic.World.WGS1984;
@@ -77,11 +85,11 @@ namespace OpenFreq.Utilities
                 // Pre-calculate corners (in BMS position coordinate system)
                 var corners = new[]
                 {
-                    (x: 0.0, y: 0.0),                                    // Bottom-left
-                    (x: (double)HEIGHTMAP_SIZE_M, y: 0.0),              // Bottom-right
-                    (x: (double)HEIGHTMAP_SIZE_M, y: (double)HEIGHTMAP_SIZE_M), // Top-right
-                    (x: 0.0, y: (double)HEIGHTMAP_SIZE_M),              // Top-left
-                    (x: 0.0, y: 0.0)                                     // Close the polygon
+                    (x: 0.0, y: 0.0),                // Bottom-left
+                    (x: sizeMeters, y: 0.0),         // Bottom-right
+                    (x: sizeMeters, y: sizeMeters),  // Top-right
+                    (x: 0.0, y: sizeMeters),         // Top-left
+                    (x: 0.0, y: 0.0)                 // Close the polygon
                 };
 
                 CornersLatLon = new (double lat, double lon)[corners.Length];
@@ -133,16 +141,15 @@ namespace OpenFreq.Utilities
             var xy = theater.Transform(latitude, longitude);
             if (targetCoordinateSystem == CoordinateSystem.BMS_HEIGHTMAP_COORDINATE_SYTEM)
             {
-                const double HEIGHTMAP_SIZE_M = 1024000.0;
-                const double HALF_SIZE_M = HEIGHTMAP_SIZE_M / 2;
+                double halfSize = theater.SizeMeters / 2;
 
                 // Heightmap bottom-left corner in projection space (METERS)
-                double xOffset = theater.CenterProjected.x - HALF_SIZE_M;
-                double yOffset = theater.CenterProjected.y - HALF_SIZE_M;
+                double xOffset = theater.CenterProjected.x - halfSize;
+                double yOffset = theater.CenterProjected.y - halfSize;
 
                 // Convert to heightmap coordinates (METERS)
                 double heightmapX = xy.x - xOffset;
-                double heightmapY = HEIGHTMAP_SIZE_M - (xy.y - yOffset);  // Y-flip
+                double heightmapY = theater.SizeMeters - (xy.y - yOffset);  // Y-flip
 
                 return (heightmapX, heightmapY);
             }
@@ -183,7 +190,8 @@ namespace OpenFreq.Utilities
         /// </summary>
         public static void RegisterTheater(TheaterDefinition theater)
         {
-            Theaters.TryAdd(theater.Name, new Theater(theater.Name, theater.ProjString, theater.CenterLat, theater.CenterLon));
+            Theaters.TryAdd(theater.Name,
+                new Theater(theater.Name, theater.ProjString, theater.CenterLat, theater.CenterLon, theater.SizeMeters));
         }
 
         [GeneratedRegex(@"[+-]?\d+(\.\d+)?[eE][+-]?\d+")]
@@ -198,11 +206,12 @@ namespace OpenFreq.Utilities
             }
 
             var xy = LatLonToXYMeters(theaterName, latitude, longitude, CoordinateSystem.BMS_HEIGHTMAP_COORDINATE_SYTEM);
-            xy.y = HEIGHTMAP_SIZE_M - xy.y;
+            double size = theater.SizeMeters;
+            xy.y = size - xy.y;
 
             const double epsilon = 2;
-            return xy.x is >= -epsilon and < HEIGHTMAP_SIZE_M + epsilon &&
-                   xy.y is >= -epsilon and < HEIGHTMAP_SIZE_M + epsilon;
+            return xy.x >= -epsilon && xy.x < size + epsilon &&
+                   xy.y >= -epsilon && xy.y < size + epsilon;
         }
     }
 }

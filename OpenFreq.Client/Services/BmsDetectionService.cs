@@ -1,9 +1,10 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Runtime.Versioning;
+using OpenFreq.Client.Terrain;
 using OpenFreq.Utilities;
+using OpenFreqAudio.TerrainSampling;
 
 namespace OpenFreqClient.Services;
 
@@ -33,23 +34,15 @@ public static class BmsDetectionService
     public static List<TheaterDefinition> GetInstalledTheaters(string bmsDirectory)
     {
         var result = new List<TheaterDefinition>();
-        var lstPath = Path.Combine(bmsDirectory, "Data", "TerrData", "TheaterDefinition", "theater.lst");
+        var dataDir = Path.Combine(bmsDirectory, "Data");
 
-        IEnumerable<string> lines;
-        try { lines = File.ReadAllLines(lstPath); }
-        catch { return result; }
-
-        foreach (var rawLine in lines)
+        foreach (var tdfPath in BmsTheaterPaths.ListTdfFiles(dataDir))
         {
-            var line = rawLine.Trim();
-            if (string.IsNullOrEmpty(line) || line.StartsWith('#')) continue;
-
-            var tdfPath = Path.Combine(bmsDirectory, "Data", line);
             if (!File.Exists(tdfPath)) continue;
 
             try
             {
-                var theater = ParseTdfFile(bmsDirectory, tdfPath);
+                var theater = ParseTdfFile(dataDir, tdfPath);
                 if (theater != null) result.Add(theater);
             }
             catch { /* skip this theater, continue with others */ }
@@ -58,57 +51,29 @@ public static class BmsDetectionService
         return result;
     }
 
-    private static TheaterDefinition? ParseTdfFile(string bmsDirectory, string tdfPath)
+    private static TheaterDefinition? ParseTdfFile(string dataDir, string tdfPath)
     {
-        string? name = null, terrainDir = null;
+        var tdf = BmsTdfParser.Parse(File.ReadAllText(tdfPath));
+        string? name = tdf.GetValueOrDefault("name");
+        string? terrainDir = tdf.GetValueOrDefault("terraindir");
+        string? newTerrainDir = tdf.GetValueOrDefault("newterraindir");
+        string? objectDir = tdf.GetValueOrDefault("objectdir");
 
-        foreach (var rawLine in File.ReadAllLines(tdfPath))
-        {
-            var line = rawLine.Trim();
-            if (line.StartsWith('#') || !line.Contains(' ')) continue;
+        // A theater that sets neither folder keeps the folders of the theater that BMS loaded before it,
+        // which we cannot know.
+        if (string.IsNullOrEmpty(name) || (string.IsNullOrEmpty(terrainDir) && string.IsNullOrEmpty(newTerrainDir)))
+            return null;
 
-            var spaceIdx = line.IndexOf(' ');
-            var key = line[..spaceIdx];
-            var value = line[(spaceIdx + 1)..].Trim();
+        var newTerrain = BmsTheaterPaths.NewTerrainDir(dataDir, newTerrainDir,
+            string.IsNullOrEmpty(terrainDir) ? "" : BmsTheaterPaths.ResolveTdfDir(dataDir, terrainDir));
+        var absObjectDir = string.IsNullOrEmpty(objectDir) ? null : BmsTheaterPaths.ResolveTdfDir(dataDir, objectDir);
+        var files = TheaterTerrainFiles.FromNewTerrainDir(newTerrain, absObjectDir);
+        if (!File.Exists(files.HeightmapPath) || files.TheaterTxtPath == null) return null;
 
-            switch (key)
-            {
-                case "name": name = value; break;
-                case "terraindir":
-                    if (terrainDir == null) terrainDir = value;
-                    break;
-            }
-        }
+        var theaterTxt = TheaterTxt.Read(files.TheaterTxtPath);
+        if (theaterTxt.Projection == null) return null;
 
-        if (name == null || terrainDir == null) return null;
-
-        // Mirrors how OpenFreqService.cs resolves the heightmap in BMS mode:
-        // Path.Join(TheaterTerrainDir, "NewTerrain", "HeightMaps", "HeightMap.raw")
-        var absTerrainDir = Path.Combine(bmsDirectory, "Data", terrainDir);
-        var heightmapPath = Path.Combine(absTerrainDir, "NewTerrain", "HeightMaps", "HeightMap.raw");
-        if (!File.Exists(heightmapPath)) return null;
-
-        var theaterTxtPath = Path.Combine(absTerrainDir, "NewTerrain", "Theater.txt");
-        return ParseTheaterTxt(name, heightmapPath, theaterTxtPath);
-    }
-
-    private static TheaterDefinition? ParseTheaterTxt(string name, string heightmapPath, string theaterTxtPath)
-    {
-        if (!File.Exists(theaterTxtPath)) return null;
-
-        string? projString = null;
-        double centerLat = 0, centerLon = 0;
-
-        foreach (var line in File.ReadAllLines(theaterTxtPath))
-        {
-            if (line.StartsWith("Projection string="))
-                projString = line["Projection string=".Length..].Trim();
-            else if (line.StartsWith("Center latitude="))
-                double.TryParse(line["Center latitude=".Length..].Trim(), CultureInfo.InvariantCulture, out centerLat);
-            else if (line.StartsWith("Center longitude="))
-                double.TryParse(line["Center longitude=".Length..].Trim(), CultureInfo.InvariantCulture, out centerLon);
-        }
-
-        return projString == null ? null : new TheaterDefinition(name, projString, centerLat, centerLon, heightmapPath);
+        return new TheaterDefinition(name, theaterTxt.Projection, theaterTxt.CenterLat ?? 0, theaterTxt.CenterLon ?? 0,
+            files.HeightmapPath, (theaterTxt.SizeKm ?? 1024) * 1000.0, absObjectDir);
     }
 }

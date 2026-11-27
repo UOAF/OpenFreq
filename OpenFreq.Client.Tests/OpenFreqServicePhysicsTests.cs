@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using OpenFreq.Common;
 using OpenFreqAudio;
+using OpenFreqAudio.TerrainSampling;
 using OpenFreqClient.Services;
 
 namespace OpenFreq.Client.Tests;
@@ -41,7 +42,7 @@ public class OpenFreqServicePhysicsTests
         var log = new CapturingLogger<OpenFreqService>();
         var h = new ServiceHarness(log);
         await h.InitializeAuthenticatedAsync();
-        h.Service.LoadHeightmap("unused.bin");
+        h.Service.LoadHeightmap(new TheaterTerrainFiles("unused.bin", null, null, null));
         h.Service.Apply3dAudioEffects = true;
 
         var station = ServiceHarness.NewRadioStation();
@@ -107,6 +108,7 @@ public class OpenFreqServicePhysicsTests
     [InlineData(nameof(AudioParams.ReceivedSnrDb))]
     [InlineData(nameof(AudioParams.FreeSpaceLossDb))]
     [InlineData(nameof(AudioParams.TerrainLossDb))]
+    [InlineData(nameof(AudioParams.WaterReflectionDb))]
     [InlineData(nameof(AudioParams.TuneOffsetPPM))]
     public async Task NaNInAnyField_BeforeAnyGoodParams_FallsBackToDefaults(string field)
     {
@@ -149,5 +151,25 @@ public class OpenFreqServicePhysicsTests
 
         var rx = Assert.Single(log.Entries, e => e.Message.StartsWith("RX "));
         Assert.Contains($"from Viper ({Peer}), game time 12:34:56:", rx.Message);
+    }
+
+    [Theory]
+    [InlineData(null, "water reflection none,")]
+    [InlineData(-6.5f, "water reflection -6.5 dB,")]
+    public async Task NewTalkspurt_RxLineHasWaterReflectionAndGround(float? waterDb, string expected)
+    {
+        var (h, log, _) = await ReceivingHarnessAsync();
+        var p = GoodParams(snrDb: 20f);
+        p.WaterReflectionDb = waterDb;
+        PhysicsReturns(h, p);
+        // The transmitter is at x 150 km, and the receiver (the tuned station) is at x 100 km.
+        h.SignalCalculator.SampleElevation(150_000, 100_000).Returns(3.0);
+        h.SignalCalculator.SampleElevation(100_000, 100_000).Returns(412.0);
+
+        ReceivePacket(h);
+
+        var rx = Assert.Single(log.Entries, e => e.Message.StartsWith("RX "));
+        Assert.Contains(expected, rx.Message);
+        Assert.EndsWith("ground tx 3 m / rx 412 m", rx.Message);
     }
 }
