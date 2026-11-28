@@ -6,6 +6,7 @@ using DotSpatial.Projections;
 
 namespace OpenFreq.Utilities
 {
+    /// <summary>A BMS theater: its map projection, and where its terrain files are</summary>
     /// <param name="SizeMeters">Theater size, from "Theater size in KM" in Theater.txt</param>
     /// <param name="ObjectDir">The theater's objects folder, which has its terrain leveling files</param>
     public record TheaterDefinition(string Name, string ProjString, double CenterLat, double CenterLon,

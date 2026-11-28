@@ -65,14 +65,18 @@ public class TerrainFilesTests
         using var dir = new TempDir();
         string data = dir.Path;
         string defs = Directory.CreateDirectory(Path.Combine(data, "TerrData", "TheaterDefinition")).FullName;
-        File.WriteAllText(Path.Combine(defs, "theater.lst"), "TerrData\\TheaterDefinition\\a.tdf\r\n# skipped\r\nTerrData\\TheaterDefinition\\b.tdf\r\n");
+        // BMS writes these paths with backslashes. Path.Combine does too on Windows,
+        // and it gives paths that CI can read on Linux.
+        string a = Path.Combine("TerrData", "TheaterDefinition", "a.tdf");
+        string b = Path.Combine("TerrData", "TheaterDefinition", "b.tdf");
+        File.WriteAllText(Path.Combine(defs, "theater.lst"), $"{a}\r\n# skipped\r\n{b}\r\n");
         File.WriteAllText(Path.Combine(defs, "a.tdf"), "name Other\r\nnewterraindir Wrong\r\n");
-        File.WriteAllText(Path.Combine(defs, "b.tdf"), "name My Theater\r\nnewterraindir Add-On\\NewTerrain\r\n");
+        File.WriteAllText(Path.Combine(defs, "b.tdf"), $"name My Theater\r\nnewterraindir {Path.Combine("Add-On", "NewTerrain")}\r\n");
 
         var info = new BmsTheaterInfo(Path.Combine(data, "terrain"), "my theater", Path.Combine(data, "objects"), data);
         var files = BmsTheaterPaths.Resolve(info, null, NullLogger.Instance);
 
-        Assert.Equal(Path.Combine(data, "Add-On\\NewTerrain", "HeightMaps", "HeightMap.raw"), files.HeightmapPath);
+        Assert.Equal(Path.Combine(data, "Add-On", "NewTerrain", "HeightMaps", "HeightMap.raw"), files.HeightmapPath);
         Assert.Equal(Path.Combine(data, "objects", "TerrainRelatedData"), files.LevelingDir);
     }
 
